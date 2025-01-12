@@ -4,6 +4,11 @@ Basalt Server is essential for hosting competitions with Basalt.
 Built for lightning speed and reliability using the Rust programming
 language.
 
+**DISCLAIMER**: This application can only be run on Linux since
+our test runner, [leucite](https://github.com/basalt-rs/leucite),
+requires this. If you're stuck on Windows (my condolences), then
+your best bet is Docker.
+
 ## Getting Started
 
 ### Bare Metal
