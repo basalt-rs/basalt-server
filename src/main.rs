@@ -4,9 +4,7 @@ pub mod cli;
 pub mod services;
 
 #[tokio::main]
-async fn main() {
-    if let Err(msg) = cli::handle_cmd().await {
-        eprintln!("{}", msg);
-        exit(1);
-    }
+async fn main() -> anyhow::Result<(), String> {
+    cli::handle_cmd().await?;
+    Ok(())
 }
