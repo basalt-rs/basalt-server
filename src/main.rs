@@ -1,5 +1,3 @@
-use std::process::exit;
-
 pub mod cli;
 pub mod services;
 
