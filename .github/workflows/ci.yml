@@ -85,6 +85,10 @@ jobs:
 
     test:
         runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                # Get early warning of new lints which are regularly introduced in beta channels.
+                toolchain: [stable, beta]
 
         steps:
             - uses: actions/checkout@v4
