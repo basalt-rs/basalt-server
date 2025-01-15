@@ -52,7 +52,7 @@ jobs:
             - name: install dependencies (ubuntu only)
               run: |
                   sudo apt-get update
-                  apt-get install protobuf-compiler
+                  sudo apt-get install protobuf-compiler
             - name: Install ${{ matrix.toolchain }}
               uses: dtolnay/rust-toolchain@master
               with:
@@ -79,7 +79,7 @@ jobs:
             - name: install dependencies (ubuntu only)
               run: |
                   sudo apt-get update
-                  apt-get install protobuf-compiler
+                  sudo apt-get install protobuf-compiler
             - name: Install ${{ matrix.msrv }}
               uses: dtolnay/rust-toolchain@master
               with:
@@ -101,7 +101,7 @@ jobs:
             - name: install dependencies (ubuntu only)
               run: |
                   sudo apt-get update
-                  apt-get install protobuf-compiler
+                  sudo apt-get install protobuf-compiler
             - uses: dtolnay/rust-toolchain@master
               with:
                   toolchain: ${{ matrix.toolchain }}
