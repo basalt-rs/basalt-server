@@ -96,6 +96,6 @@ jobs:
                   submodules: true
             - uses: dtolnay/rust-toolchain@master
               with:
-                  toolchain: ${{ matrix.msrv }}
+                  toolchain: ${{ matrix.toolchain }}
             - run: cargo test
               name: Run cargo test
