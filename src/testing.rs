@@ -1,18 +1,15 @@
-use hyper::rt::{Read, Write};
 use hyper_util::rt::TokioIo;
-use protoxene::auth_client::AuthClient;
 use std::future::Future;
 use std::sync::Arc;
-use tempfile::{NamedTempFile, TempPath};
+use tempfile::NamedTempFile;
 use tokio::net::{UnixListener, UnixStream};
 use tokio_stream::wrappers::UnixListenerStream;
 use tonic::transport::{Channel, Endpoint, Server, Uri};
-use tonic::{Request, Response, Status};
 use tower::service_fn;
 
 use crate::services::auth::AuthService;
 
-pub async fn mock_server() -> (Arc<TempPath>, impl Future<Output = ()>, AuthClient<Channel>) {
+pub async fn mock_server() -> (impl Future<Output = ()>, Channel) {
     let socket = NamedTempFile::new().unwrap();
     let socket = Arc::new(socket.into_temp_path());
     std::fs::remove_file(&*socket).unwrap();
@@ -30,20 +27,17 @@ pub async fn mock_server() -> (Arc<TempPath>, impl Future<Output = ()>, AuthClie
         assert!(result.is_ok());
     };
 
-    let socket = Arc::clone(&socket);
-    // Connect to the server over a Unix socket
-    // The URL will be ignored.
-    let channel = Endpoint::try_from("http://[::]:50051")
+    println!("DISPLAY: {}", socket.display());
+
+    // Connect to the server over a Unix socket at `socket`
+    let channel = Endpoint::try_from(format!("file://localhost{}", socket.display()))
         .unwrap()
-        .connect_with_connector(service_fn(move |_: Uri| async {
+        .connect_with_connector(service_fn(|uri: Uri| async move {
             // Connect to a Uds socket
-            let socket = Arc::clone(&socket);
-            Ok::<_, std::io::Error>(TokioIo::new(UnixStream::connect(&*socket).await?))
+            Ok::<_, std::io::Error>(TokioIo::new(UnixStream::connect(uri.path()).await?))
         }))
         .await
         .unwrap();
 
-    let client = protoxene::auth_client::AuthClient::new(channel);
-
-    return (socket, serve_future, client);
+    return (serve_future, channel);
 }
