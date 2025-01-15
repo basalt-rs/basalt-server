@@ -194,9 +194,14 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "hyper",
+ "hyper-util",
  "protoxene",
+ "tempfile",
  "tokio",
+ "tokio-stream",
  "tonic",
+ "tower 0.5.2",
  "tracing",
  "tracing-subscriber",
 ]

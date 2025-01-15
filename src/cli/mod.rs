@@ -14,7 +14,7 @@ enum Command {
     Run(run::RunArgs),
 }
 
-pub async fn handle_cmd() -> Result<(), String> {
+pub async fn handle_cmd() -> anyhow::Result<(), String> {
     let args = Cli::parse();
 
     tracing_subscriber::registry()

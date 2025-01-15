@@ -13,3 +13,19 @@ impl protoxene::auth_server::Auth for AuthService {
         todo!("login functionality not yet implemented")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    impl AuthService {
+        /// Create a mock instance of AuthService for the sake
+        /// of testing its functionality
+        pub fn mock() -> Self {
+            Self {}
+        }
+    }
+    use super::*;
+    #[test]
+    fn test_login() {
+        let auth_service = AuthService::mock();
+    }
+}

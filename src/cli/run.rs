@@ -10,7 +10,7 @@ pub struct RunArgs {
     port: u16,
 }
 
-pub async fn handle(args: RunArgs) -> Result<(), String> {
+pub async fn handle(args: RunArgs) -> anyhow::Result<(), String> {
     // TODO: Parse configurations
     let addr = format!("[::1]:{}", args.port).parse().unwrap();
     info!("Serving via gRPC");
