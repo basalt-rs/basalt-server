@@ -24,8 +24,9 @@ mod tests {
     use crate::testing;
 
     use super::*;
+
     #[tokio::test]
-    async fn test_login() {
+    async fn test_login_unimplemented() {
         let (serve_future, channel) = testing::mock_server().await;
         // create client from channel
         let mut client = protoxene::auth_client::AuthClient::new(channel);
@@ -34,17 +35,11 @@ mod tests {
             password: "".into(),
         });
 
-        // the response should be Err(Unimplemented) for now
-        tokio::select! {
-            // indicates the server closed first
-            _ = serve_future => panic!("server returned first"),
-            // indicates the response came first
-            response = response_future => {
-                match response {
-                    Ok(_) => panic!("should have failed lol"),
-                    Err(_) => ()
-                }
-            }
+        let response = testing::receive_response(response_future, serve_future).await;
+
+        match response {
+            Ok(_) => panic!("should have failed"),
+            Err(_) => (),
         }
     }
 }

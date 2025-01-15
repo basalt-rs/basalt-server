@@ -9,6 +9,16 @@ use tower::service_fn;
 
 use crate::services::auth::AuthService;
 
+pub async fn receive_response<T>(
+    response: impl Future<Output = T>,
+    serve_future: impl Future<Output = ()>,
+) -> T {
+    tokio::select! {
+        _ = serve_future => panic!("server closed early"),
+        r = response => r
+    }
+}
+
 pub async fn mock_server() -> (impl Future<Output = ()>, Channel) {
     let socket = NamedTempFile::new().unwrap();
     let socket = Arc::new(socket.into_temp_path());
