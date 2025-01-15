@@ -21,13 +21,6 @@ impl protoxene::auth_server::Auth for AuthService {
 
 #[cfg(test)]
 mod tests {
-    impl AuthService {
-        /// Create a mock instance of AuthService for the sake
-        /// of testing its functionality
-        pub fn mock() -> Self {
-            Self {}
-        }
-    }
     use crate::testing;
 
     use super::*;
