@@ -1,4 +1,6 @@
-use protoxene;
+use protoxene::{LoginRequest, LoginResponse};
+use tonic::{Request, Response, Status};
+use tracing::debug;
 
 /// Provides authentication functionality
 #[derive(Default)]
@@ -8,9 +10,12 @@ pub struct AuthService {}
 impl protoxene::auth_server::Auth for AuthService {
     async fn login(
         &self,
-        _request: tonic::Request<protoxene::LoginRequest>,
-    ) -> Result<tonic::Response<protoxene::LoginResponse>, tonic::Status> {
-        todo!("login functionality not yet implemented")
+        request: Request<LoginRequest>,
+    ) -> Result<Response<LoginResponse>, Status> {
+        debug!("[login]: {:?}", request);
+        Err(Status::unimplemented(
+            "login functionality not yet implemented",
+        ))
     }
 }
 

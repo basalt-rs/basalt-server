@@ -7,20 +7,16 @@ resolver = "2"
 [dependencies]
 anyhow = "1.0.95"
 clap = { version = "4.5.23", features = ["derive"] }
-protoxene = { git = "https://github.com/basalt-rs/protoxene.git", features = [
-    "server",
-], rev = "2c9f2d8" }
+protoxene = { git = "https://github.com/basalt-rs/protoxene.git", rev = "92b5ce5" }
 tokio = { version = "1.43.0", features = ["macros", "rt-multi-thread"] }
 tonic = "0.12.3"
+tonic-web = "0.12.3"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 
 [dev-dependencies]
 tempfile = "3.15.0"
 tokio-stream = "0.1.17"
-protoxene = { git = "https://github.com/basalt-rs/protoxene.git", features = [
-    "all",
-], rev = "2c9f2d8" }
 tower = "0.5.2"
 hyper = { version = "1.5.2", features = ["full"] }
 hyper-util = "0.1.10"
