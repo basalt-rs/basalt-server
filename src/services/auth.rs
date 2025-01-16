@@ -42,4 +42,22 @@ mod tests {
             Err(_) => (),
         }
     }
+
+    #[tokio::test]
+    async fn test_login_unimplemented_2() {
+        let (serve_future, channel) = testing::mock_server().await;
+        // create client from channel
+        let mut client = protoxene::auth_client::AuthClient::new(channel);
+        let response_future = client.login(LoginRequest {
+            name: "".into(),
+            password: "".into(),
+        });
+
+        let response = testing::receive_response(response_future, serve_future).await;
+
+        match response {
+            Ok(_) => panic!("should have failed"),
+            Err(_) => (),
+        }
+    }
 }

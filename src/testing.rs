@@ -1,7 +1,8 @@
 use hyper_util::rt::TokioIo;
-use std::future::Future;
+use rand::distributions::Distribution;
+use std::fs;
 use std::sync::Arc;
-use tempfile::NamedTempFile;
+use std::{future::Future, path::PathBuf};
 use tokio::net::{UnixListener, UnixStream};
 use tokio_stream::wrappers::UnixListenerStream;
 use tonic::transport::{Channel, Endpoint, Server, Uri};
@@ -20,9 +21,12 @@ pub async fn receive_response<T>(
 }
 
 pub async fn mock_server() -> (impl Future<Output = ()>, Channel) {
-    let socket = NamedTempFile::new().unwrap();
-    let socket = Arc::new(socket.into_temp_path());
-    std::fs::remove_file(&*socket).unwrap();
+    let tempfile = async_tempfile::TempFile::new()
+        .await
+        .expect("Failed to create temporary file for socket");
+    let path = tempfile.file_path();
+    fs::remove_file(&path).expect("Failed to remove temp file initially");
+    let socket = Arc::new(&*path);
 
     let uds = UnixListener::bind(&*socket).unwrap();
     let stream = UnixListenerStream::new(uds);
@@ -37,10 +41,8 @@ pub async fn mock_server() -> (impl Future<Output = ()>, Channel) {
         assert!(result.is_ok());
     };
 
-    println!("DISPLAY: {}", socket.display());
-
     // Connect to the server over a Unix socket at `socket`
-    let channel = Endpoint::try_from(format!("file://localhost{}", socket.display()))
+    let channel = Endpoint::try_from(path.display().to_string())
         .unwrap()
         .connect_with_connector(service_fn(|uri: Uri| async move {
             // Connect to a Uds socket
