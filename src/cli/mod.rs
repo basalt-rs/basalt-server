@@ -1,3 +1,4 @@
+use anyhow::Context;
 use clap::Parser;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -14,8 +15,8 @@ enum Command {
     Run(run::RunArgs),
 }
 
-pub async fn handle_cmd() -> anyhow::Result<(), String> {
-    let args = Cli::parse();
+pub async fn handle_cmd() -> anyhow::Result<()> {
+    let args = Cli::try_parse().context("Failed to parse CLI arguments")?;
 
     tracing_subscriber::registry()
         .with(
@@ -25,7 +26,11 @@ pub async fn handle_cmd() -> anyhow::Result<(), String> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    match args.command {
-        Command::Run(args) => run::handle(args).await,
-    }
+    let result = match args.command {
+        Command::Run(args) => run::handle(args)
+            .await
+            .context("Failed to execute `run` command")?,
+    };
+
+    Ok(result)
 }

@@ -1,3 +1,4 @@
+use anyhow::Context;
 use clap::Parser;
 use tonic::transport::Server;
 use tracing::info;
@@ -10,7 +11,7 @@ pub struct RunArgs {
     port: u16,
 }
 
-pub async fn handle(args: RunArgs) -> anyhow::Result<(), String> {
+pub async fn handle(args: RunArgs) -> anyhow::Result<()> {
     // TODO: Parse configurations
     let addr = format!("[::1]:{}", args.port).parse().unwrap();
     info!("Serving via gRPC");
@@ -22,6 +23,6 @@ pub async fn handle(args: RunArgs) -> anyhow::Result<(), String> {
         ))
         .serve(addr)
         .await
-        .map_err(|e| e.to_string())?;
+        .context("Failed to build server")?;
     Ok(())
 }
