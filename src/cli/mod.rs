@@ -16,7 +16,7 @@ enum Command {
 }
 
 pub async fn handle_cmd() -> anyhow::Result<()> {
-    let args = Cli::try_parse().context("Failed to parse CLI arguments")?;
+    let args = Cli::parse();
 
     tracing_subscriber::registry()
         .with(
@@ -26,11 +26,11 @@ pub async fn handle_cmd() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let result = match args.command {
+    match args.command {
         Command::Run(args) => run::handle(args)
             .await
             .context("Failed to execute `run` command")?,
     };
 
-    Ok(result)
+    Ok(())
 }
