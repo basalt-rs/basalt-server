@@ -8,7 +8,6 @@ resolver = "2"
 anyhow = "1.0.95"
 clap = { version = "4.5.23", features = ["derive"] }
 protoxene = { git = "https://github.com/basalt-rs/protoxene.git", rev = "92b5ce5" }
-rand = "0.8.5"
 tokio = { version = "1.43.0", features = ["macros", "rt-multi-thread"] }
 tonic = "0.12.3"
 tonic-web = "0.12.3"
