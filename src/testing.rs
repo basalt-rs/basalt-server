@@ -1,8 +1,7 @@
 use hyper_util::rt::TokioIo;
-use rand::distributions::Distribution;
 use std::fs;
+use std::future::Future;
 use std::sync::Arc;
-use std::{future::Future, path::PathBuf};
 use tokio::net::{UnixListener, UnixStream};
 use tokio_stream::wrappers::UnixListenerStream;
 use tonic::transport::{Channel, Endpoint, Server, Uri};
