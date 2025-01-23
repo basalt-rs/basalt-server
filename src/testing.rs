@@ -2,12 +2,15 @@ use hyper_util::rt::TokioIo;
 use std::fs;
 use std::future::Future;
 use std::sync::Arc;
-use tokio::net::{UnixListener, UnixStream};
+use tokio::{
+    net::{UnixListener, UnixStream},
+    sync::RwLock,
+};
 use tokio_stream::wrappers::UnixListenerStream;
 use tonic::transport::{Channel, Endpoint, Server, Uri};
 use tower::service_fn;
 
-use crate::services::auth::AuthService;
+use crate::{services::auth::AuthService, storage::SqliteLayer};
 
 pub async fn receive_response<T>(
     response: impl Future<Output = T>,
@@ -19,7 +22,23 @@ pub async fn receive_response<T>(
     }
 }
 
-pub async fn mock_server() -> (impl Future<Output = ()>, Channel) {
+pub async fn mock_db() -> (
+    async_tempfile::TempFile,
+    Arc<tokio::sync::RwLock<SqliteLayer>>,
+) {
+    let db_tempfile = async_tempfile::TempFile::new()
+        .await
+        .expect("Failed to create temporary file for datafile");
+
+    let sqlite_layer = SqliteLayer::from_pathbuf(db_tempfile.file_path())
+        .await
+        .expect("Failed to create SqliteDB");
+
+    let db = Arc::new(RwLock::new(sqlite_layer));
+    (db_tempfile, db)
+}
+
+pub async fn mock_server(db: Arc<RwLock<SqliteLayer>>) -> (impl Future<Output = ()>, Channel) {
     let tempfile = async_tempfile::TempFile::new()
         .await
         .expect("Failed to create temporary file for socket");
@@ -31,9 +50,9 @@ pub async fn mock_server() -> (impl Future<Output = ()>, Channel) {
     let stream = UnixListenerStream::new(uds);
     let serve_future = async {
         let result = Server::builder()
-            .add_service(protoxene::auth_server::AuthServer::new(
-                AuthService::default(),
-            ))
+            .add_service(protoxene::auth_server::AuthServer::new(AuthService::new(
+                db,
+            )))
             .serve_with_incoming(stream)
             .await;
         // Server must be running fine...

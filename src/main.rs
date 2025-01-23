@@ -2,6 +2,7 @@ use anyhow::Context;
 
 pub mod cli;
 pub mod services;
+mod storage;
 
 #[cfg(test)]
 mod testing;

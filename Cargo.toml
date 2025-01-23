@@ -5,14 +5,19 @@ edition = "2021"
 resolver = "2"
 
 [dependencies]
+sqlx = { version = "0.8.3", features = ["sqlite", "runtime-tokio-native-tls"] }
 anyhow = "1.0.95"
 clap = { version = "4.5.23", features = ["derive"] }
 protoxene = { git = "https://github.com/basalt-rs/protoxene.git", rev = "92b5ce5" }
-tokio = { version = "1.43.0", features = ["macros", "rt-multi-thread"] }
+packet = { git = "https://github.com/basalt-rs/packet.git", rev = "45dd8cd" }
+thiserror = "2.0.11"
+tokio = { version = "1.43.0", features = ["macros", "rt-multi-thread", "sync"] }
 tonic = "0.12.3"
 tonic-web = "0.12.3"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+directories = "6.0.0"
+rand = "0.8.5"
 
 [dev-dependencies]
 tokio-stream = "0.1.17"

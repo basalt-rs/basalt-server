@@ -2,6 +2,7 @@ use anyhow::Context;
 use clap::Parser;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+mod list;
 mod run;
 
 #[derive(Parser, Debug)]
@@ -13,6 +14,7 @@ struct Cli {
 #[derive(Parser, Debug)]
 enum Command {
     Run(run::RunArgs),
+    List,
 }
 
 pub async fn handle_cmd() -> anyhow::Result<()> {
@@ -30,6 +32,9 @@ pub async fn handle_cmd() -> anyhow::Result<()> {
         Command::Run(args) => run::handle(args)
             .await
             .context("Failed to execute `run` command")?,
+        Command::List => list::handle()
+            .await
+            .context("Failed to execute `list` command")?,
     };
 
     Ok(())
