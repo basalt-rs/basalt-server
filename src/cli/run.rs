@@ -1,13 +1,15 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
 use anyhow::Context;
 use clap::Parser;
 use rand::distributions::Distribution;
 use tokio::sync::RwLock;
-use tonic::transport::Server;
 use tracing::info;
 
-use crate::{services::auth::AuthService, storage::SqliteLayer};
+use crate::{
+    server::{router, AppState},
+    storage::SqliteLayer,
+};
 
 #[derive(Parser, Debug)]
 pub struct RunArgs {
@@ -36,18 +38,15 @@ pub async fn handle(args: RunArgs) -> anyhow::Result<()> {
     let db = SqliteLayer::new(args.name.unwrap_or(default_name()))
         .await
         .context("Creating Sqlite Layer")?;
-    let db = Arc::new(RwLock::new(db));
 
-    let addr = format!("[::1]:{}", args.port).parse().unwrap();
-    info!("Serving via gRPC");
-    Server::builder()
-        .accept_http1(true)
-        .layer(tonic_web::GrpcWebLayer::new())
-        .add_service(protoxene::auth_server::AuthServer::new(AuthService::new(
-            db,
-        )))
-        .serve(addr)
-        .await
-        .context("Failed to build server")?;
+    let addr: SocketAddr = format!("[::1]:{}", args.port).parse().unwrap();
+    info!("Serving via HTTP");
+    let service = router(Arc::new(AppState {
+        db: RwLock::new(db),
+    }));
+
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, service).await?;
+
     Ok(())
 }

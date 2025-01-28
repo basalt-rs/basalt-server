@@ -1,6 +1,7 @@
 use anyhow::Context;
 
 pub mod cli;
+mod server;
 pub mod services;
 mod storage;
 
