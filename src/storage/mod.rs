@@ -1,7 +1,10 @@
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::Path;
 
 use sqlx::{Pool, Sqlite};
 use thiserror::Error;
+
+const INITIAL_DB_CONTENT: &[u8] = include_bytes!("../../initial_data.db");
 
 pub struct SqliteLayer {
     pub db: Pool<Sqlite>,
@@ -10,11 +13,13 @@ pub struct SqliteLayer {
 #[derive(Debug, Error)]
 pub enum SqliteLayerCreationError {
     #[error("Failed to determine system's data folder")]
-    FailedToDetermineDataFolder,
-    #[error("Failed to create datafile")]
-    FailedToCreateDatafile(String),
+    DataFolderDetermination,
+    #[error("Failed to create datafile: {0}")]
+    DatafileCreation(String),
+    #[error("Failed to read datafile")]
+    DatafileRead(String),
     #[error("Failed to connect to sqlite: {0}")]
-    FailedToConnectSqlite(String),
+    Connection(String),
 }
 
 impl SqliteLayer {
@@ -24,13 +29,11 @@ impl SqliteLayer {
     /// one does not already exist to contain this new database.
     ///
     /// ```rust
-    /// pub fn main() {
-    ///     let sqlite_layer = SqliteLayer::new("competition-title".into()).unwrap();
-    /// }
+    /// let sqlite_layer = SqliteLayer::new("competition-title".into()).unwrap();
     /// ```
     pub async fn new(title: String) -> Result<Self, SqliteLayerCreationError> {
         let mut path = directories::BaseDirs::new()
-            .ok_or(SqliteLayerCreationError::FailedToDetermineDataFolder)?
+            .ok_or(SqliteLayerCreationError::DataFolderDetermination)?
             .data_local_dir()
             .join("basalt-server")
             .join(title);
@@ -38,19 +41,24 @@ impl SqliteLayer {
             std::fs::create_dir_all(&path).unwrap()
         }
         path = path.join("data").with_extension("db");
-        std::fs::File::create(&path)
-            .map_err(|e| SqliteLayerCreationError::FailedToCreateDatafile(e.to_string()))?;
-        dbg!(&path);
+        let mut file = std::fs::File::create(&path)
+            .map_err(|e| SqliteLayerCreationError::DatafileCreation(e.to_string()))?;
+        file.write_all(INITIAL_DB_CONTENT)
+            .map_err(|e| SqliteLayerCreationError::DatafileCreation(e.to_string()))?;
         let db = sqlx::sqlite::SqlitePool::connect(dbg!(path.as_path().to_str().unwrap()))
             .await
-            .map_err(|e| SqliteLayerCreationError::FailedToConnectSqlite(e.to_string()))?;
+            .map_err(|e| SqliteLayerCreationError::Connection(e.to_string()))?;
         Ok(Self { db })
     }
     /// Converts a `Pathbuf` to a `SqliteLayer`
-    pub async fn from_pathbuf(value: &PathBuf) -> Result<Self, SqliteLayerCreationError> {
-        let db = sqlx::sqlite::SqlitePool::connect(dbg!(value.as_path().to_str().unwrap()))
+    pub async fn from_pathbuf(value: &Path) -> Result<Self, SqliteLayerCreationError> {
+        let mut file = std::fs::File::open(value)
+            .map_err(|e| SqliteLayerCreationError::DatafileCreation(e.to_string()))?;
+        file.write_all(INITIAL_DB_CONTENT)
+            .map_err(|e| SqliteLayerCreationError::DatafileCreation(e.to_string()))?;
+        let db = sqlx::sqlite::SqlitePool::connect(dbg!(value.to_str().unwrap()))
             .await
-            .map_err(|e| SqliteLayerCreationError::FailedToConnectSqlite(e.to_string()))?;
+            .map_err(|e| SqliteLayerCreationError::Connection(e.to_string()))?;
         Ok(Self { db })
     }
 }

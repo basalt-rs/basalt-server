@@ -11,6 +11,7 @@ mod login {
     use crate::server::AppState;
 
     #[derive(serde::Deserialize, utoipa::ToSchema)]
+    #[allow(dead_code)]
     pub struct LoginBody {
         username: String,
         password: String,
@@ -30,21 +31,4 @@ pub fn auth_service(initial_state: Arc<AppState>) -> axum::Router<Arc<AppState>>
     axum::Router::new()
         .route("/login", post(login::post))
         .with_state(initial_state)
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::testing;
-
-    use super::*;
-
-    #[tokio::test]
-    async fn test_login_unimplemented() {
-        todo!()
-    }
-
-    #[tokio::test]
-    async fn test_login_unimplemented_2() {
-        todo!()
-    }
 }

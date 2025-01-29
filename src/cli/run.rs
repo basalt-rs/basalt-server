@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{net::SocketAddr, sync::Arc};
 
 use anyhow::Context;
 use clap::Parser;
@@ -25,14 +25,18 @@ fn default_name() -> String {
         .sample_iter(rand::thread_rng())
         .take(12)
         .collect::<Vec<u8>>();
-    return std::str::from_utf8(&bytes).unwrap().to_owned();
+    std::str::from_utf8(&bytes).unwrap().to_owned()
 }
 
 pub async fn handle(args: RunArgs) -> anyhow::Result<()> {
-    // TODO: Parse configurations
     info!("Parsing packet configurations");
-    let _ = packet::Packet::try_from(PathBuf::from(args.packet))
-        .context("Parsing packet configurations")?;
+    let file = tokio::fs::File::open(&args.packet)
+        .await
+        .context("Failed to open file")?;
+    let mut reader = tokio::io::BufReader::new(file);
+    let _ = bedrock::Config::read_async(&mut reader, Some(args.packet))
+        .await
+        .context("Failed to parse configurations")?;
 
     info!("Creating Sqlite layer");
     let db = SqliteLayer::new(args.name.unwrap_or(default_name()))
