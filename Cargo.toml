@@ -9,7 +9,7 @@ sqlx = { version = "0.8.3", features = ["sqlite", "runtime-tokio-native-tls"] }
 anyhow = "1.0.95"
 clap = { version = "4.5.23", features = ["derive"] }
 bedrock = { git = "https://github.com/basalt-rs/bedrock.git", rev = "133eb0c", features = [
-  "tokio",
+    "tokio",
 ] }
 thiserror = "2.0.11"
 tracing = "0.1.41"
@@ -20,8 +20,9 @@ axum = { version = "0.8.1", features = ["macros"] }
 serde = { version = "1.0.217", features = ["derive"] }
 tokio = { version = "1.43.0", features = ["full"] }
 utoipa-axum = { version = "0.2.0", features = ["debug"] }
-utoipa = { version = "5.3.1", features = ["debug"] }
+utoipa = { version = "5.3.1", features = ["debug", "yaml"] }
 redact = { version = "0.1.10", features = ["serde"] }
+async-tempfile = "0.6.0"
 
 [dev-dependencies]
 async-tempfile = "0.6.0"

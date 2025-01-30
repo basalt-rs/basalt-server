@@ -52,10 +52,11 @@ impl SqliteLayer {
     }
     /// Converts a `Pathbuf` to a `SqliteLayer`
     pub async fn from_pathbuf(value: &Path) -> Result<Self, SqliteLayerCreationError> {
-        let mut file = std::fs::File::open(value)
+        dbg!(value);
+        let mut file = std::fs::File::create(value)
             .map_err(|e| SqliteLayerCreationError::DatafileCreation(e.to_string()))?;
         file.write_all(INITIAL_DB_CONTENT)
-            .map_err(|e| SqliteLayerCreationError::DatafileCreation(e.to_string()))?;
+            .map_err(|e| SqliteLayerCreationError::DatafileCreation(dbg!(e.to_string())))?;
         let db = sqlx::sqlite::SqlitePool::connect(dbg!(value.to_str().unwrap()))
             .await
             .map_err(|e| SqliteLayerCreationError::Connection(e.to_string()))?;

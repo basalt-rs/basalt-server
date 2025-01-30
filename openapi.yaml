@@ -1,0 +1,27 @@
+openapi: 3.1.0
+info:
+  title: basalt-server
+  description: ''
+  license:
+    name: ''
+  version: 0.1.0
+paths:
+  /auth/auth/login:
+    post:
+      operationId: post
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginSuccessResponse'
+components:
+  schemas:
+    LoginSuccessResponse:
+      type: object
+      required:
+      - session_token
+      properties:
+        session_token:
+          type: string
