@@ -4,6 +4,8 @@ use tokio::sync::RwLock;
 
 use crate::storage::SqliteLayer;
 
+pub mod users_repositories;
+
 pub async fn mock_db() -> (async_tempfile::TempFile, Arc<RwLock<SqliteLayer>>) {
     let db_tempfile = async_tempfile::TempFile::new()
         .await

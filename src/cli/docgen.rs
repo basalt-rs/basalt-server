@@ -1,8 +1,8 @@
-use std::{env::temp_dir, io::Write, sync::Arc};
+use std::{io::Write, sync::Arc};
 
 use anyhow::Context;
 use tokio::sync::RwLock;
-use utoipa::{OpenApi, ToSchema};
+use utoipa::OpenApi;
 
 use crate::{server::AppState, storage::SqliteLayer};
 
@@ -32,7 +32,7 @@ pub async fn handle() -> anyhow::Result<()> {
 
     // delete file if exists
     if path.exists() {
-        std::fs::remove_file(&path).expect("Failed to remove old spec");
+        std::fs::remove_file(path).expect("Failed to remove old spec");
     }
 
     // write content to docs file

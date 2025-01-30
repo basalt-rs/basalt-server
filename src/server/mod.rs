@@ -12,13 +12,13 @@ pub struct AppState {
 
 pub fn router(initial_state: Arc<AppState>) -> axum::routing::IntoMakeService<axum::Router> {
     Router::new()
-        .nest("/auth", services::auth::auth_service(initial_state.clone()))
+        .nest("/auth", services::auth::auth_service())
         .with_state(initial_state)
         .into_make_service()
 }
 
 pub fn doc_router(initial_state: Arc<AppState>) -> OpenApiRouter {
     OpenApiRouter::new()
-        .nest("/auth", services::auth::auth_router(initial_state.clone()))
+        .nest("/auth", services::auth::auth_router())
         .with_state(initial_state)
 }

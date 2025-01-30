@@ -1,7 +1,11 @@
 use std::io::Write;
 use std::path::Path;
+use std::str::FromStr;
 
-use sqlx::{Pool, Sqlite};
+use sqlx::{
+    sqlite::{SqliteConnectOptions, SqliteJournalMode},
+    Pool, Sqlite,
+};
 use thiserror::Error;
 
 const INITIAL_DB_CONTENT: &[u8] = include_bytes!("../../initial_data.db");
@@ -20,6 +24,8 @@ pub enum SqliteLayerCreationError {
     DatafileRead(String),
     #[error("Failed to connect to sqlite: {0}")]
     Connection(String),
+    #[error("Invalid options")]
+    InvalidOpts,
 }
 
 impl SqliteLayer {
@@ -52,12 +58,17 @@ impl SqliteLayer {
     }
     /// Converts a `Pathbuf` to a `SqliteLayer`
     pub async fn from_pathbuf(value: &Path) -> Result<Self, SqliteLayerCreationError> {
-        dbg!(value);
         let mut file = std::fs::File::create(value)
             .map_err(|e| SqliteLayerCreationError::DatafileCreation(e.to_string()))?;
         file.write_all(INITIAL_DB_CONTENT)
             .map_err(|e| SqliteLayerCreationError::DatafileCreation(dbg!(e.to_string())))?;
-        let db = sqlx::sqlite::SqlitePool::connect(dbg!(value.to_str().unwrap()))
+        drop(file);
+        let uri = format!("sqlite://{}", value.to_str().unwrap());
+        let opts = SqliteConnectOptions::from_str(&uri)
+            .map_err(|_| SqliteLayerCreationError::InvalidOpts)?
+            .journal_mode(SqliteJournalMode::Wal)
+            .read_only(false);
+        let db = sqlx::sqlite::SqlitePool::connect_with(opts)
             .await
             .map_err(|e| SqliteLayerCreationError::Connection(e.to_string()))?;
         Ok(Self { db })

@@ -22,10 +22,10 @@ impl From<i32> for Role {
 #[derive(Debug, FromRow, Serialize, Deserialize)]
 #[allow(dead_code)]
 pub struct User {
-    username: String,
+    pub username: String,
     #[serde(serialize_with = "expose_secret")]
-    password_hash: Secret<String>,
-    role: i64,
+    pub password_hash: Secret<String>,
+    pub role: i64,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -66,5 +66,22 @@ mod tests {
         let db = sql_layer.read().await;
         let response = get_user_by_username(&db, "superuser".into()).await;
         assert!(response.is_err())
+    }
+
+    #[tokio::test]
+    async fn get_existing_user() {
+        let (_, sql_layer) = mock_db().await;
+        let mut db = sql_layer.write().await;
+        let dummy_user = crate::testing::users_repositories::dummy_user(
+            &mut db,
+            "awesome_user".to_string(),
+            "awesome-password".to_string(),
+            Role::Competitor,
+        )
+        .await;
+        let user = get_user_by_username(&db, "awesome_user".into())
+            .await
+            .expect("Failed to find user");
+        assert_eq!(user.username, dummy_user.username)
     }
 }

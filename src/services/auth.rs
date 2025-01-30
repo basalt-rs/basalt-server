@@ -1,6 +1,4 @@
-use axum::{routing::post, Router};
 use std::sync::Arc;
-use utoipa::openapi::OpenApi;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::server::AppState;
@@ -10,7 +8,7 @@ mod login {
 
     use axum::{extract::State, response::Response, Json};
 
-    use crate::server::AppState;
+    use crate::{repositories, server::AppState};
 
     #[derive(serde::Deserialize, utoipa::ToSchema)]
     #[allow(dead_code)]
@@ -23,19 +21,20 @@ mod login {
         session_token: String,
     }
     #[axum::debug_handler]
-    #[utoipa::path(post, path = "/auth/login", responses((status = OK, body = LoginSuccessResponse, content_type = "application/json")))]
-    pub async fn post(State(_): State<Arc<AppState>>, Json(_): Json<LoginBody>) -> Response {
+    #[utoipa::path(post, path = "/login", responses((status = OK, body = LoginSuccessResponse, content_type = "application/json")))]
+    pub async fn post(State(state): State<Arc<AppState>>, Json(body): Json<LoginBody>) -> Response {
+        let db = state.db.read().await;
+        repositories::users::get_user_by_username(&db, body.username)
+            .await
+            .unwrap();
         todo!()
     }
 }
 
-pub fn auth_router(initial_state: Arc<AppState>) -> OpenApiRouter<Arc<AppState>> {
-    OpenApiRouter::new()
-        .routes(routes!(login::post))
-        .route("/login", post(login::post))
-        .with_state(initial_state)
+pub fn auth_router() -> OpenApiRouter<Arc<AppState>> {
+    OpenApiRouter::new().routes(routes!(login::post))
 }
 
-pub fn auth_service(initial_state: Arc<AppState>) -> axum::Router<Arc<AppState>> {
-    auth_router(initial_state).split_for_parts().0
+pub fn auth_service() -> axum::Router<Arc<AppState>> {
+    auth_router().split_for_parts().0
 }
