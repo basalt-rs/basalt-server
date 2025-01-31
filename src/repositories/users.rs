@@ -19,6 +19,15 @@ impl From<i32> for Role {
     }
 }
 
+impl From<Role> for i32 {
+    fn from(value: Role) -> Self {
+        match value {
+            Role::Competitor => 0,
+            Role::Admin => 1,
+        }
+    }
+}
+
 #[derive(Debug, FromRow, Serialize, Deserialize)]
 #[allow(dead_code)]
 pub struct User {
@@ -70,7 +79,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_existing_user() {
-        let (_, sql_layer) = mock_db().await;
+        let (f, sql_layer) = mock_db().await;
         let mut db = sql_layer.write().await;
         let dummy_user = crate::testing::users_repositories::dummy_user(
             &mut db,
@@ -82,6 +91,31 @@ mod tests {
         let user = get_user_by_username(&db, "awesome_user".into())
             .await
             .expect("Failed to find user");
-        assert_eq!(user.username, dummy_user.username)
+        assert_eq!(user.username, dummy_user.username);
+        drop(f)
+    }
+    #[tokio::test]
+    async fn get_correct_user() {
+        let (f, sql_layer) = mock_db().await;
+        let mut db = sql_layer.write().await;
+        let dummy_user = crate::testing::users_repositories::dummy_user(
+            &mut db,
+            "awesome_user".to_string(),
+            "awesome-password".to_string(),
+            Role::Competitor,
+        )
+        .await;
+        crate::testing::users_repositories::dummy_user(
+            &mut db,
+            "awesome_user2".to_string(),
+            "awesome-password".to_string(),
+            Role::Competitor,
+        )
+        .await;
+        let user = get_user_by_username(&db, "awesome_user".into())
+            .await
+            .expect("Failed to find user");
+        assert_eq!(user.username, dummy_user.username);
+        drop(f)
     }
 }

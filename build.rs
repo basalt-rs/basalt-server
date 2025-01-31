@@ -5,10 +5,15 @@ pub async fn main() -> Result<(), String> {
     println!("cargo::rerun-if-changed=migration.sql");
     std::env::set_var("DATABASE_URL", "sqlite:initial_data.db");
 
-    if std::fs::exists(INITIAL_DATA_PATH).expect("Failed to check existence of initial_data.db") {
-        std::fs::remove_file(INITIAL_DATA_PATH).unwrap()
+    if tokio::fs::try_exists(INITIAL_DATA_PATH)
+        .await
+        .expect("Failed to check existence of initial_data.db")
+    {
+        tokio::fs::remove_file(INITIAL_DATA_PATH).await.unwrap()
     }
-    std::fs::File::create_new(INITIAL_DATA_PATH).expect("failed to create db");
+    tokio::fs::File::create_new(INITIAL_DATA_PATH)
+        .await
+        .expect("failed to create db");
 
     let db = sqlx::sqlite::SqlitePool::connect("sqlite:initial_data.db")
         .await
