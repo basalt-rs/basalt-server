@@ -5,9 +5,10 @@ use sqlx::prelude::FromRow;
 use crate::storage::SqliteLayer;
 
 #[derive(Debug)]
+#[repr(i32)]
 pub enum Role {
-    Competitor,
-    Admin,
+    Competitor = 0,
+    Admin = 1,
 }
 
 impl From<i32> for Role {
