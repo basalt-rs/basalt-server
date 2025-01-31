@@ -8,7 +8,7 @@ use sqlx::{
     Pool, Sqlite,
 };
 
-const INITIAL_DB_CONTENT: &[u8] = include_bytes!("../../initial_data.db");
+const INITIAL_DB_CONTENT: &[u8] = include_bytes!(env!("INITIAL_DATA_PATH"));
 
 pub struct SqliteLayer {
     pub db: Pool<Sqlite>,
