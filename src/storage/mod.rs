@@ -43,9 +43,7 @@ impl SqliteLayer {
             .data_local_dir()
             .join("basalt-server")
             .join(title);
-        if !path.exists() {
-            std::fs::create_dir_all(&path).unwrap()
-        }
+        tokio::fs::create_dir_all(&path).unwrap()
         path = path.join("data").with_extension("db");
         let mut file = std::fs::File::create(&path)
             .map_err(|e| SqliteLayerCreationError::DatafileCreation(e.to_string()))?;
