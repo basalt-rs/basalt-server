@@ -30,14 +30,10 @@ pub async fn handle() -> anyhow::Result<()> {
 
     let path = std::path::Path::new(SPEC_PATH);
 
-    // delete file if exists
-    if path.exists() {
-        std::fs::remove_file(path).expect("Failed to remove old spec");
-    }
-
     // write content to docs file
-    let mut file = std::fs::File::create_new(path).expect("Failed to open new spec");
+    let mut file = tokio::fs::File::create(path).await.expect("Failed to open new spec");
     file.write_all(content.as_bytes())
+        .await
         .expect("Failed to write file");
 
     Ok(())
