@@ -72,10 +72,11 @@ mod tests {
     use super::*;
     #[tokio::test]
     async fn get_nonexistent_user() {
-        let (_, sql_layer) = mock_db().await;
+        let (f, sql_layer) = mock_db().await;
         let db = sql_layer.read().await;
         let response = get_user_by_username(&db, "superuser".into()).await;
-        assert!(response.is_err())
+        assert!(response.is_err());
+        drop(f)
     }
 
     #[tokio::test]

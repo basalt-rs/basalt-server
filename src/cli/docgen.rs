@@ -1,6 +1,7 @@
-use std::{io::Write, sync::Arc};
+use std::sync::Arc;
 
 use anyhow::Context;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::RwLock;
 use utoipa::OpenApi;
 
@@ -31,7 +32,9 @@ pub async fn handle() -> anyhow::Result<()> {
     let path = std::path::Path::new(SPEC_PATH);
 
     // write content to docs file
-    let mut file = tokio::fs::File::create(path).await.expect("Failed to open new spec");
+    let mut file = tokio::fs::File::create(path)
+        .await
+        .expect("Failed to open new spec");
     file.write_all(content.as_bytes())
         .await
         .expect("Failed to write file");

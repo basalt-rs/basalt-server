@@ -24,6 +24,7 @@ fn default_name() -> String {
     rand::distributions::Alphanumeric
         .sample_iter(rand::thread_rng())
         .take(12)
+        .map(char::from)
         .collect()
 }
 
