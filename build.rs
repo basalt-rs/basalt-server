@@ -19,7 +19,7 @@ pub async fn main() -> anyhow::Result<()> {
 
     let sqlite_uri = format!("sqlite:{}", path.to_str().unwrap());
 
-    std::env::set_var("DATABASE_URL", &sqlite_uri);
+    println!("cargo::rustc-env=DATABASE_URL={}", sqlite_uri);
 
     tokio::fs::File::create(path)
         .await
