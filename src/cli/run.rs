@@ -21,11 +21,10 @@ pub struct RunArgs {
 }
 
 fn default_name() -> String {
-    let bytes = rand::distributions::Alphanumeric
+    rand::distributions::Alphanumeric
         .sample_iter(rand::thread_rng())
         .take(12)
-        .collect::<Vec<u8>>();
-    std::str::from_utf8(&bytes).unwrap().to_owned()
+        .collect()
 }
 
 pub async fn handle(args: RunArgs) -> anyhow::Result<()> {
