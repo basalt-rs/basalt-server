@@ -23,11 +23,11 @@ impl SqliteLayer {
     /// ```rust
     /// let sqlite_layer = SqliteLayer::new("competition-title".into()).unwrap();
     /// ```
-    pub async fn new(title: String) -> anyhow::Result<Self> {
+    pub async fn new(title: impl AsRef<str>) -> anyhow::Result<Self> {
         let mut path = directories::ProjectDirs::from("rs", "basalt", "basalt-server")
             .context("Failed to resolve project directory")?
             .data_local_dir()
-            .join(title);
+            .join(title.as_ref());
         tokio::fs::create_dir_all(&path)
             .await
             .expect("failed to create database files");
