@@ -39,7 +39,7 @@ pub async fn handle(args: RunArgs) -> anyhow::Result<()> {
         .context("Failed to parse configurations")?;
 
     info!("Creating Sqlite layer");
-    let db = SqliteLayer::new(args.name.unwrap_or(default_name()))
+    let db = SqliteLayer::new(&args.name.unwrap_or(default_name()))
         .await
         .context("Creating Sqlite Layer")?;
 
