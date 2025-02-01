@@ -2,6 +2,9 @@ use anyhow::Context;
 use clap::Parser;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+#[cfg(debug_assertions)]
+mod docgen;
+mod list;
 mod run;
 
 #[derive(Parser, Debug)]
@@ -13,6 +16,9 @@ struct Cli {
 #[derive(Parser, Debug)]
 enum Command {
     Run(run::RunArgs),
+    List,
+    #[cfg(debug_assertions)]
+    DocGen,
 }
 
 pub async fn handle_cmd() -> anyhow::Result<()> {
@@ -30,6 +36,13 @@ pub async fn handle_cmd() -> anyhow::Result<()> {
         Command::Run(args) => run::handle(args)
             .await
             .context("Failed to execute `run` command")?,
+        Command::List => list::handle()
+            .await
+            .context("Failed to execute `list` command")?,
+        #[cfg(debug_assertions)]
+        Command::DocGen => docgen::handle()
+            .await
+            .context("Failed to execute `doc-gen` command")?,
     };
 
     Ok(())

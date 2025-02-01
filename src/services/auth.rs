@@ -1,63 +1,40 @@
-use protoxene::{LoginRequest, LoginResponse};
-use tonic::{Request, Response, Status};
-use tracing::debug;
+use std::sync::Arc;
+use utoipa_axum::{router::OpenApiRouter, routes};
 
-/// Provides authentication functionality
-#[derive(Default)]
-pub struct AuthService {}
+use crate::server::AppState;
 
-#[tonic::async_trait]
-impl protoxene::auth_server::Auth for AuthService {
-    async fn login(
-        &self,
-        request: Request<LoginRequest>,
-    ) -> Result<Response<LoginResponse>, Status> {
-        debug!("[login]: {:?}", request);
-        Err(Status::unimplemented(
-            "login functionality not yet implemented",
-        ))
+mod login {
+    use std::sync::Arc;
+
+    use axum::{extract::State, response::Response, Json};
+
+    use crate::{repositories, server::AppState};
+
+    #[derive(serde::Deserialize, utoipa::ToSchema)]
+    #[allow(dead_code)]
+    pub struct LoginBody {
+        username: String,
+        password: String,
+    }
+    #[derive(serde::Serialize, utoipa::ToSchema)]
+    pub struct LoginSuccessResponse {
+        session_token: String,
+    }
+    #[axum::debug_handler]
+    #[utoipa::path(post, path = "/login", responses((status = OK, body = LoginSuccessResponse, content_type = "application/json")))]
+    pub async fn post(State(state): State<Arc<AppState>>, Json(body): Json<LoginBody>) -> Response {
+        let db = state.db.read().await;
+        repositories::users::get_user_by_username(&db, body.username)
+            .await
+            .unwrap();
+        todo!()
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::testing;
+pub fn auth_router() -> OpenApiRouter<Arc<AppState>> {
+    OpenApiRouter::new().routes(routes!(login::post))
+}
 
-    use super::*;
-
-    #[tokio::test]
-    async fn test_login_unimplemented() {
-        let (serve_future, channel) = testing::mock_server().await;
-        // create client from channel
-        let mut client = protoxene::auth_client::AuthClient::new(channel);
-        let response_future = client.login(LoginRequest {
-            name: "".into(),
-            password: "".into(),
-        });
-
-        let response = testing::receive_response(response_future, serve_future).await;
-
-        match response {
-            Ok(_) => panic!("should have failed"),
-            Err(_) => (),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_login_unimplemented_2() {
-        let (serve_future, channel) = testing::mock_server().await;
-        // create client from channel
-        let mut client = protoxene::auth_client::AuthClient::new(channel);
-        let response_future = client.login(LoginRequest {
-            name: "".into(),
-            password: "".into(),
-        });
-
-        let response = testing::receive_response(response_future, serve_future).await;
-
-        match response {
-            Ok(_) => panic!("should have failed"),
-            Err(_) => (),
-        }
-    }
+pub fn auth_service() -> axum::Router<Arc<AppState>> {
+    auth_router().split_for_parts().0
 }

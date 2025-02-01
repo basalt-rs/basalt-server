@@ -1,28 +1,56 @@
+use std::{net::SocketAddr, sync::Arc};
+
 use anyhow::Context;
 use clap::Parser;
-use tonic::transport::Server;
+use rand::distributions::Distribution;
+use tokio::sync::RwLock;
 use tracing::info;
 
-use crate::services::auth::AuthService;
+use crate::{
+    server::{router, AppState},
+    storage::SqliteLayer,
+};
 
 #[derive(Parser, Debug)]
 pub struct RunArgs {
     #[arg()]
     port: u16,
+    #[arg(short)]
+    name: Option<String>,
+    packet: String,
+}
+
+fn default_name() -> String {
+    rand::distributions::Alphanumeric
+        .sample_iter(rand::thread_rng())
+        .take(12)
+        .map(char::from)
+        .collect()
 }
 
 pub async fn handle(args: RunArgs) -> anyhow::Result<()> {
-    // TODO: Parse configurations
-    let addr = format!("[::1]:{}", args.port).parse().unwrap();
-    info!("Serving via gRPC");
-    Server::builder()
-        .accept_http1(true)
-        .layer(tonic_web::GrpcWebLayer::new())
-        .add_service(protoxene::auth_server::AuthServer::new(
-            AuthService::default(),
-        ))
-        .serve(addr)
+    info!("Parsing packet configurations");
+    let file = tokio::fs::File::open(&args.packet)
         .await
-        .context("Failed to build server")?;
+        .context("Failed to open file")?;
+    let mut reader = tokio::io::BufReader::new(file);
+    let _ = bedrock::Config::read_async(&mut reader, Some(args.packet))
+        .await
+        .context("Failed to parse configurations")?;
+
+    info!("Creating Sqlite layer");
+    let db = SqliteLayer::new(&args.name.unwrap_or(default_name()))
+        .await
+        .context("Creating Sqlite Layer")?;
+
+    let addr: SocketAddr = format!("[::1]:{}", args.port).parse().unwrap();
+    info!("Serving via HTTP");
+    let service = router(Arc::new(AppState {
+        db: RwLock::new(db),
+    }));
+
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, service).await?;
+
     Ok(())
 }
