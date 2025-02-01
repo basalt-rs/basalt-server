@@ -11,7 +11,7 @@ pub async fn mock_db() -> (async_tempfile::TempFile, Arc<RwLock<SqliteLayer>>) {
         .await
         .expect("Failed to create temporary file for datafile");
 
-    let sqlite_layer = SqliteLayer::from_pathbuf(db_tempfile.file_path())
+    let sqlite_layer = SqliteLayer::from_path(db_tempfile.file_path())
         .await
         .expect("Failed to create SqliteDB");
 

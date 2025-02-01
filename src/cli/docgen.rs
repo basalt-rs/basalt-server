@@ -17,7 +17,7 @@ pub async fn handle() -> anyhow::Result<()> {
     let tempfile = async_tempfile::TempFile::new()
         .await
         .context("Failed to create tempfile")?;
-    let sqlite_layer = SqliteLayer::from_pathbuf(tempfile.file_path())
+    let sqlite_layer = SqliteLayer::from_path(tempfile.file_path())
         .await
         .context("Failed to create sqlite layer")?;
     let dummy_state = Arc::new(AppState {
