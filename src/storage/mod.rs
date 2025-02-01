@@ -41,12 +41,12 @@ impl SqliteLayer {
         Ok(Self { db })
     }
     /// Converts a `Pathbuf` to a `SqliteLayer`
-    pub async fn from_pathbuf(value: &Path) -> anyhow::Result<Self> {
-        let mut file = std::fs::File::create(value).context("Failed to create datafile")?;
+    pub async fn from_path(value: impl AsRef<Path>) -> anyhow::Result<Self> {
+        let mut file = std::fs::File::create(value.as_ref()).context("Failed to create datafile")?;
         file.write_all(INITIAL_DB_CONTENT)
             .context("Failed to write default database to datafile")?;
         drop(file);
-        let uri = format!("sqlite://{}", value.to_str().unwrap());
+        let uri = format!("sqlite://{}", value.as_ref().to_str().unwrap());
         let opts = SqliteConnectOptions::from_str(&uri)
             .context("Invalid options")?
             .journal_mode(SqliteJournalMode::Wal)
