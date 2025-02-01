@@ -1,5 +1,4 @@
 use anyhow::Context;
-use std::io::Write;
 use std::path::Path;
 use std::str::FromStr;
 use tokio::io::AsyncWriteExt;
@@ -46,9 +45,11 @@ impl SqliteLayer {
     }
     /// Converts a `Pathbuf` to a `SqliteLayer`
     pub async fn from_path(value: impl AsRef<Path>) -> anyhow::Result<Self> {
-        let mut file =
-            std::fs::File::create(value.as_ref()).context("Failed to create datafile")?;
+        let mut file = tokio::fs::File::create(value.as_ref())
+            .await
+            .context("Failed to create datafile")?;
         file.write_all(INITIAL_DB_CONTENT)
+            .await
             .context("Failed to write default database to datafile")?;
         drop(file);
         let uri = format!("sqlite://{}", value.as_ref().to_str().unwrap());
