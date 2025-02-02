@@ -1,13 +1,12 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
 use anyhow::Context;
 use clap::Parser;
 use rand::distributions::Distribution;
-use tokio::sync::RwLock;
 use tracing::info;
 
 use crate::{
-    server::{router, AppState},
+    server::{self, AppState},
     storage::SqliteLayer,
 };
 
@@ -15,9 +14,9 @@ use crate::{
 pub struct RunArgs {
     #[arg()]
     port: u16,
-    #[arg(short)]
+    #[arg(long, short)]
     name: Option<String>,
-    packet: String,
+    packet: PathBuf,
 }
 
 fn default_name() -> String {
@@ -30,27 +29,39 @@ fn default_name() -> String {
 
 pub async fn handle(args: RunArgs) -> anyhow::Result<()> {
     info!("Parsing packet configurations");
+
     let file = tokio::fs::File::open(&args.packet)
         .await
-        .context("Failed to open file")?;
-    let mut reader = tokio::io::BufReader::new(file);
-    let _ = bedrock::Config::read_async(&mut reader, Some(args.packet))
+        .context("Opening packet file")?;
+
+    let mut file = tokio::io::BufReader::new(file);
+
+    let file_name = args
+        .packet
+        .file_name()
+        .expect("call to File::open would fail if this does")
+        .to_str();
+
+    let config = bedrock::Config::read_async(&mut file, file_name)
         .await
         .context("Failed to parse configurations")?;
 
-    info!("Creating Sqlite layer");
-    let db = SqliteLayer::new(&args.name.unwrap_or(default_name()))
+    let name = &args.name.unwrap_or_else(default_name);
+    info!(name, "Creating Sqlite layer");
+    let db = SqliteLayer::new(name)
         .await
         .context("Creating Sqlite Layer")?;
 
     let addr: SocketAddr = format!("[::1]:{}", args.port).parse().unwrap();
-    info!("Serving via HTTP");
-    let service = router(Arc::new(AppState {
-        db: RwLock::new(db),
-    }));
+    info!(?addr, "Serving via HTTP");
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, service).await?;
+    axum::serve(
+        listener,
+        server::router(Arc::new(AppState::new(db, config)))
+            .into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
 
     Ok(())
 }

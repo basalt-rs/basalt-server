@@ -2,6 +2,7 @@ use anyhow::Context;
 use std::path::Path;
 use std::str::FromStr;
 use tokio::io::AsyncWriteExt;
+use tracing::debug;
 
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode},
@@ -32,13 +33,16 @@ impl SqliteLayer {
             .await
             .expect("failed to create database files");
         path = path.join("data").with_extension("db");
+
         let mut file = tokio::fs::File::create(&path)
             .await
             .context("Failed to create datafile")?;
         file.write_all(INITIAL_DB_CONTENT)
             .await
             .context("Failed to write datafile")?;
-        let db = sqlx::sqlite::SqlitePool::connect(dbg!(path.as_path().to_str().unwrap()))
+
+        debug!(?path, "Connecting to sqlite database");
+        let db = sqlx::sqlite::SqlitePool::connect(path.as_path().to_str().unwrap())
             .await
             .context("Failed to connect to SQLiteDB")?;
         Ok(Self { db })

@@ -1,0 +1,77 @@
+port = 80
+
+[setup]
+install = '''
+apt-get install opam
+'''
+
+init = '''
+opam init -y
+eval $(opam env)
+'''
+
+[languages]
+python3 = "latest"
+java = "23"
+ocaml = { build = "ocamlc -o out solution.ml", run = "./out", source_file = "solution.ml" }
+
+[test_runner]
+timeout_ms = 2_000
+trim_output = true
+max_memory = { compile = 128, run = 64 }
+max_file_size = 8192
+
+[[accounts.admins]]
+name = "Teacher"
+password = "abc123"
+
+[[accounts.competitors]]
+name = "StudentOne"
+password = "123abc"
+
+[[accounts.competitors]]
+name = "StudentTwo"
+password = "deadbeef"
+
+[packet]
+title = "Example Packet"
+preamble = '''
+This packet includes problems of a difficulty *vastly*
+surpassing the capabilities of the average computer
+science student. Be wary as these problems will
+certainly give you great intellectual trouble. There
+is little hope for anyone without a Ph.D in computer
+science.
+
+If you decide to attempt these problems anyways, good
+luck. You will be rewarded for swiftness in your answers.
+'''
+
+[[packet.problems]]
+title = "Reversing a string"
+description = '''
+Reversing a string is one of the most *basic* algorithmic
+problems for a beginner computer science student to solve.
+
+Solve it.
+''''
+
+[[packet.problems.tests]]
+input = "hello"
+output = "olleh"
+visible = true
+
+[[packet.problems.tests]]
+input = "world"
+output = "dlrow"
+visible = true
+
+[[packet.problems.tests]]
+input = "2"
+output = "2"
+visible = true
+
+[[packet.problems.tests]]
+input = "2"
+output = "2"
+visible = true
