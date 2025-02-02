@@ -72,7 +72,7 @@ pub mod connect {
             Message::Text(bytes) => match serde_json::from_str::<WebSocketRecv>(bytes.as_str()) {
                 Ok(msg) => {
                     trace!(?msg, "Receiving websocket message");
-                    msg.handle(&who, &state)
+                    msg.handle(who, state)
                         .await
                         .context("handling websocket message")?;
                 }

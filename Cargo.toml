@@ -3,6 +3,7 @@ name = "basalt-server"
 version = "0.1.0"
 edition = "2021"
 resolver = "2"
+rust-version = "1.80"
 
 [dependencies]
 anyhow = "1.0.95"
@@ -13,7 +14,7 @@ bedrock = { git = "https://github.com/basalt-rs/bedrock.git", rev = "22fc7f1", f
 clap = { version = "4.5.23", features = ["derive"] }
 dashmap = "6.1.0"
 directories = "6.0.0"
-erudite = { git = "https://github.com/basalt-rs/erudite.git", rev = "74f429d", features = ["serde"] }
+erudite = { git = "https://github.com/basalt-rs/erudite.git", rev = "7de318e", features = ["serde"] }
 leucite = "0.2.0"
 rand = "0.8.5"
 redact = { version = "0.1.10", features = ["serde"] }

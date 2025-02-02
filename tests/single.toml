@@ -70,8 +70,3 @@ visible = true
 input = "2"
 output = "2"
 visible = true
-
-[[packet.problems.tests]]
-input = "2"
-output = "2"
-visible = true

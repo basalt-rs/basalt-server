@@ -578,7 +578,7 @@ dependencies = [
 [[package]]
 name = "erudite"
 version = "0.1.0"
-source = "git+https://github.com/basalt-rs/erudite.git?rev=74f429d#74f429df636cf006e7efb97c830af5d360edb589"
+source = "git+https://github.com/basalt-rs/erudite.git?rev=7de318e#7de318e159843b53b7e00359eab59282395532a5"
 dependencies = [
  "anyhow",
  "leucite",
