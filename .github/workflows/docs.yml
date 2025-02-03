@@ -19,8 +19,7 @@ jobs:
             RUSTDOCFLAGS: -Dwarnings
         steps:
             - uses: actions/checkout@v4
-            - uses: dtolnay/rust-toolchain@nightly
-            - uses: dtolnay/install@cargo-docs-rs
+            - uses: dtolnay/rust-toolchain@stable
             - run: cargo r -- doc-gen
             - run: npx @redocly/cli build-docs openapi.yaml -o doc/index.html
             - name: Deploy to GitHub Pages
