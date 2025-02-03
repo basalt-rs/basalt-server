@@ -1,0 +1,30 @@
+name: docs
+
+permissions:
+    contents: write
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        env:
+            RUSTDOCFLAGS: -Dwarnings
+        steps:
+            - uses: actions/checkout@v4
+            - uses: dtolnay/rust-toolchain@stable
+            - run: cargo r -- doc-gen
+            - run: npx @redocly/cli build-docs openapi.yaml -o doc/index.html
+            - name: Deploy to GitHub Pages
+              if: ${{ github.event_name != 'pull_request' }}
+              uses: peaceiris/actions-gh-pages@v4
+              with:
+                  github_token: ${{ secrets.DEPLOY_GITHUB_TOKEN }}
+                  publish_dir: doc
