@@ -8,8 +8,8 @@ resolver = "2"
 sqlx = { version = "0.8.3", features = ["sqlite", "runtime-tokio-native-tls"] }
 anyhow = "1.0.95"
 clap = { version = "4.5.23", features = ["derive"] }
-bedrock = { git = "https://github.com/basalt-rs/bedrock.git", rev = "133eb0c", features = [
-  "tokio",
+bedrock = { git = "https://github.com/basalt-rs/bedrock.git", rev = "8461dc4", features = [
+    "tokio",
 ] }
 thiserror = "2.0.11"
 tracing = "0.1.41"

@@ -237,6 +237,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "base62"
+version = "2.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10e52a7bcb1d6beebee21fb5053af9e3cbb7a7ed1a4909e534040e676437ab1f"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -251,8 +260,9 @@ checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
 [[package]]
 name = "bedrock"
 version = "0.1.0"
-source = "git+https://github.com/basalt-rs/bedrock.git?rev=133eb0c#133eb0c26f38da3cf2e2cb8be1b73e0b92d9d2af"
+source = "git+https://github.com/basalt-rs/bedrock.git?rev=8461dc4#8461dc44f6bee6febdc318eb451b0c29c8faece2"
 dependencies = [
+ "base62",
  "miette",
  "phf 0.11.3",
  "serde",
@@ -260,6 +270,7 @@ dependencies = [
  "thiserror 2.0.11",
  "tokio",
  "toml_edit",
+ "xxhash-rust",
 ]
 
 [[package]]
@@ -2829,6 +2840,12 @@ name = "writeable"
 version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e9df38ee2d2c3c5948ea468a8406ff0db0b29ae1ffde1bcf20ef305bcc95c51"
+
+[[package]]
+name = "xxhash-rust"
+version = "0.8.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fdd20c5420375476fbd4394763288da7eb0cc0b8c11deed431a91562af7335d3"
 
 [[package]]
 name = "yoke"
