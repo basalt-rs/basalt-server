@@ -21,17 +21,9 @@ paths:
       operationId: handler
       responses:
         '200':
-          description: ''
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ConnectionResponse'
+          description: connected to websocket
 components:
   schemas:
-    ConnectionResponse:
-      type: integer
-      format: int32
-      minimum: 0
     LoginSuccessResponse:
       type: object
       required:

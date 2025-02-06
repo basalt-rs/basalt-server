@@ -8,19 +8,14 @@ use axum::{
     },
     response::Response,
 };
-use serde::Serialize;
 use tokio::sync::mpsc;
 use tracing::{debug, error, trace, warn};
-use utoipa::ToSchema;
 
 use super::{ConnectedClient, ConnectionKind};
 use crate::{server::AppState, services::ws::WebSocketRecv};
 
-#[derive(Serialize, ToSchema)]
-pub struct ConnectionResponse(u32);
-
 #[axum::debug_handler]
-#[utoipa::path(get, path = "/", responses((status = OK, body = ConnectionResponse, content_type = "application/json")))]
+#[utoipa::path(get, path = "/", responses((status = OK, description = "connected to websocket")))]
 pub async fn handler(
     ws: WebSocketUpgrade,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
