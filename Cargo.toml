@@ -27,6 +27,7 @@ tracing = { version = "0.1.41", features = ["release_max_level_debug"] }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 utoipa-axum = { version = "0.2.0", features = ["debug"] }
 utoipa = { version = "5.3.1", features = ["debug", "yaml"] }
+scopeguard = "1.2.0"
 
 [dev-dependencies]
 async-tempfile = "0.6.0"

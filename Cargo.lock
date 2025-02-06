@@ -232,6 +232,7 @@ dependencies = [
  "leucite",
  "rand",
  "redact",
+ "scopeguard",
  "serde",
  "serde_json",
  "sqlx",

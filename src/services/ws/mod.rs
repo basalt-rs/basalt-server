@@ -23,16 +23,10 @@ pub struct ConnectedClient {
     pub send: mpsc::UnboundedSender<WebSocketSend>,
 }
 
-/// A message that is recieved from the websocket
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
-pub enum WebSocketRecv<'a> {
-    RunTest {
-        id: usize,
-        language: Cow<'a, str>,
-        solution: Cow<'a, str>,
-        problem: usize,
-    },
+pub enum Broadcast {
+    Announce { message: String },
 }
 
 /// A message that is sent from the server onto the websocket
@@ -40,7 +34,7 @@ pub enum WebSocketRecv<'a> {
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum WebSocketSend {
     Broadcast {
-        message: String,
+        broadcast: Broadcast,
     },
     TestResults {
         id: usize,
@@ -49,10 +43,26 @@ pub enum WebSocketSend {
     },
 }
 
+/// A message that is recieved from the websocket
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum WebSocketRecv<'a> {
+    Broadcast {
+        broadcast: Broadcast,
+    },
+    RunTest {
+        id: usize,
+        language: Cow<'a, str>,
+        solution: Cow<'a, str>,
+        problem: usize,
+    },
+}
+
 impl WebSocketRecv<'_> {
     #[tracing::instrument(skip(state))]
-    async fn handle(self, who: &ConnectionKind, state: &Arc<AppState>) -> anyhow::Result<()> {
+    async fn handle(self, who: &ConnectionKind, state: Arc<AppState>) -> anyhow::Result<()> {
         match self {
+            WebSocketRecv::Broadcast { broadcast } => state.broadcast(broadcast)?,
             WebSocketRecv::RunTest {
                 id,
                 language,

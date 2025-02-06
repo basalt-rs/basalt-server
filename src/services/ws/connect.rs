@@ -26,42 +26,14 @@ pub async fn handler(
 
     trace!(?who, "Client connect");
     ws.on_upgrade(move |ws| async move {
-        if let Err(e) = handle_socket(ws, who.clone(), state).await {
+        // Using defer here so that if the thread panics, we still remove the connection.
+        scopeguard::defer! {
+            state.active_connections.remove(&who);
+        }
+        if let Err(e) = handle_socket(ws, who.clone(), Arc::clone(&state)).await {
             error!(?who, ?e, "Error handling websocket connection");
         }
     })
-}
-
-async fn handle_message(
-    msg: Message,
-    ws: &mut WebSocket,
-    who: &ConnectionKind,
-    state: &Arc<AppState>,
-) -> anyhow::Result<()> {
-    match msg {
-        Message::Text(bytes) => match serde_json::from_str::<WebSocketRecv>(bytes.as_str()) {
-            Ok(msg) => {
-                trace!(?msg, "Receiving websocket message");
-                msg.handle(who, state)
-                    .await
-                    .context("handling websocket message")?;
-            }
-            Err(error) => {
-                debug!(?error, "Ignoring invalid websocket message");
-            }
-        },
-        Message::Binary(_) => {
-            warn!("Ignoring unexpected binary message");
-        }
-        Message::Ping(bytes) => {
-            ws.send(Message::Pong(bytes)).await?;
-        }
-        Message::Pong(_) => {}
-        Message::Close(_) => {
-            trace!("Close message received");
-        }
-    }
-    Ok(())
 }
 
 #[tracing::instrument(skip(ws, state))]
@@ -74,10 +46,11 @@ async fn handle_socket(
     state
         .active_connections
         .insert(who.clone(), ConnectedClient { send: tx });
+
     if ws.send(Message::Ping("ping".into())).await.is_ok() {
         trace!("Send ping");
     } else {
-        bail!("Could not send ping!");
+        bail!("Could not send ping");
     }
 
     loop {
@@ -103,9 +76,41 @@ async fn handle_socket(
                 },
                 Some(Ok(msg)) => {
                     trace!(?msg, "recv msg");
-                    handle_message(msg, &mut ws, &who, &state).await?;
+                    handle_message(msg, &mut ws, &who, Arc::clone(&state)).await?;
                 }
             }
         }
     }
+}
+
+async fn handle_message(
+    msg: Message,
+    ws: &mut WebSocket,
+    who: &ConnectionKind,
+    state: Arc<AppState>,
+) -> anyhow::Result<()> {
+    match msg {
+        Message::Text(bytes) => match serde_json::from_str::<WebSocketRecv>(bytes.as_str()) {
+            Ok(msg) => {
+                trace!(?msg, "Receiving websocket message");
+                msg.handle(who, state)
+                    .await
+                    .context("handling websocket message")?;
+            }
+            Err(error) => {
+                debug!(?error, "Ignoring invalid websocket message");
+            }
+        },
+        Message::Binary(_) => {
+            warn!("Ignoring unexpected binary message");
+        }
+        Message::Ping(bytes) => {
+            ws.send(Message::Pong(bytes)).await?;
+        }
+        Message::Pong(_) => {}
+        Message::Close(_) => {
+            trace!("Close message received");
+        }
+    }
+    Ok(())
 }
