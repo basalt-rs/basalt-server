@@ -10,7 +10,7 @@ anyhow = "1.0.95"
 argon2 = "0.5.3"
 async-tempfile = "0.6.0"
 axum = { version = "0.8.1", features = ["macros", "ws"] }
-bedrock = { git = "https://github.com/basalt-rs/bedrock.git", rev = "22fc7f1", features = ["tokio"] }
+bedrock = { git = "https://github.com/basalt-rs/bedrock.git", rev = "8461dc4", features = ["tokio"] }
 clap = { version = "4.5.23", features = ["derive"] }
 dashmap = "6.1.0"
 directories = "6.0.0"
