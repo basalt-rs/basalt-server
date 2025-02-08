@@ -43,7 +43,7 @@ pub async fn handle(args: RunArgs) -> anyhow::Result<()> {
         .await
         .context("Creating Sqlite Layer")?;
 
-    let addr: SocketAddr = format!("[::1]:{}", args.port).parse().unwrap();
+    let addr: SocketAddr = format!("[::]:{}", args.port).parse().unwrap();
     info!("Serving via HTTP");
     let service = router(Arc::new(AppState {
         db: RwLock::new(db),
