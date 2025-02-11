@@ -2,7 +2,7 @@ port = 80
 
 [setup]
 install = '''
-apt-get install opam
+dnf install opam -y
 '''
 
 init = '''
@@ -12,7 +12,7 @@ eval $(opam env)
 
 [languages]
 python3 = "latest"
-java = "23"
+java = "21"
 ocaml = { build = "ocamlc -o out solution.ml", run = "./out", source_file = "solution.ml" }
 
 [test_runner]
