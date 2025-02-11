@@ -16,6 +16,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LoginSuccessResponse'
+  /ws:
+    get:
+      operationId: handler
+      responses:
+        '200':
+          description: connected to websocket
 components:
   schemas:
     LoginSuccessResponse:

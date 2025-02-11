@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use tokio::io::AsyncWriteExt;
-use tokio::sync::RwLock;
 use utoipa::OpenApi;
 
 use crate::{server::AppState, storage::SqliteLayer};
@@ -20,9 +19,7 @@ pub async fn handle() -> anyhow::Result<()> {
     let sqlite_layer = SqliteLayer::from_path(tempfile.file_path())
         .await
         .context("Failed to create sqlite layer")?;
-    let dummy_state = Arc::new(AppState {
-        db: RwLock::new(sqlite_layer),
-    });
+    let dummy_state = Arc::new(AppState::new(sqlite_layer, bedrock::Config::default()));
     let router = crate::server::doc_router(dummy_state);
     let content = ApiDoc::openapi()
         .merge_from(router.into_openapi())
