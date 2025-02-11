@@ -12,10 +12,16 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 use crate::server::AppState;
 pub mod connect;
 
-#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, derive_more::Debug)]
 pub enum ConnectionKind {
-    User { username: String },
-    Leaderboard { addr: SocketAddr },
+    User {
+        username: String,
+    },
+    Leaderboard {
+        id: String,
+        #[debug(skip)]
+        addr: SocketAddr,
+    },
 }
 
 #[derive(Debug, Clone)]

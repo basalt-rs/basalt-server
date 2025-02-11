@@ -8,11 +8,12 @@ use axum::{
     },
     response::Response,
 };
+use rand::Rng;
 use tokio::sync::mpsc;
 use tracing::{debug, error, trace, warn};
 
-use super::{ConnectedClient, ConnectionKind};
-use crate::{server::AppState, services::ws::WebSocketRecv};
+use super::{ConnectedClient, ConnectionKind, WebSocketRecv};
+use crate::server::AppState;
 
 #[axum::debug_handler]
 #[utoipa::path(get, path = "/", responses((status = OK, description = "connected to websocket")))]
@@ -22,7 +23,14 @@ pub async fn handler(
     State(state): State<Arc<AppState>>,
 ) -> Response {
     // TODO: This should be associated with a user once we have authentication setup.
-    let who = ConnectionKind::Leaderboard { addr };
+    let who = ConnectionKind::Leaderboard {
+        id: rand::thread_rng()
+            .sample_iter(rand::distributions::Alphanumeric)
+            .take(20)
+            .map(char::from)
+            .collect(),
+        addr,
+    };
 
     trace!(?who, "Client connect");
     ws.on_upgrade(move |ws| async move {
