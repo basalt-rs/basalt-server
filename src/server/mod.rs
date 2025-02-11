@@ -34,7 +34,7 @@ impl AppState {
         for conn in &self.active_connections {
             if conn.send.send(broadcast.clone()).is_err() {
                 // This _shouldn't_ happen, but it _could_
-                tracing::warn!(key = ?conn.key(), "Socket discovered to be closed when sending broadcast.  Removing from active connections...");
+                tracing::warn!(key = ?conn.key(), "Socket discovered to be closed when sending broadcast. Removing from active connections...");
                 to_remove.push(conn.key().clone());
             }
         }
