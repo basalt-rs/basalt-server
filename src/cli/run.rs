@@ -12,6 +12,9 @@ use crate::{
 
 #[derive(Parser, Debug)]
 pub struct RunArgs {
+    /// Port on which to run the server.  Defaults to the config if not set.
+    #[arg(long, short)]
+    port: Option<u16>,
     #[arg(long, short)]
     name: Option<String>,
     packet: PathBuf,
@@ -50,7 +53,9 @@ pub async fn handle(args: RunArgs) -> anyhow::Result<()> {
         .await
         .context("Creating Sqlite Layer")?;
 
-    let addr: SocketAddr = format!("[::]:{}", config.port).parse().unwrap();
+    let addr: SocketAddr = format!("[::]:{}", args.port.unwrap_or(config.port))
+        .parse()
+        .unwrap();
     info!(?addr, "Serving via HTTP");
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
