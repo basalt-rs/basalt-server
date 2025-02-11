@@ -47,6 +47,10 @@ pub enum WebSocketSend {
         results: Vec<(TestOutput, Test)>,
         percent: usize,
     },
+    Error {
+        id: usize,
+        message: String,
+    },
 }
 
 /// A message that is recieved from the websocket
@@ -75,11 +79,34 @@ impl WebSocketRecv<'_> {
                 solution,
                 problem,
             } => {
+                let ws = &state
+                    .active_connections
+                    .get(who)
+                    .context("websocket not in active_connections")?
+                    .send;
+
+                // TODO: Prevent leaderboard from being able to run tests once we have auth
                 let Some(language) = state.config.languages.get_by_str(&language) else {
-                    // TODO: how to handle an known language?
-                    debug!(language = &*language, "Unknown language");
+                    ws.send(WebSocketSend::Error {
+                        id,
+                        message: format!("Unknown language '{}'", language),
+                    })
+                    .context("sending error message")?;
                     return Ok(());
                 };
+
+                let key = (who.clone(), problem);
+                if !state.active_tests.insert(key.clone()) {
+                    ws.send(WebSocketSend::Error {
+                        id,
+                        message: "Tests are already running.".into(),
+                    })
+                    .context("sending error message")?;
+                };
+
+                scopeguard::defer! {
+                    state.active_tests.remove(&key);
+                }
 
                 let build_rules = Rules::new()
                     .add_read_only("/usr")
@@ -136,17 +163,12 @@ impl WebSocketRecv<'_> {
                             .collect::<Vec<_>>();
 
                         let percent = success * 100 / problem.tests.len();
-                        state
-                            .active_connections
-                            .get(who)
-                            .expect("added before call to this function")
-                            .send
-                            .send(WebSocketSend::TestResults {
-                                id,
-                                results,
-                                percent,
-                            })
-                            .context("sending broadcast message")?;
+                        ws.send(WebSocketSend::TestResults {
+                            id,
+                            results,
+                            percent,
+                        })
+                        .context("sending test results message")?;
                     }
                 }
             }

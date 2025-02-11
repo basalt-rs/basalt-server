@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use bedrock::Config;
-use dashmap::DashMap;
+use dashmap::{DashMap, DashSet};
 use tokio::sync::RwLock;
 
 use crate::{
@@ -16,6 +16,7 @@ use crate::{
 pub struct AppState {
     pub db: RwLock<SqliteLayer>,
     pub active_connections: DashMap<ws::ConnectionKind, ws::ConnectedClient>,
+    pub active_tests: DashSet<(ws::ConnectionKind, usize)>,
     pub config: Config,
 }
 
@@ -24,6 +25,7 @@ impl AppState {
         Self {
             db: RwLock::new(db),
             active_connections: Default::default(),
+            active_tests: Default::default(),
             config,
         }
     }
