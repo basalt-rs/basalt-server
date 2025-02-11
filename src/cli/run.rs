@@ -52,7 +52,7 @@ pub async fn handle(args: RunArgs) -> anyhow::Result<()> {
         .await
         .context("Creating Sqlite Layer")?;
 
-    let addr: SocketAddr = format!("[::1]:{}", args.port).parse().unwrap();
+    let addr: SocketAddr = format!("[::]:{}", args.port).parse().unwrap();
     info!(?addr, "Serving via HTTP");
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
