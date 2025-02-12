@@ -12,12 +12,17 @@ use crate::{
 
 #[derive(Parser, Debug)]
 pub struct RunArgs {
-    /// Port on which to run the server.  Defaults to the config if not set.
+    /// Port on which to host the server.  Defaults to the port specified in the config file if
+    /// omitted.
     #[arg(long, short)]
     port: Option<u16>,
+    /// Name of the competition.  Used to determine location for data folder.  Defaults to a random
+    /// string if omitted.
     #[arg(long, short)]
     name: Option<String>,
-    packet: PathBuf,
+    /// Path to the configuration to use to host the server.
+    #[arg(default_value = "basalt.toml")]
+    config: PathBuf,
 }
 
 fn default_name() -> String {
@@ -31,14 +36,14 @@ fn default_name() -> String {
 pub async fn handle(args: RunArgs) -> anyhow::Result<()> {
     info!("Parsing packet configurations");
 
-    let file = tokio::fs::File::open(&args.packet)
+    let file = tokio::fs::File::open(&args.config)
         .await
         .context("Opening packet file")?;
 
     let mut file = tokio::io::BufReader::new(file);
 
     let file_name = args
-        .packet
+        .config
         .file_name()
         .expect("call to File::open would fail if this does")
         .to_str();
