@@ -50,13 +50,11 @@ pub async fn handle(args: RunArgs) -> anyhow::Result<()> {
 
     let config = match bedrock::Config::read_async(&mut file, file_name).await {
         Ok(config) => config,
-        Err(e) => match e {
-            err @ bedrock::ConfigReadError::ReadError(_) => Err(err)?,
-            bedrock::ConfigReadError::MalformedData(err) => {
-                eprintln!("{:?}", err);
-                anyhow::bail!("parsing config");
-            }
-        },
+        Err(err @ bedrock::ConfigReadError::ReadError(_)) => Err(err)?,
+        Err(bedrock::ConfigReadError::MalformedData(err)) => {
+            eprintln!("{:?}", err);
+            anyhow::bail!("parsing config");
+        }
     };
 
     let name = &args.name.unwrap_or_else(default_name);
