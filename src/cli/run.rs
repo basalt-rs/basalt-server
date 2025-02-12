@@ -48,9 +48,16 @@ pub async fn handle(args: RunArgs) -> anyhow::Result<()> {
         .expect("call to File::open would fail if this does")
         .to_str();
 
-    let config = bedrock::Config::read_async(&mut file, file_name)
-        .await
-        .context("Failed to parse configurations")?;
+    let config = match bedrock::Config::read_async(&mut file, file_name).await {
+        Ok(config) => config,
+        Err(e) => match e {
+            err @ bedrock::ConfigReadError::ReadError(_) => Err(err)?,
+            bedrock::ConfigReadError::MalformedData(err) => {
+                eprintln!("{:?}", err);
+                anyhow::bail!("parsing config");
+            }
+        },
+    };
 
     let name = &args.name.unwrap_or_else(default_name);
     info!(name, "Creating Sqlite layer");
