@@ -1,6 +1,9 @@
+use anyhow::Context;
+use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
+use rand::rngs::OsRng;
 use redact::{expose_secret, Secret};
 use serde::{Deserialize, Serialize};
-use sqlx::prelude::FromRow;
+use sqlx::{prelude::FromRow, Executor, Sqlite};
 
 use crate::storage::SqliteLayer;
 
@@ -63,6 +66,33 @@ pub async fn get_user_by_username(
             property: "username",
             value: username,
         })
+}
+
+/// Creates a user and inserts into database.
+///
+/// Uses Argon2 to hash the password
+pub async fn create_user<'a, E>(
+    db: E,
+    username: impl AsRef<str>,
+    password: &str,
+    role: Role,
+) -> anyhow::Result<User>
+where
+    E: Executor<'a, Database = Sqlite>,
+{
+    let salt = SaltString::generate(&mut OsRng);
+    let username: &str = username.as_ref();
+    let password_hash = Argon2::default()
+        .hash_password(password.as_ref(), &salt)
+        .expect("Failed to hash password")
+        .to_string();
+    let role_int: i32 = role.into();
+    sqlx::query_as!(User,
+            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?) RETURNING username, password_hash, role",
+            username,
+            password_hash,
+            role_int
+        ).fetch_one(db).await.context("Failed to create user")
 }
 
 #[cfg(test)]

@@ -1,4 +1,5 @@
 use anyhow::Context;
+use bedrock::Config;
 use std::path::Path;
 use std::str::FromStr;
 use tokio::io::AsyncWriteExt;
@@ -8,6 +9,8 @@ use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode},
     Pool, Sqlite,
 };
+
+use crate::repositories::users::{create_user, Role};
 
 const INITIAL_DB_CONTENT: &[u8] = include_bytes!(env!("INITIAL_DATA_PATH"));
 
@@ -65,5 +68,39 @@ impl SqliteLayer {
             .await
             .context("Failed to connect to SQLite DB")?;
         Ok(Self { db })
+    }
+
+    pub async fn ingest(&self, cfg: &Config) -> anyhow::Result<()> {
+        let mut tx = self.db.begin().await.unwrap();
+        for user in &cfg.accounts.competitors {
+            create_user(&mut *tx, &user.name, &user.password, Role::Competitor)
+                .await
+                .context("Failed to create user")?;
+        }
+
+        tx.commit()
+            .await
+            .context("Failed to commit user ingestion transaction")?;
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::testing::mock_db;
+    use bedrock::Config;
+
+    #[tokio::test]
+    async fn ingestion_works() {
+        let mut file = tokio::fs::File::open("tests/single.toml").await.unwrap();
+        let cfg = Config::read_async(&mut file, Some("single.toml"))
+            .await
+            .unwrap();
+        let (f, sql_layer) = mock_db().await;
+        let db = sql_layer.write().await;
+        db.ingest(&cfg).await.expect("Failed to ingest config");
+
+        drop(f)
     }
 }

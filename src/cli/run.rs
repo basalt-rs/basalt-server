@@ -63,6 +63,10 @@ pub async fn handle(args: RunArgs) -> anyhow::Result<()> {
         .await
         .context("Creating Sqlite Layer")?;
 
+    db.ingest(&config)
+        .await
+        .context("Failed to ingest config data")?;
+
     let addr: SocketAddr = format!("[::]:{}", args.port.unwrap_or(config.port))
         .parse()
         .unwrap();
