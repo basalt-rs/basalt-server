@@ -51,6 +51,7 @@ impl AppState {
 pub fn router(initial_state: Arc<AppState>) -> axum::Router {
     Router::new()
         .nest("/auth", services::auth::auth_service())
+        .nest("/questions", services::questions::question_service())
         .nest("/ws", services::ws::ws_service())
         .with_state(initial_state)
 }
@@ -59,6 +60,7 @@ pub fn router(initial_state: Arc<AppState>) -> axum::Router {
 pub fn doc_router(initial_state: Arc<AppState>) -> utoipa_axum::router::OpenApiRouter {
     utoipa_axum::router::OpenApiRouter::new()
         .nest("/auth", services::auth::auth_router())
+        .nest("/questions", services::questions::question_router())
         .nest("/ws", services::ws::ws_router())
         .with_state(initial_state)
 }
