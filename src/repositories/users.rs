@@ -4,8 +4,9 @@ use sqlx::prelude::FromRow;
 
 use crate::storage::SqliteLayer;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[repr(i32)]
+#[serde(rename_all = "kebab-case")]
 pub enum Role {
     Competitor = 0,
     Admin = 1,
@@ -13,6 +14,15 @@ pub enum Role {
 
 impl From<i32> for Role {
     fn from(value: i32) -> Self {
+        match value {
+            1 => Role::Admin,
+            _ => Role::Competitor,
+        }
+    }
+}
+
+impl From<i64> for Role {
+    fn from(value: i64) -> Self {
         match value {
             1 => Role::Admin,
             _ => Role::Competitor,
@@ -29,13 +39,12 @@ impl From<Role> for i32 {
     }
 }
 
-#[derive(Debug, FromRow, Serialize, Deserialize)]
-#[allow(dead_code)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq, FromRow, Serialize, Deserialize)]
 pub struct User {
     pub username: String,
     #[serde(serialize_with = "expose_secret")]
     pub password_hash: Secret<String>,
-    pub role: i64,
+    pub role: Role,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -48,6 +57,8 @@ pub enum GetUserError {
         property: &'static str,
         value: String,
     },
+    #[error("Could not get user with session {session_id}.")]
+    SessionNotFound { session_id: String },
 }
 
 #[allow(dead_code)]
@@ -63,6 +74,43 @@ pub async fn get_user_by_username(
             property: "username",
             value: username,
         })
+}
+
+#[allow(dead_code)]
+pub async fn get_user_from_session(
+    sql: &SqliteLayer,
+    session_id: &str,
+) -> Result<User, GetUserError> {
+    sqlx::query_as!(User, "select users.* from users join sessions on users.username = sessions.username where session_id = $1", session_id)
+        .fetch_optional(&sql.db)
+        .await
+        .map_err(|e| GetUserError::QueryError(e.to_string()))?
+        .ok_or_else(|| GetUserError::SessionNotFound {
+            session_id: session_id.to_string(),
+        })
+}
+
+#[derive(Debug, FromRow, Deserialize)]
+pub struct UserLogin {
+    pub username: String,
+    pub password_hash: Secret<String>,
+}
+
+pub async fn login_user(sql: &SqliteLayer, user: UserLogin) -> Result<User, GetUserError> {
+    let expose = user.password_hash.expose_secret();
+    sqlx::query_as!(
+        User,
+        "SELECT * from users WHERE username = $1 and password_hash = $2",
+        user.username,
+        expose
+    )
+    .fetch_optional(&sql.db)
+    .await
+    .map_err(|e| GetUserError::QueryError(e.to_string()))?
+    .ok_or_else(|| GetUserError::UserNotFound {
+        property: "username",
+        value: user.username.to_string(),
+    })
 }
 
 #[cfg(test)]
