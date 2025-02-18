@@ -8,26 +8,77 @@ info:
 paths:
   /auth/login:
     post:
-      operationId: post
+      tags:
+      - auth
+      operationId: login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
       responses:
         '200':
-          description: ''
+          description: Session cookie has been set
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LoginSuccessResponse'
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Incorrect credentials provided
+  /auth/logout:
+    post:
+      tags:
+      - auth
+      operationId: logout
+      responses:
+        '200':
+          description: User has been logged out
+        '401':
+          description: User was not logged in
+  /auth/validate:
+    post:
+      tags:
+      - auth
+      description: Validate that the auth token provided is still valid
+      operationId: validate
+      responses:
+        '200':
+          description: Auth token is still valid
+        '401':
+          description: Auth token is expired
   /ws:
     get:
-      operationId: handler
+      tags:
+      - ws
+      operationId: connect_websocket
       responses:
         '200':
           description: connected to websocket
 components:
   schemas:
-    LoginSuccessResponse:
+    LoginRequest:
       type: object
       required:
-      - session_token
+      - username
+      - password
       properties:
-        session_token:
+        password:
           type: string
+        username:
+          type: string
+    LoginResponse:
+      type: object
+      required:
+      - token
+      - role
+      properties:
+        role:
+          $ref: '#/components/schemas/Role'
+        token:
+          type: string
+    Role:
+      type: string
+      enum:
+      - competitor
+      - admin

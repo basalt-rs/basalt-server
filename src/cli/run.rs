@@ -68,6 +68,8 @@ pub async fn handle(args: RunArgs) -> anyhow::Result<()> {
         .unwrap();
     info!(?addr, "Serving via HTTP");
 
+    crate::extractors::auth::init_keys(name).expect("This function is only called here.");
+
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(
         listener,

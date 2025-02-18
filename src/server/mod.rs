@@ -50,15 +50,17 @@ impl AppState {
 
 pub fn router(initial_state: Arc<AppState>) -> axum::Router {
     Router::new()
-        .nest("/auth", services::auth::auth_service())
-        .nest("/ws", services::ws::ws_service())
+        .nest("/auth", services::auth::service())
+        .nest("/ws", services::ws::service())
         .with_state(initial_state)
+        .layer(tower_http::cors::CorsLayer::permissive())
 }
 
 #[cfg(debug_assertions)]
 pub fn doc_router(initial_state: Arc<AppState>) -> utoipa_axum::router::OpenApiRouter {
     utoipa_axum::router::OpenApiRouter::new()
-        .nest("/auth", services::auth::auth_router())
-        .nest("/ws", services::ws::ws_router())
+        .nest("/auth", services::auth::router())
+        .nest("/ws", services::ws::router())
         .with_state(initial_state)
+        .layer(tower_http::cors::CorsLayer::permissive())
 }
