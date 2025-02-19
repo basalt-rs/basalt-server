@@ -6,15 +6,9 @@ use crate::server::AppState;
 mod questions {
     use std::{collections::HashSet, ops::Deref, sync::Arc};
 
-    use axum::{extract::State, response::Response, Json};
-    use bedrock::packet::{Problem, Test};
-
     use crate::server::AppState;
-
-    #[derive(serde::Deserialize, utoipa::ToSchema)]
-    pub struct QuestionBody {
-        question: usize,
-    }
+    use axum::{extract::State, Json};
+    use bedrock::packet::{Problem, Test};
 
     #[derive(serde::Serialize, utoipa::ToSchema)]
     pub struct TestResponse {
@@ -53,8 +47,11 @@ mod questions {
     #[derive(serde::Serialize, utoipa::ToSchema)]
     pub struct AllQuestionResponse(Vec<QuestionResponse>);
 
+    #[derive(serde::Serialize, utoipa::ToSchema)]
+    pub struct SpecificQuestionResponse(QuestionResponse);
+
     #[axum::debug_handler]
-    #[utoipa::path(get, path = "/all", responses((status = OK, body = AllQuestionResponse, content_type = "application/json")))]
+    #[utoipa::path(get, path = "", responses((status = OK, body = AllQuestionResponse, content_type = "application/json")))]
     pub async fn get_all(State(state): State<Arc<AppState>>) -> Json<AllQuestionResponse> {
         let questions = state
             .config
@@ -66,10 +63,45 @@ mod questions {
 
         Json(AllQuestionResponse(questions))
     }
+
+    #[axum::debug_handler]
+    #[utoipa::path(get, path = "/{id}", responses((status = OK, body = SpecificQuestionResponse, content_type = "application/json")))]
+    pub async fn get_specific_question(
+        State(state): State<Arc<AppState>>,
+        axum::extract::Path(question): axum::extract::Path<usize>,
+    ) -> Result<Json<SpecificQuestionResponse>, axum::http::StatusCode> {
+        state
+            .config
+            .packet
+            .problems
+            .get(question)
+            .map(|x| Json(SpecificQuestionResponse(x)))
+            .ok_or(axum::http::StatusCode::NOT_FOUND)
+    }
+
+    // Original Func
+    // pub async fn get_specific_question(
+    //         State(state): State<Arc<AppState>>,
+    //         axum::extract::Path(question): axum::extract::Path<usize>,
+    //     ) -> Result<Json<SpecificQuestionResponse>, axum::http::StatusCode> {
+    //         let questions = state
+    //             .config
+    //             .packet
+    //             .problems.iter()
+    // .map(|x| x.deref().into())
+    // .collect();
+    //         if let Some(q) = questions {
+    //             Ok(Json(SpecificQuestionResponse(q)))
+    //         } else {
+    //             Err(axum::http::StatusCode::NOT_FOUND)
+    //         }
+    //     }
 }
 
 pub fn question_router() -> OpenApiRouter<Arc<AppState>> {
-    OpenApiRouter::new().routes(routes!(questions::get_all))
+    OpenApiRouter::new()
+        .routes(routes!(questions::get_all))
+        .routes(routes!(questions::get_specific_question))
 }
 
 pub fn question_service() -> axum::Router<Arc<AppState>> {
