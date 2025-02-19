@@ -71,17 +71,15 @@ pub async fn get_user_by_username(
 /// Creates a user and inserts into database.
 ///
 /// Uses Argon2 to hash the password
-pub async fn create_user<'a, E>(
-    db: E,
+pub async fn create_user(
+    db: impl Executor<'_, Database = Sqlite>,
     username: impl AsRef<str>,
-    password: &str,
+    password: impl AsRef<str>,
     role: Role,
-) -> anyhow::Result<User>
-where
-    E: Executor<'a, Database = Sqlite>,
-{
+) -> anyhow::Result<User> {
     let salt = SaltString::generate(&mut OsRng);
     let username: &str = username.as_ref();
+    let password: &str = password.as_ref();
     let password_hash = Argon2::default()
         .hash_password(password.as_ref(), &salt)
         .expect("Failed to hash password")
