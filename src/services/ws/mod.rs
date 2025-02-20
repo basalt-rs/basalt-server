@@ -9,13 +9,13 @@ use tokio::sync::mpsc;
 use tracing::{debug, trace};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
-use crate::{extractors::auth::JWTUser, server::AppState};
+use crate::{extractors::auth::AuthUser, server::AppState};
 pub mod connect;
 
 #[derive(Clone, Eq, PartialEq, Hash, derive_more::Debug)]
 pub enum ConnectionKind {
     User {
-        user: JWTUser,
+        user: AuthUser,
     },
     Leaderboard {
         id: String,

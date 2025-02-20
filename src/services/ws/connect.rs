@@ -13,13 +13,13 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, trace, warn};
 
 use super::{ConnectedClient, ConnectionKind, WebSocketRecv};
-use crate::{extractors::auth::OptionalJWTUser, server::AppState};
+use crate::{extractors::auth::OptionalAuthUser, server::AppState};
 
 #[axum::debug_handler]
 #[utoipa::path(get, path="/", tag="ws", responses((status = OK, description = "connected to websocket")))]
 pub async fn connect_websocket(
     ws: WebSocketUpgrade,
-    OptionalJWTUser(user): OptionalJWTUser,
+    OptionalAuthUser(user): OptionalAuthUser,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
 ) -> Response {

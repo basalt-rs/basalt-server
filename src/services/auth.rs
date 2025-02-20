@@ -1,13 +1,10 @@
-use std::{
-    sync::Arc,
-    time::{Duration, SystemTime},
-};
+use std::sync::Arc;
 
 use axum::{extract::State, http::StatusCode, Json};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
-    extractors::auth::{create_jwt, JWTUser},
+    extractors::auth::AuthUser,
     repositories::{
         self,
         users::{Role, UserLogin},
@@ -52,21 +49,10 @@ async fn login(
         return Err(StatusCode::UNAUTHORIZED);
     };
 
-    let session_id = repositories::session::create_session(&db, &user)
+    let token = repositories::session::create_session(&db, &user)
         .await
         .unwrap();
     let role = user.role;
-
-    let expire = Duration::from_secs(60 * 60 * 24 * 30) // 30 days
-        + SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap();
-
-    let token = create_jwt(&JWTUser {
-        user,
-        session_id,
-        exp: expire.as_secs(),
-    });
 
     // Send the authorized token
     Ok(Json(LoginResponse { token, role }))
@@ -81,7 +67,7 @@ async fn login(
         (status=401, description="User was not logged in"),
     )
 )]
-async fn logout(State(state): State<Arc<AppState>>, user: JWTUser) -> Result<(), StatusCode> {
+async fn logout(State(state): State<Arc<AppState>>, user: AuthUser) -> Result<(), StatusCode> {
     let db = state.db.read().await;
 
     repositories::session::close_session(&db, &user.session_id)
@@ -101,7 +87,7 @@ async fn logout(State(state): State<Arc<AppState>>, user: JWTUser) -> Result<(),
         (status=401, description="Auth token is expired"),
     )
 )]
-async fn validate(State(_state): State<Arc<AppState>>, _user: JWTUser) -> Result<(), StatusCode> {
+async fn validate(State(_state): State<Arc<AppState>>, _user: AuthUser) -> Result<(), StatusCode> {
     Ok(())
 }
 

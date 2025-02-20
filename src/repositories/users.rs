@@ -48,7 +48,6 @@ pub struct User {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[allow(dead_code)]
 pub enum GetUserError {
     #[error("A database error occurred: {0}")]
     QueryError(String),
@@ -57,8 +56,6 @@ pub enum GetUserError {
         property: &'static str,
         value: String,
     },
-    #[error("Could not get user with session {session_id}.")]
-    SessionNotFound { session_id: String },
 }
 
 #[allow(dead_code)]
@@ -73,20 +70,6 @@ pub async fn get_user_by_username(
         .ok_or(GetUserError::UserNotFound {
             property: "username",
             value: username,
-        })
-}
-
-#[allow(dead_code)]
-pub async fn get_user_from_session(
-    sql: &SqliteLayer,
-    session_id: &str,
-) -> Result<User, GetUserError> {
-    sqlx::query_as!(User, "select users.* from users join sessions on users.username = sessions.username where session_id = $1", session_id)
-        .fetch_optional(&sql.db)
-        .await
-        .map_err(|e| GetUserError::QueryError(e.to_string()))?
-        .ok_or_else(|| GetUserError::SessionNotFound {
-            session_id: session_id.to_string(),
         })
 }
 
