@@ -54,6 +54,7 @@ pub fn router(initial_state: Arc<AppState>) -> axum::Router {
         .nest("/ws", services::ws::service())
         .with_state(initial_state)
         .layer(tower_http::cors::CorsLayer::permissive())
+        .layer(tower_http::trace::TraceLayer::new_for_http())
 }
 
 #[cfg(debug_assertions)]
@@ -63,4 +64,5 @@ pub fn doc_router(initial_state: Arc<AppState>) -> utoipa_axum::router::OpenApiR
         .nest("/ws", services::ws::router())
         .with_state(initial_state)
         .layer(tower_http::cors::CorsLayer::permissive())
+        .layer(tower_http::trace::TraceLayer::new_for_http())
 }
