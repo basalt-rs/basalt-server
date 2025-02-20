@@ -81,6 +81,12 @@ impl SqliteLayer {
                 .context("Failed to create user")?;
         }
 
+        for admin in &cfg.accounts.admins {
+            create_user(&mut *tx, &admin.name, &admin.password, Role::Admin)
+                .await
+                .context("Failed to create admin user")?;
+        }
+
         tx.commit()
             .await
             .context("Failed to commit user ingestion transaction")?;
