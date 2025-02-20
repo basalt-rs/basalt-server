@@ -27,7 +27,7 @@ impl SqliteLayer {
     /// ```rust
     /// let sqlite_layer = SqliteLayer::new("competition-title".into()).unwrap();
     /// ```
-    pub async fn new(title: impl AsRef<str>) -> anyhow::Result<Self> {
+    pub async fn new(title: impl AsRef<str>) -> anyhow::Result<(bool, Self)> {
         let mut path = directories::ProjectDirs::from("rs", "basalt", "basalt-server")
             .context("Failed to resolve project directory")?
             .data_local_dir()
@@ -36,8 +36,9 @@ impl SqliteLayer {
             .await
             .expect("failed to create database files");
         path = path.join("data").with_extension("db");
+        let init = !path.exists();
 
-        if !path.exists() {
+        if init {
             let mut file = tokio::fs::File::create(&path)
                 .await
                 .context("Failed to create datafile")?;
@@ -50,7 +51,7 @@ impl SqliteLayer {
         let db = sqlx::sqlite::SqlitePool::connect(path.as_path().to_str().unwrap())
             .await
             .context("Failed to connect to SQLiteDB")?;
-        Ok(Self { db })
+        Ok((init, Self { db }))
     }
     /// Converts a `Pathbuf` to a `SqliteLayer`
     pub async fn from_path(value: impl AsRef<Path>) -> anyhow::Result<Self> {
