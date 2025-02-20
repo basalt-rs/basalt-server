@@ -15,6 +15,7 @@ use axum_extra::{
     TypedHeader,
 };
 use serde::{Deserialize, Serialize};
+use tracing::trace;
 
 #[derive(Debug)]
 pub enum AuthError {
@@ -53,9 +54,14 @@ async fn extract(parts: &mut Parts, state: &Arc<AppState>) -> Result<Option<Auth
 
     // confirm user is in db and the session is active
     let db = state.db.read().await;
+    trace!("getting user from session");
     let user = repositories::session::get_user_from_session(&db, session_id)
         .await
-        .map_err(|_| AuthError::ExpiredToken)?;
+        .map_err(|_| {
+            trace!("token expired");
+            AuthError::ExpiredToken
+        })?;
+    trace!(user.username, "resolved user");
 
     Ok(Some(AuthUser {
         user,

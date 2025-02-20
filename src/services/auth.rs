@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
 use axum::{extract::State, http::StatusCode, Json};
+use tracing::{debug, trace};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
     extractors::auth::AuthUser,
     repositories::{
         self,
-        users::{Role, UserLogin},
+        users::{Role, User, UserLogin},
     },
     server::AppState,
 };
@@ -37,6 +38,7 @@ async fn login(
     State(state): State<Arc<AppState>>,
     Json(login): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, StatusCode> {
+    trace!(login.username, "attempt to login to user");
     let db = state.db.read().await;
 
     let login = UserLogin {
@@ -45,7 +47,8 @@ async fn login(
         password_hash: login.password.into(),
     };
 
-    let Ok(user) = repositories::users::login_user(&db, login).await else {
+    let Ok(user) = repositories::users::login_user(&db, &login).await else {
+        debug!(login.username, "failed login attempt");
         return Err(StatusCode::UNAUTHORIZED);
     };
 
@@ -53,8 +56,8 @@ async fn login(
         .await
         .unwrap();
     let role = user.role;
+    debug!(login.username, "log in");
 
-    // Send the authorized token
     Ok(Json(LoginResponse { token, role }))
 }
 
@@ -68,6 +71,7 @@ async fn login(
     )
 )]
 async fn logout(State(state): State<Arc<AppState>>, user: AuthUser) -> Result<(), StatusCode> {
+    debug!(user.user.username, "logout");
     let db = state.db.read().await;
 
     repositories::session::close_session(&db, &user.session_id)
@@ -79,23 +83,23 @@ async fn logout(State(state): State<Arc<AppState>>, user: AuthUser) -> Result<()
 
 #[axum::debug_handler]
 #[utoipa::path(
-    post,
-    path="/validate", tag="auth",
-    description="Validate that the auth token provided is still valid",
+    get,
+    path="/me", tag="auth",
+    description="Get information about the current user",
     responses(
-        (status=OK, description="Auth token is still valid"),
+        (status=OK, body=User, description="User is signed in"),
         (status=401, description="Auth token is expired"),
     )
 )]
-async fn validate(State(_state): State<Arc<AppState>>, _user: AuthUser) -> Result<(), StatusCode> {
-    Ok(())
+async fn me(State(_state): State<Arc<AppState>>, user: AuthUser) -> Result<Json<User>, StatusCode> {
+    Ok(Json(user.user))
 }
 
 pub fn router() -> OpenApiRouter<Arc<AppState>> {
     OpenApiRouter::new()
         .routes(routes!(login))
         .routes(routes!(logout))
-        .routes(routes!(validate))
+        .routes(routes!(me))
 }
 
 pub fn service() -> axum::Router<Arc<AppState>> {

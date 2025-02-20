@@ -1,6 +1,7 @@
-use redact::{expose_secret, Secret};
+use redact::Secret;
 use serde::{Deserialize, Serialize};
 use sqlx::prelude::FromRow;
+use utoipa::ToSchema;
 
 use crate::storage::SqliteLayer;
 
@@ -39,10 +40,10 @@ impl From<Role> for i32 {
     }
 }
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq, FromRow, Serialize, Deserialize)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq, FromRow, Serialize, Deserialize, ToSchema)]
 pub struct User {
     pub username: String,
-    #[serde(serialize_with = "expose_secret")]
+    #[serde(skip)]
     pub password_hash: Secret<String>,
     pub role: Role,
 }
@@ -79,7 +80,7 @@ pub struct UserLogin {
     pub password_hash: Secret<String>,
 }
 
-pub async fn login_user(sql: &SqliteLayer, user: UserLogin) -> Result<User, GetUserError> {
+pub async fn login_user(sql: &SqliteLayer, user: &UserLogin) -> Result<User, GetUserError> {
     let expose = user.password_hash.expose_secret();
     sqlx::query_as!(
         User,
