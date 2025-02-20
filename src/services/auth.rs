@@ -43,8 +43,7 @@ async fn login(
 
     let login = UserLogin {
         username: login.username,
-        // TODO: hash password
-        password_hash: login.password.into(),
+        password: login.password.into(),
     };
 
     let Ok(user) = repositories::users::login_user(&db, &login).await else {
