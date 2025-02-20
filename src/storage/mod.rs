@@ -36,17 +36,15 @@ impl SqliteLayer {
             .await
             .expect("failed to create database files");
         path = path.join("data").with_extension("db");
-        let mut init = true;
+        let init = !path.exists();
 
-        if !path.exists() {
+        if init {
             let mut file = tokio::fs::File::create(&path)
                 .await
                 .context("Failed to create datafile")?;
             file.write_all(INITIAL_DB_CONTENT)
                 .await
                 .context("Failed to write datafile")?;
-        } else {
-            init = false;
         }
 
         debug!(?path, "Connecting to sqlite database");
