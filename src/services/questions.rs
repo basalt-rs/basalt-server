@@ -75,27 +75,9 @@ mod questions {
             .packet
             .problems
             .get(question)
-            .map(|x| Json(SpecificQuestionResponse(x)))
+            .map(|x| Json(SpecificQuestionResponse(x.deref().into())))
             .ok_or(axum::http::StatusCode::NOT_FOUND)
-    }
-
-    // Original Func
-    // pub async fn get_specific_question(
-    //         State(state): State<Arc<AppState>>,
-    //         axum::extract::Path(question): axum::extract::Path<usize>,
-    //     ) -> Result<Json<SpecificQuestionResponse>, axum::http::StatusCode> {
-    //         let questions = state
-    //             .config
-    //             .packet
-    //             .problems.iter()
-    // .map(|x| x.deref().into())
-    // .collect();
-    //         if let Some(q) = questions {
-    //             Ok(Json(SpecificQuestionResponse(q)))
-    //         } else {
-    //             Err(axum::http::StatusCode::NOT_FOUND)
-    //         }
-    //     }
+    }\
 }
 
 pub fn question_router() -> OpenApiRouter<Arc<AppState>> {
