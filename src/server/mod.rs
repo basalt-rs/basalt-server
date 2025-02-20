@@ -3,6 +3,7 @@ use std::sync::Arc;
 use axum::Router;
 use bedrock::Config;
 use dashmap::{DashMap, DashSet};
+use rand::{distributions::Alphanumeric, Rng};
 use tokio::sync::RwLock;
 
 use crate::{
@@ -50,17 +51,37 @@ impl AppState {
 
 pub fn router(initial_state: Arc<AppState>) -> axum::Router {
     Router::new()
-        .nest("/auth", services::auth::auth_service())
+        .nest("/auth", services::auth::service())
         .nest("/questions", services::questions::question_service())
-        .nest("/ws", services::ws::ws_service())
+        .nest("/ws", services::ws::service())
         .with_state(initial_state)
+        .layer(tower_http::cors::CorsLayer::permissive())
+        .layer(
+            tower_http::trace::TraceLayer::new_for_http().make_span_with(
+                |request: &axum::http::Request<axum::body::Body>| {
+                    tracing::trace_span!(
+                        "request",
+                        method = %request.method(),
+                        uri = %request.uri(),
+                        version = ?request.version(),
+                        id = %rand::thread_rng()
+                            .sample_iter(Alphanumeric)
+                            .take(10)
+                            .map(char::from)
+                            .collect::<String>()
+                    )
+                },
+            ),
+        )
 }
 
 #[cfg(debug_assertions)]
 pub fn doc_router(initial_state: Arc<AppState>) -> utoipa_axum::router::OpenApiRouter {
     utoipa_axum::router::OpenApiRouter::new()
-        .nest("/auth", services::auth::auth_router())
+        .nest("/auth", services::auth::router())
         .nest("/questions", services::questions::question_router())
-        .nest("/ws", services::ws::ws_router())
+        .nest("/ws", services::ws::router())
         .with_state(initial_state)
+        .layer(tower_http::cors::CorsLayer::permissive())
+        .layer(tower_http::trace::TraceLayer::new_for_http())
 }

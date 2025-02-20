@@ -7,28 +7,30 @@ rust-version = "1.80"
 
 [dependencies]
 anyhow = "1.0.95"
-argon2 = "0.5.3"
+argon2 = { version = "0.5.3", features = ["password-hash"] }
 async-tempfile = "0.6.0"
+axum-extra = { version = "0.10.0", features = ["typed-header"] }
 axum = { version = "0.8.1", features = ["macros", "ws"] }
 bedrock = { git = "https://github.com/basalt-rs/bedrock.git", rev = "4257d82", features = ["tokio"] }
 clap = { version = "4.5.23", features = ["derive"] }
 dashmap = "6.1.0"
+derive_more = { version = "2.0.1", features = ["debug", "from", "deref"] }
 directories = "6.0.0"
 erudite = { git = "https://github.com/basalt-rs/erudite.git", rev = "7de318e", features = ["serde"] }
 leucite = "0.2.0"
 rand = "0.8.5"
 redact = { version = "0.1.10", features = ["serde"] }
+scopeguard = "1.2.0"
 serde_json = "1.0.138"
 serde = { version = "1.0.217", features = ["derive"] }
 sqlx = { version = "0.8.3", features = ["sqlite", "runtime-tokio-native-tls"] }
 thiserror = "2.0.11"
 tokio = { version = "1.43.0", features = ["full"] }
-tracing = { version = "0.1.41", features = ["release_max_level_debug"] }
+tower-http = { version = "0.6.2", features = ["cors", "trace"] }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+tracing = { version = "0.1.41", features = ["release_max_level_debug"] }
 utoipa-axum = { version = "0.2.0", features = ["debug"] }
 utoipa = { version = "5.3.1", features = ["debug", "yaml"] }
-scopeguard = "1.2.0"
-derive_more = { version = "2.0.1", features = ["debug"] }
 
 [dev-dependencies]
 async-tempfile = "0.6.0"

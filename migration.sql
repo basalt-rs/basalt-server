@@ -7,5 +7,6 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS sessions (
   session_id TEXT NOT NULL PRIMARY KEY,
   username TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
   FOREIGN KEY (username) REFERENCES users(username)
 )

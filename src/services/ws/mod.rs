@@ -9,13 +9,13 @@ use tokio::sync::mpsc;
 use tracing::{debug, trace};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
-use crate::server::AppState;
+use crate::{extractors::auth::AuthUser, server::AppState};
 pub mod connect;
 
-#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, derive_more::Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, derive_more::Debug)]
 pub enum ConnectionKind {
     User {
-        username: String,
+        user: AuthUser,
     },
     Leaderboard {
         id: String,
@@ -84,6 +84,18 @@ impl WebSocketRecv<'_> {
                     .get(who)
                     .context("websocket not in active_connections")?
                     .send;
+
+                match who {
+                    ConnectionKind::User { .. } => {}
+                    ConnectionKind::Leaderboard { .. } => {
+                        let err = WebSocketSend::Error {
+                            id,
+                            message: "Must be signed in to run tests.".into(),
+                        };
+                        ws.send(err)?;
+                        return Ok(());
+                    }
+                };
 
                 // TODO: Prevent leaderboard from being able to run tests once we have auth
                 let Some(language) = state.config.languages.get_by_str(&language) else {
@@ -177,10 +189,10 @@ impl WebSocketRecv<'_> {
     }
 }
 
-pub fn ws_router() -> OpenApiRouter<Arc<AppState>> {
-    OpenApiRouter::new().routes(routes!(connect::handler))
+pub fn router() -> OpenApiRouter<Arc<AppState>> {
+    OpenApiRouter::new().routes(routes!(connect::connect_websocket))
 }
 
-pub fn ws_service() -> axum::Router<Arc<AppState>> {
-    ws_router().split_for_parts().0
+pub fn service() -> axum::Router<Arc<AppState>> {
+    router().split_for_parts().0
 }
