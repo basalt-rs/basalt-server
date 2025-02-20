@@ -77,7 +77,7 @@ mod questions {
             .get(question)
             .map(|x| Json(SpecificQuestionResponse(x.deref().into())))
             .ok_or(axum::http::StatusCode::NOT_FOUND)
-    }\
+    }
 }
 
 pub fn question_router() -> OpenApiRouter<Arc<AppState>> {
