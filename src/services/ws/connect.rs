@@ -13,23 +13,26 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, trace, warn};
 
 use super::{ConnectedClient, ConnectionKind, WebSocketRecv};
-use crate::server::AppState;
+use crate::{extractors::auth::OptionalAuthUser, server::AppState};
 
 #[axum::debug_handler]
-#[utoipa::path(get, path = "/", responses((status = OK, description = "connected to websocket")))]
-pub async fn handler(
+#[utoipa::path(get, path="/", tag="ws", responses((status = OK, description = "connected to websocket")))]
+pub async fn connect_websocket(
     ws: WebSocketUpgrade,
+    OptionalAuthUser(user): OptionalAuthUser,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
 ) -> Response {
-    // TODO: This should be associated with a user once we have authentication setup.
-    let who = ConnectionKind::Leaderboard {
-        id: rand::thread_rng()
-            .sample_iter(rand::distributions::Alphanumeric)
-            .take(20)
-            .map(char::from)
-            .collect(),
-        addr,
+    let who = match user {
+        Some(user) => ConnectionKind::User { user },
+        None => ConnectionKind::Leaderboard {
+            id: rand::thread_rng()
+                .sample_iter(rand::distributions::Alphanumeric)
+                .take(20)
+                .map(char::from)
+                .collect(),
+            addr,
+        },
     };
 
     trace!(?who, "Client connect");

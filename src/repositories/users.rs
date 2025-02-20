@@ -1,14 +1,18 @@
 use anyhow::Context;
 use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
+use argon2::{PasswordHash, PasswordVerifier};
 use rand::rngs::OsRng;
-use redact::{expose_secret, Secret};
+use redact::Secret;
 use serde::{Deserialize, Serialize};
-use sqlx::{prelude::FromRow, Executor, Sqlite};
+use sqlx::prelude::FromRow;
+use sqlx::{Executor, Sqlite};
+use utoipa::ToSchema;
 
 use crate::storage::SqliteLayer;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[repr(i32)]
+#[serde(rename_all = "kebab-case")]
 pub enum Role {
     Competitor = 0,
     Admin = 1,
@@ -16,6 +20,15 @@ pub enum Role {
 
 impl From<i32> for Role {
     fn from(value: i32) -> Self {
+        match value {
+            1 => Role::Admin,
+            _ => Role::Competitor,
+        }
+    }
+}
+
+impl From<i64> for Role {
+    fn from(value: i64) -> Self {
         match value {
             1 => Role::Admin,
             _ => Role::Competitor,
@@ -32,17 +45,15 @@ impl From<Role> for i32 {
     }
 }
 
-#[derive(Debug, FromRow, Serialize, Deserialize)]
-#[allow(dead_code)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq, FromRow, Serialize, Deserialize, ToSchema)]
 pub struct User {
     pub username: String,
-    #[serde(serialize_with = "expose_secret")]
+    #[serde(skip)]
     pub password_hash: Secret<String>,
-    pub role: i64,
+    pub role: Role,
 }
 
 #[derive(Debug, thiserror::Error)]
-#[allow(dead_code)]
 pub enum GetUserError {
     #[error("A database error occurred: {0}")]
     QueryError(String),
@@ -66,6 +77,42 @@ pub async fn get_user_by_username(
             property: "username",
             value: username,
         })
+}
+
+#[derive(Debug, FromRow, Deserialize)]
+pub struct UserLogin {
+    pub username: String,
+    pub password: Secret<String>,
+}
+
+pub async fn login_user(sql: &SqliteLayer, login: &UserLogin) -> Result<User, GetUserError> {
+    let user = sqlx::query_as!(
+        User,
+        "SELECT * from users WHERE username = $1",
+        login.username,
+    )
+    .fetch_optional(&sql.db)
+    .await
+    .map_err(|e| GetUserError::QueryError(e.to_string()))?
+    .ok_or_else(|| GetUserError::UserNotFound {
+        property: "username",
+        value: login.username.to_string(),
+    })?;
+
+    // user.password
+    let password_hash = PasswordHash::new(user.password_hash.expose_secret()).unwrap();
+
+    if Argon2::default()
+        .verify_password(login.password.expose_secret().as_bytes(), &password_hash)
+        .is_ok()
+    {
+        Ok(user)
+    } else {
+        Err(GetUserError::UserNotFound {
+            property: "username",
+            value: login.username.to_string(),
+        })
+    }
 }
 
 /// Creates a user and inserts into database.

@@ -1,6 +1,7 @@
 use anyhow::Context;
 
 pub mod cli;
+pub mod extractors;
 mod repositories;
 mod server;
 pub mod services;
