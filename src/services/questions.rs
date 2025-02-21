@@ -57,7 +57,14 @@ pub async fn get_all(State(state): State<Arc<AppState>>) -> Json<AllQuestionResp
 }
 
 #[axum::debug_handler]
-#[utoipa::path(get, path = "/{id}", responses((status = OK, body = QuestionResponse, content_type = "application/json"),(status=40r, description="Question Not Found"),))]
+#[utoipa::path(
+    get,
+    path = "/{id}",
+    responses(
+        (status=OK, body=QuestionResponse, content_type="application/json"),
+        (status=404, description="Question Not Found"),
+    )
+)]
 pub async fn get_specific_question(
     State(state): State<Arc<AppState>>,
     axum::extract::Path(question): axum::extract::Path<usize>,
