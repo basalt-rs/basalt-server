@@ -1,9 +1,9 @@
-use std::sync::Arc;
-use utoipa_axum::{router::OpenApiRouter, routes};
 use crate::server::AppState;
-use std::{collections::HashSet, ops::Deref};
 use axum::{extract::State, Json};
 use bedrock::packet::{Problem, Test};
+use std::sync::Arc;
+use std::{collections::HashSet, ops::Deref};
+use utoipa_axum::{router::OpenApiRouter, routes};
 
 #[derive(serde::Serialize, utoipa::ToSchema)]
 pub struct TestResponse {
@@ -39,12 +39,9 @@ impl From<&Problem> for QuestionResponse {
     }
 }
 
-#[derive(serde::Serialize, utoipa::ToSchema)]
-pub struct AllQuestionResponse(Vec<QuestionResponse>);
-
 #[axum::debug_handler]
-#[utoipa::path(get, path = "/", responses((status = OK, body = AllQuestionResponse, content_type = "application/json")))]
-pub async fn get_all(State(state): State<Arc<AppState>>) -> Json<AllQuestionResponse> {
+#[utoipa::path(get, path = "/", responses((status = OK, body = Vec<QuestionResponse>, content_type = "application/json")))]
+pub async fn get_all(State(state): State<Arc<AppState>>) -> Json<Vec<QuestionResponse>> {
     let questions = state
         .config
         .packet
@@ -53,7 +50,7 @@ pub async fn get_all(State(state): State<Arc<AppState>>) -> Json<AllQuestionResp
         .map(|x| x.deref().into())
         .collect();
 
-    Json(AllQuestionResponse(questions))
+    Json(questions)
 }
 
 #[axum::debug_handler]
@@ -79,9 +76,9 @@ pub async fn get_specific_question(
 }
 
 pub fn router() -> OpenApiRouter<Arc<AppState>> {
-OpenApiRouter::new()
-    .routes(routes!(get_all))
-    .routes(routes!(get_specific_question))
+    OpenApiRouter::new()
+        .routes(routes!(get_all))
+        .routes(routes!(get_specific_question))
 }
 
 pub fn service() -> axum::Router<Arc<AppState>> {
