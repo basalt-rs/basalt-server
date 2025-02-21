@@ -51,7 +51,7 @@ mod questions {
     pub struct SpecificQuestionResponse(QuestionResponse);
 
     #[axum::debug_handler]
-    #[utoipa::path(get, path = "", responses((status = OK, body = AllQuestionResponse, content_type = "application/json")))]
+    #[utoipa::path(get, path = "/", responses((status = OK, body = AllQuestionResponse, content_type = "application/json")))]
     pub async fn get_all(State(state): State<Arc<AppState>>) -> Json<AllQuestionResponse> {
         let questions = state
             .config
