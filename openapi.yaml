@@ -36,17 +36,45 @@ paths:
           description: User has been logged out
         '401':
           description: User was not logged in
-  /auth/validate:
-    post:
+  /auth/me:
+    get:
       tags:
       - auth
-      description: Validate that the auth token provided is still valid
-      operationId: validate
+      description: Get information about the current user
+      operationId: me
       responses:
         '200':
-          description: Auth token is still valid
+          description: User is signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
         '401':
           description: Auth token is expired
+  /questions:
+    get:
+      operationId: get_all
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/QuestionResponse'
+  /questions/{id}:
+    get:
+      operationId: get_specific_question
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuestionResponse'
+        '404':
+          description: Question Not Found
   /ws:
     get:
       tags:
@@ -77,8 +105,51 @@ components:
           $ref: '#/components/schemas/Role'
         token:
           type: string
+    QuestionResponse:
+      type: object
+      required:
+      - title
+      - tests
+      properties:
+        description:
+          type:
+          - string
+          - 'null'
+        languages:
+          type:
+          - array
+          - 'null'
+          items:
+            type: string
+          uniqueItems: true
+        tests:
+          type: array
+          items:
+            $ref: '#/components/schemas/TestResponse'
+        title:
+          type: string
     Role:
       type: string
       enum:
       - competitor
       - admin
+    TestResponse:
+      type: object
+      required:
+      - input
+      - output
+      properties:
+        input:
+          type: string
+        output:
+          type: string
+    User:
+      type: object
+      required:
+      - username
+      - role
+      properties:
+        role:
+          $ref: '#/components/schemas/Role'
+        username:
+          type: string
