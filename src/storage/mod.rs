@@ -82,7 +82,7 @@ impl SqliteLayer {
         }
 
         for admin in &cfg.accounts.admins {
-            create_user(&mut *tx, &admin.name, &admin.password, Role::Admin)
+            create_user(&mut *tx, &admin.name, &admin.password, Role::Host)
                 .await
                 .context("Failed to create admin user")?;
         }

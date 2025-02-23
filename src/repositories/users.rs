@@ -15,13 +15,13 @@ use crate::storage::SqliteLayer;
 #[serde(rename_all = "kebab-case")]
 pub enum Role {
     Competitor = 0,
-    Admin = 1,
+    Host = 1,
 }
 
 impl From<i32> for Role {
     fn from(value: i32) -> Self {
         match value {
-            1 => Role::Admin,
+            1 => Role::Host,
             _ => Role::Competitor,
         }
     }
@@ -30,7 +30,7 @@ impl From<i32> for Role {
 impl From<i64> for Role {
     fn from(value: i64) -> Self {
         match value {
-            1 => Role::Admin,
+            1 => Role::Host,
             _ => Role::Competitor,
         }
     }
@@ -40,7 +40,7 @@ impl From<Role> for i32 {
     fn from(value: Role) -> Self {
         match value {
             Role::Competitor => 0,
-            Role::Admin => 1,
+            Role::Host => 1,
         }
     }
 }
