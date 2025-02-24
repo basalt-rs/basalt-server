@@ -20,7 +20,9 @@ jobs:
         steps:
             - uses: actions/checkout@v4
             - uses: dtolnay/rust-toolchain@stable
-            - run: cargo b
+            - run: cargo build
+            - name: Copy openapi.yaml into doc/
+              run: cp openapi.yaml doc
             - name: Deploy to GitHub Pages
               if: ${{ github.event_name != 'pull_request' }}
               uses: peaceiris/actions-gh-pages@v4
