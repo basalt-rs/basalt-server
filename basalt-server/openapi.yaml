@@ -132,7 +132,7 @@ components:
       type: string
       enum:
       - competitor
-      - admin
+      - host
     TestResponse:
       type: object
       required:

@@ -20,8 +20,7 @@ jobs:
         steps:
             - uses: actions/checkout@v4
             - uses: dtolnay/rust-toolchain@stable
-            - run: cargo r -- doc-gen
-            - run: npx @redocly/cli build-docs openapi.yaml -o doc/index.html
+            - run: cargo b
             - name: Deploy to GitHub Pages
               if: ${{ github.event_name != 'pull_request' }}
               uses: peaceiris/actions-gh-pages@v4
