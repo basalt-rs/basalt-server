@@ -2,8 +2,8 @@ use crate::server::AppState;
 use axum::{extract::State, Json};
 use bedrock::packet::{Problem, Test};
 use std::collections::BTreeSet;
+use std::ops::Deref;
 use std::sync::Arc;
-use std::{collections::HashSet, ops::Deref};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 #[derive(serde::Serialize, utoipa::ToSchema)]
