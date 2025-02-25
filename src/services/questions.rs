@@ -1,6 +1,7 @@
 use crate::server::AppState;
 use axum::{extract::State, Json};
 use bedrock::packet::{Problem, Test};
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::{collections::HashSet, ops::Deref};
 use utoipa_axum::{router::OpenApiRouter, routes};
@@ -22,7 +23,7 @@ impl From<&Test> for TestResponse {
 
 #[derive(serde::Serialize, utoipa::ToSchema)]
 pub struct QuestionResponse {
-    languages: Option<HashSet<String>>,
+    languages: Option<BTreeSet<String>>,
     title: String,
     description: Option<String>,
     tests: Vec<TestResponse>,
