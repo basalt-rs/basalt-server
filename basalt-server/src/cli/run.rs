@@ -5,7 +5,7 @@ use clap::Parser;
 use rand::distributions::Distribution;
 use tracing::info;
 
-use crate::{
+use basalt_server_lib::{
     server::{self, AppState},
     storage::SqliteLayer,
 };
