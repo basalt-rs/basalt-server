@@ -7,29 +7,13 @@ rust-version.workspace = true
 [dependencies]
 basalt-server-lib= { path = "../basalt-server-lib" }
 anyhow.workspace = true
-argon2.workspace = true
-axum-extra.workspace = true
 axum.workspace = true
 bedrock.workspace = true
 clap.workspace = true
-dashmap.workspace = true
-derive_more.workspace = true
-directories.workspace = true
-erudite.workspace = true
-leucite.workspace = true
 rand.workspace = true
-redact.workspace = true
-scopeguard.workspace = true
-serde_json.workspace = true
-serde.workspace = true
-sqlx.workspace = true
-thiserror.workspace = true
 tokio.workspace = true
-tower-http.workspace = true
 tracing-subscriber.workspace = true
 tracing.workspace = true
-utoipa-axum.workspace = true
-utoipa.workspace = true
 
 [build-dependencies]
 basalt-server-lib= { path = "../basalt-server-lib" }
