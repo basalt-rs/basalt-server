@@ -21,7 +21,7 @@ trim_output = true
 max_memory = { compile = 128, run = 64 }
 max_file_size = 8192
 
-[[accounts.admins]]
+[[accounts.hosts]]
 name = "Teacher"
 password = "abc123"
 
