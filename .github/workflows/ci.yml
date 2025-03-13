@@ -63,6 +63,20 @@ jobs:
               with:
                   reporter: "github-pr-check"
                   github_token: ${{ secrets.GITHUB_TOKEN }}
+    dependencies:
+        runs-on: ubuntu-latest
+        name: stable / machete
+        permissions:
+            contents: read
+            checks: write
+        strategy:
+            fail-fast: false
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  submodules: true
+            - name: machete
+              uses: bnjbvr/cargo-machete@main
     msrv:
         # check that we can build using the minimal rust version that is specified by this crate
         runs-on: ubuntu-latest

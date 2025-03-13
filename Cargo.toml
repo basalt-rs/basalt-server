@@ -1,11 +1,13 @@
-[package]
-name = "basalt-server"
-version = "0.1.0"
-edition = "2021"
+[workspace]
+members = ["basalt-server", "basalt-server-lib"]
 resolver = "2"
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
 rust-version = "1.80"
 
-[dependencies]
+[workspace.dependencies]
 anyhow = "1.0.95"
 argon2 = { version = "0.5.3", features = ["password-hash"] }
 async-tempfile = "0.6.0"
@@ -31,11 +33,3 @@ tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 tracing = { version = "0.1.41", features = ["release_max_level_debug"] }
 utoipa-axum = { version = "0.2.0", features = ["debug"] }
 utoipa = { version = "5.3.1", features = ["debug", "yaml"] }
-
-[dev-dependencies]
-async-tempfile = "0.6.0"
-
-[build-dependencies]
-tokio = { version = "1.43.0", features = ["full"] }
-sqlx = { version = "0.8.3", features = ["sqlite"] }
-anyhow = "1.0.95"
