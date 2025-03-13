@@ -5,7 +5,8 @@ competition.  For most use cases, you don't want to run this program
 directly and instead use our docker container.  You can find more
 information in the [docs](https://basalt.rs/cli).
 
-> ![NOTE]
+> [!IMPORTANT]
+>
 > The Basalt server can only be run on Linux as we use Linux-specific
 > features for sandboxing.
 >
