@@ -4,6 +4,9 @@ edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
+[features]
+doc-gen = []
+
 [dependencies]
 anyhow.workspace = true
 argon2.workspace = true

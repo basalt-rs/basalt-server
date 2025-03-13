@@ -5,7 +5,7 @@ version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-basalt-server-lib= { path = "../basalt-server-lib" }
+basalt-server-lib = { path = "../basalt-server-lib" }
 anyhow.workspace = true
 axum.workspace = true
 bedrock.workspace = true
@@ -16,7 +16,7 @@ tracing-subscriber.workspace = true
 tracing.workspace = true
 
 [build-dependencies]
-basalt-server-lib= { path = "../basalt-server-lib" }
+basalt-server-lib = { path = "../basalt-server-lib", features = ["doc-gen"] }
 anyhow.workspace = true
 async-tempfile.workspace = true
 bedrock.workspace = true
