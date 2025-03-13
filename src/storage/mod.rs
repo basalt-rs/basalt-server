@@ -81,10 +81,10 @@ impl SqliteLayer {
                 .context("Failed to create user")?;
         }
 
-        for admin in &cfg.accounts.admins {
-            create_user(&mut *tx, &admin.name, &admin.password, Role::Admin)
+        for host in &cfg.accounts.hosts {
+            create_user(&mut *tx, &host.name, &host.password, Role::Host)
                 .await
-                .context("Failed to create admin user")?;
+                .context("Failed to create host user")?;
         }
 
         tx.commit()
