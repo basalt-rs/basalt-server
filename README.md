@@ -5,6 +5,13 @@ competition.  For most use cases, you don't want to run this program
 directly and instead use our docker container.  You can find more
 information in the [docs](https://basalt.rs/cli).
 
+> ![NOTE]
+> The Basalt server can only be run on Linux as we use Linux-specific
+> features for sandboxing.
+>
+> If you are (unfortunately) on Windows or MacOS, please use our docker
+> image through our [CLI](https://github.com/basalt-rs/basalt-cli).
+
 ## Layout
 
 This repo is broken into two crates: `basalt-server-lib` and
