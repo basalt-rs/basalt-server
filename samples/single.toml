@@ -1,25 +1,31 @@
-port = 8517
+port = 80
 
 [setup]
+# import = "./setup.toml"
+
+# install = { import = "./install.sh" }
 install = '''
-dnf install opam -y
+dnf install opam
 '''
 
+# init = { import = "./init.sh" }
 init = '''
 opam init -y
 eval $(opam env)
 '''
 
+[test_runner]
+# import = "./test-runner.toml"
+
+timeout_ms = 60_000
+trim_output = true
+max_memory = { compile = 128, run = 64 }
+max_file_size = 8192
+
 [languages]
 python3 = "latest"
 java = "21"
 ocaml = { build = "ocamlc -o out solution.ml", run = "./out", source_file = "solution.ml" }
-
-[test_runner]
-timeout_ms = 2_000
-trim_output = true
-max_memory = { compile = 128, run = 64 }
-max_file_size = 8192
 
 [[accounts.hosts]]
 name = "Teacher"
@@ -33,7 +39,9 @@ password = "123abc"
 name = "StudentTwo"
 password = "deadbeef"
 
+# Specify information about the packet itself
 [packet]
+# import = "./packet.toml"
 title = "Example Packet"
 preamble = '''
 This packet includes problems of a difficulty *vastly*
@@ -48,13 +56,14 @@ luck. You will be rewarded for swiftness in your answers.
 '''
 
 [[packet.problems]]
+# import = "./problem1.toml"
 title = "Reversing a string"
 description = '''
 Reversing a string is one of the most *basic* algorithmic
 problems for a beginner computer science student to solve.
 
 Solve it.
-''''
+'''
 
 [[packet.problems.tests]]
 input = "hello"
@@ -67,6 +76,13 @@ output = "dlrow"
 visible = true
 
 [[packet.problems.tests]]
-input = "2"
-output = "2"
-visible = true
+input = ""
+output = ""
+
+[[packet.problems.tests]]
+input = "aa"
+output = "aa"
+
+[[packet.problems.tests]]
+input = "racecar"
+output = "racecar"

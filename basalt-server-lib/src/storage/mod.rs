@@ -24,8 +24,11 @@ impl SqliteLayer {
     /// An attempt will be made to create a new file in your data folder if
     /// one does not already exist to contain this new database.
     ///
-    /// ```rust
-    /// let sqlite_layer = SqliteLayer::new("competition-title".into()).unwrap();
+    /// ```no_run
+    /// # use basalt_server_lib::storage::SqliteLayer;
+    /// # async {
+    /// let sqlite_layer = SqliteLayer::new("competition-title").await.unwrap();
+    /// # };
     /// ```
     pub async fn new(title: impl AsRef<str>) -> anyhow::Result<(bool, Self)> {
         let mut path = directories::ProjectDirs::from("rs", "basalt", "basalt-server")
@@ -102,10 +105,11 @@ mod tests {
 
     #[tokio::test]
     async fn ingestion_works() {
-        let mut file = tokio::fs::File::open("tests/single.toml").await.unwrap();
-        let cfg = Config::read_async(&mut file, Some("single.toml"))
-            .await
-            .unwrap();
+        let cfg = Config::from_str(
+            include_str!("../../../samples/single.toml"),
+            Some("single.toml"),
+        )
+        .unwrap();
         let (f, sql_layer) = mock_db().await;
         let db = sql_layer.write().await;
         db.ingest(&cfg).await.expect("Failed to ingest config");

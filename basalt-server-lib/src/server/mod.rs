@@ -75,7 +75,7 @@ pub fn router(initial_state: Arc<AppState>) -> axum::Router {
         )
 }
 
-#[cfg(debug_assertions)]
+#[cfg(feature = "doc-gen")]
 pub fn doc_router(initial_state: Arc<AppState>) -> utoipa_axum::router::OpenApiRouter {
     utoipa_axum::router::OpenApiRouter::new()
         .nest("/auth", services::auth::router())

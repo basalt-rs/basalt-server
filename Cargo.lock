@@ -283,12 +283,30 @@ name = "basalt-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-tempfile",
+ "axum",
+ "basalt-server-lib",
+ "bedrock",
+ "clap",
+ "rand",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "utoipa",
+ "utoipa-axum",
+]
+
+[[package]]
+name = "basalt-server-lib"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
  "argon2",
  "async-tempfile",
  "axum",
  "axum-extra",
  "bedrock",
- "clap",
  "dashmap",
  "derive_more",
  "directories",
@@ -304,7 +322,6 @@ dependencies = [
  "tokio",
  "tower-http",
  "tracing",
- "tracing-subscriber",
  "utoipa",
  "utoipa-axum",
 ]
