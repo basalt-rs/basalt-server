@@ -61,7 +61,7 @@ async fn extract(parts: &mut Parts, state: &Arc<AppState>) -> Result<Option<Auth
             trace!("token expired");
             AuthError::ExpiredToken
         })?;
-    trace!(user.username, "resolved user");
+    trace!(?user.username, "resolved user");
 
     Ok(Some(AuthUser {
         user,
