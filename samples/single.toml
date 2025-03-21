@@ -28,16 +28,16 @@ java = "21"
 ocaml = { build = "ocamlc -o out solution.ml", run = "./out", source_file = "solution.ml" }
 
 [[accounts.hosts]]
-name = "Teacher"
-password = "abc123"
+name = "host"
+password = "pwd1"
 
 [[accounts.competitors]]
-name = "StudentOne"
-password = "123abc"
+name = "team1"
+password = "pwd1"
 
 [[accounts.competitors]]
-name = "StudentTwo"
-password = "deadbeef"
+name = "team2"
+password = "pwd1"
 
 # Specify information about the packet itself
 [packet]

@@ -2,14 +2,22 @@ use std::{borrow::Cow, net::SocketAddr, sync::Arc};
 
 use anyhow::{bail, Context};
 use bedrock::packet::Test;
-use erudite::{RunOutput, TestCase, TestOutput};
+use erudite::{RunOutput, TestCase, TestFailReason, TestOutput};
 use leucite::Rules;
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
+use sqlx::Acquire;
+use tokio::sync::mpsc::{self, UnboundedSender};
 use tracing::{debug, trace};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
-use crate::{extractors::auth::AuthUser, server::AppState};
+use crate::{
+    extractors::auth::AuthUser,
+    repositories::{
+        self,
+        submissions::{NewSubmissionTestHistory, TestResult},
+    },
+    server::AppState,
+};
 pub mod connect;
 
 #[derive(Clone, Eq, PartialEq, Hash, derive_more::Debug)]
@@ -22,6 +30,15 @@ pub enum ConnectionKind {
         #[debug(skip)]
         addr: SocketAddr,
     },
+}
+
+impl ConnectionKind {
+    pub fn is_user(&self) -> bool {
+        match self {
+            ConnectionKind::User { .. } => true,
+            ConnectionKind::Leaderboard { .. } => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -47,8 +64,13 @@ pub enum WebSocketSend {
         results: Vec<(TestOutput, Test)>,
         percent: usize,
     },
-    Error {
+    Submit {
         id: usize,
+        results: Vec<(TestOutput, Test)>,
+        percent: usize,
+    },
+    Error {
+        id: Option<usize>,
         message: String,
     },
 }
@@ -66,17 +88,63 @@ pub enum WebSocketRecv<'a> {
         solution: Cow<'a, str>,
         problem: usize,
     },
+    Submit {
+        id: usize,
+        language: Cow<'a, str>,
+        solution: Cow<'a, str>,
+        problem: usize,
+    },
 }
 
 impl WebSocketRecv<'_> {
+    fn can_use(&self, who: &ConnectionKind) -> bool {
+        match self {
+            WebSocketRecv::Broadcast { .. } => true,
+            WebSocketRecv::RunTest { .. } => who.is_user(),
+            WebSocketRecv::Submit { .. } => who.is_user(),
+        }
+    }
+
+    fn id(&self) -> Option<usize> {
+        match self {
+            WebSocketRecv::Broadcast { .. } => None,
+            WebSocketRecv::RunTest { id, .. } => Some(*id),
+            WebSocketRecv::Submit { id, .. } => Some(*id),
+        }
+    }
+
+    fn error(
+        &self,
+        ws: &UnboundedSender<WebSocketSend>,
+        message: impl Into<String>,
+    ) -> anyhow::Result<()> {
+        ws.send(WebSocketSend::Error {
+            id: self.id(),
+            message: message.into(),
+        })
+        .context("sending error message")
+    }
+
     #[tracing::instrument(skip(state))]
     async fn handle(self, who: &ConnectionKind, state: Arc<AppState>) -> anyhow::Result<()> {
+        {
+            let ws = &state
+                .active_connections
+                .get(who)
+                .context("websocket not in active_connections")?
+                .send;
+
+            if !self.can_use(who) {
+                return self.error(ws, "Must be signed in to run tests");
+            }
+        }
+
         match self {
             WebSocketRecv::Broadcast { broadcast } => state.broadcast(broadcast)?,
             WebSocketRecv::RunTest {
                 id,
-                language,
-                solution,
+                ref language,
+                ref solution,
                 problem,
             } => {
                 let ws = &state
@@ -85,35 +153,13 @@ impl WebSocketRecv<'_> {
                     .context("websocket not in active_connections")?
                     .send;
 
-                match who {
-                    ConnectionKind::User { .. } => {}
-                    ConnectionKind::Leaderboard { .. } => {
-                        let err = WebSocketSend::Error {
-                            id,
-                            message: "Must be signed in to run tests.".into(),
-                        };
-                        ws.send(err)?;
-                        return Ok(());
-                    }
-                };
-
-                // TODO: Prevent leaderboard from being able to run tests once we have auth
-                let Some(language) = state.config.languages.get_by_str(&language) else {
-                    ws.send(WebSocketSend::Error {
-                        id,
-                        message: format!("Unknown language '{}'", language),
-                    })
-                    .context("sending error message")?;
-                    return Ok(());
+                let Some(language) = state.config.languages.get_by_str(language) else {
+                    return self.error(ws, format!("Unknown language '{}'", language));
                 };
 
                 let key = (who.clone(), problem);
                 if !state.active_tests.insert(key.clone()) {
-                    ws.send(WebSocketSend::Error {
-                        id,
-                        message: "Tests are already running.".into(),
-                    })
-                    .context("sending error message")?;
+                    return self.error(ws, "Tests are already running");
                 };
 
                 scopeguard::defer! {
@@ -134,7 +180,7 @@ impl WebSocketRecv<'_> {
                 let mut runner = erudite::Runner::new();
                 let problem = &*state.config.packet.problems[problem];
                 runner
-                    .create_file(language.source_file(), &*solution)
+                    .create_file(language.source_file(), &**solution)
                     .tests(
                         problem
                             .tests
@@ -175,6 +221,197 @@ impl WebSocketRecv<'_> {
                             .collect::<Vec<_>>();
 
                         let percent = success * 100 / problem.tests.len();
+                        ws.send(WebSocketSend::TestResults {
+                            id,
+                            results,
+                            percent,
+                        })
+                        .context("sending test results message")?;
+                    }
+                }
+            }
+            WebSocketRecv::Submit {
+                id,
+                ref language,
+                ref solution,
+                problem: problem_index,
+            } => {
+                let ws = &state
+                    .active_connections
+                    .get(who)
+                    .context("websocket not in active_connections")?
+                    .send;
+
+                let ConnectionKind::User {
+                    user: AuthUser { user, .. },
+                } = who
+                else {
+                    unreachable!("is_user called above")
+                };
+
+                let Some(language) = state.config.languages.get_by_str(language) else {
+                    return self.error(ws, format!("Unknown language '{}'", language));
+                };
+
+                let sql = state.db.read().await;
+                let n = repositories::submissions::count_previous_submissions(
+                    &sql.db,
+                    &user.username,
+                    problem_index,
+                )
+                .await
+                .context("getting previous submissions")?;
+                if n >= 5 {
+                    // TODO: move this to the config
+                    return self.error(ws, "Only 5 submissions are allowed.");
+                }
+                drop(sql); // ensure we don't hold the lock while doing time-consuming things
+
+                let key = (who.clone(), problem_index);
+                if !state.active_submissions.insert(key.clone()) {
+                    return self.error(ws, "Submission is already running");
+                };
+
+                scopeguard::defer! {
+                    state.active_submissions.remove(&key);
+                }
+
+                let build_rules = Rules::new()
+                    .add_read_only("/usr")
+                    .add_read_only("/etc")
+                    .add_read_only("/dev")
+                    .add_read_only("/bin");
+                let run_rules = Rules::new()
+                    .add_read_only("/usr")
+                    .add_read_only("/etc")
+                    .add_read_only("/dev")
+                    .add_read_only("/bin");
+
+                let mut runner = erudite::Runner::new();
+                let problem = &*state.config.packet.problems[problem_index];
+                runner
+                    .create_file(language.source_file(), &**solution)
+                    .tests(
+                        problem
+                            .tests
+                            .iter()
+                            .map(|t| TestCase::new(&t.input, &t.output)),
+                    )
+                    .timeout(state.config.test_runner.timeout)
+                    .trim_output(state.config.test_runner.trim_output)
+                    .compile_rules(build_rules)
+                    .run_rules(run_rules)
+                    .run_command(language.run_command().split(" "));
+
+                if let Some(cmd) = language.build_command() {
+                    runner.compile_command(cmd.split(" "));
+                }
+
+                let results = runner.run().await?;
+
+                match results {
+                    RunOutput::CompileSpawnFail(s) => {
+                        let sql = state.db.read().await;
+                        repositories::submissions::create_submission_history(
+                            &sql.db,
+                            &user.username,
+                            true,
+                            solution,
+                            problem_index,
+                            0,
+                        )
+                        .await
+                        .context("creating submission history")?;
+                        tracing::error!("Failed to spawn compile command: {:?}", s);
+                    }
+                    RunOutput::CompileFail(simple_output) => {
+                        let sql = state.db.read().await;
+                        repositories::submissions::create_submission_history(
+                            &sql.db,
+                            &user.username,
+                            true,
+                            solution,
+                            problem_index,
+                            0,
+                        )
+                        .await
+                        .context("creating submission history")?;
+                        debug!(?simple_output, "Failed to build");
+                    }
+                    RunOutput::RunSuccess(vec) => {
+                        let sql = state.db.read().await;
+                        let mut txn = sql.db.begin().await.unwrap();
+                        let history = repositories::submissions::create_submission_history(
+                            txn.acquire().await.unwrap(),
+                            &user.username,
+                            false,
+                            solution,
+                            problem_index,
+                            10, // TODO: Use the scoring introduced in Bedrock
+                        )
+                        .await
+                        .context("creating submission history")?;
+
+                        for (i, test) in vec.iter().enumerate() {
+                            repositories::submissions::create_submission_test_history(
+                                txn.acquire().await.unwrap(),
+                                &history.id,
+                                match test {
+                                    TestOutput::Pass => NewSubmissionTestHistory {
+                                        test_index: i,
+                                        result: TestResult::Pass,
+                                        stdout: None,
+                                        stderr: None,
+                                        exit_status: 0,
+                                    },
+                                    TestOutput::Fail(TestFailReason::Timeout) => {
+                                        NewSubmissionTestHistory {
+                                            test_index: i,
+                                            result: TestResult::Timeout,
+                                            stdout: None,
+                                            stderr: None,
+                                            exit_status: 1,
+                                        }
+                                    }
+                                    TestOutput::Fail(TestFailReason::IncorrectOutput(output)) => {
+                                        NewSubmissionTestHistory {
+                                            test_index: i,
+                                            result: TestResult::IncorrectOutput,
+                                            stdout: output.stdout.str().map(String::from),
+                                            stderr: output.stderr.str().map(String::from),
+                                            exit_status: output.status.into(),
+                                        }
+                                    }
+                                    TestOutput::Fail(TestFailReason::Crash(output)) => {
+                                        NewSubmissionTestHistory {
+                                            test_index: i,
+                                            result: TestResult::Crash,
+                                            stdout: output.stdout.str().map(String::from),
+                                            stderr: output.stderr.str().map(String::from),
+                                            exit_status: output.status.into(),
+                                        }
+                                    }
+                                },
+                            )
+                            .await
+                            .context("creating submission test history")?;
+                        }
+
+                        trace!(?vec, "Raw test output");
+                        let success = vec
+                            .iter()
+                            .filter(|&r| matches!(r, TestOutput::Pass))
+                            .count();
+
+                        let results = vec
+                            .into_iter()
+                            .zip(problem.tests.iter())
+                            .filter(|(_, t)| t.visible)
+                            .map(|(r, t)| (r, t.clone()))
+                            .collect::<Vec<_>>();
+
+                        let percent = success * 100 / problem.tests.len();
+                        txn.commit().await.context("committing transaction")?;
                         ws.send(WebSocketSend::TestResults {
                             id,
                             results,

@@ -45,9 +45,25 @@ impl From<Role> for i32 {
     }
 }
 
+#[derive(
+    Debug,
+    Clone,
+    Hash,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    ToSchema,
+    derive_more::From,
+    derive_more::Into,
+    sqlx::Type,
+)]
+#[sqlx(transparent)]
+pub struct Username(String);
+
 #[derive(Debug, Clone, Hash, Eq, PartialEq, FromRow, Serialize, Deserialize, ToSchema)]
 pub struct User {
-    pub username: String,
+    pub username: Username,
     #[serde(skip)]
     pub password_hash: Secret<String>,
     pub role: Role,
