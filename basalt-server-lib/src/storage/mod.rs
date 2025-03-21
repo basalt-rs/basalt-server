@@ -105,10 +105,11 @@ mod tests {
 
     #[tokio::test]
     async fn ingestion_works() {
-        let mut file = tokio::fs::File::open("tests/single.toml").await.unwrap();
-        let cfg = Config::read_async(&mut file, Some("single.toml"))
-            .await
-            .unwrap();
+        let cfg = Config::from_str(
+            include_str!("../../../samples/single.toml"),
+            Some("single.toml"),
+        )
+        .unwrap();
         let (f, sql_layer) = mock_db().await;
         let db = sql_layer.write().await;
         db.ingest(&cfg).await.expect("Failed to ingest config");
