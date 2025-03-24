@@ -70,7 +70,7 @@ async fn login(
     )
 )]
 async fn logout(State(state): State<Arc<AppState>>, user: AuthUser) -> Result<(), StatusCode> {
-    debug!(user.user.username, "logout");
+    debug!(?user.user.username, "logout");
     let db = state.db.read().await;
 
     repositories::session::close_session(&db, &user.session_id)

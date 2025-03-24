@@ -18,6 +18,7 @@ pub struct AppState {
     pub db: RwLock<SqliteLayer>,
     pub active_connections: DashMap<ws::ConnectionKind, ws::ConnectedClient>,
     pub active_tests: DashSet<(ws::ConnectionKind, usize)>,
+    pub active_submissions: DashSet<(ws::ConnectionKind, usize)>,
     pub config: Config,
 }
 
@@ -27,6 +28,7 @@ impl AppState {
             db: RwLock::new(db),
             active_connections: Default::default(),
             active_tests: Default::default(),
+            active_submissions: Default::default(),
             config,
         }
     }

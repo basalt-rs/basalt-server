@@ -7,11 +7,11 @@ use sqlx::prelude::FromRow;
 
 use crate::{repositories::users::Role, storage::SqliteLayer};
 
-use super::users::User;
+use super::users::{User, Username};
 
 #[derive(Debug, FromRow, Serialize, Deserialize)]
 pub struct Session {
-    pub username: String,
+    pub username: Username,
     #[serde(serialize_with = "expose_secret")]
     pub password_hash: Secret<String>,
     pub role: i64,
@@ -70,7 +70,7 @@ pub async fn get_user_from_session(
         // #[sqlx(flatten)]
         // user: User
         // ```
-        username: String,
+        username: Username,
         password_hash: Secret<String>,
         role: Role,
     }

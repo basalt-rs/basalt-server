@@ -6,6 +6,7 @@ use axum::{
         ws::{Message, WebSocket},
         ConnectInfo, State, WebSocketUpgrade,
     },
+    http::HeaderMap,
     response::Response,
 };
 use rand::Rng;
@@ -13,16 +14,38 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, trace, warn};
 
 use super::{ConnectedClient, ConnectionKind, WebSocketRecv};
-use crate::{extractors::auth::OptionalAuthUser, server::AppState};
+use crate::{
+    extractors::auth::{AuthError, AuthUser},
+    repositories,
+    server::AppState,
+};
 
 #[axum::debug_handler]
 #[utoipa::path(get, path="/", tag="ws", responses((status = OK, description = "connected to websocket")))]
 pub async fn connect_websocket(
     ws: WebSocketUpgrade,
-    OptionalAuthUser(user): OptionalAuthUser,
+    headers: HeaderMap,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
-) -> Response {
+) -> Result<Response, AuthError> {
+    let db = state.db.read().await;
+    trace!("getting user from session");
+    let user = if let Some(header) = headers.get("Sec-WebSocket-Protocol") {
+        let session_id = header.to_str().unwrap();
+        let user = repositories::session::get_user_from_session(&db, session_id)
+            .await
+            .map_err(|_| {
+                trace!("token expired");
+                AuthError::ExpiredToken
+            })?;
+        Some(AuthUser {
+            user,
+            session_id: session_id.to_string(),
+        })
+    } else {
+        None
+    };
+    drop(db);
     let who = match user {
         Some(user) => ConnectionKind::User { user },
         None => ConnectionKind::Leaderboard {
@@ -36,7 +59,7 @@ pub async fn connect_websocket(
     };
 
     trace!(?who, "Client connect");
-    ws.on_upgrade(move |ws| async move {
+    Ok(ws.on_upgrade(move |ws| async move {
         // Using defer here so that if the thread panics, we still remove the connection.
         scopeguard::defer! {
             state.active_connections.remove(&who);
@@ -44,7 +67,7 @@ pub async fn connect_websocket(
         if let Err(e) = handle_socket(ws, who.clone(), Arc::clone(&state)).await {
             error!(?who, ?e, "Error handling websocket connection");
         }
-    })
+    }))
 }
 
 #[tracing::instrument(skip(ws, state))]
