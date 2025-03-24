@@ -348,10 +348,11 @@ checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
 [[package]]
 name = "bedrock"
 version = "0.1.0"
-source = "git+https://github.com/basalt-rs/bedrock.git?rev=52ff607#52ff607c8da4a910548a51d9ac290d893e07fd7c"
+source = "git+https://github.com/basalt-rs/bedrock.git?rev=4a35c85#4a35c85da2d4805db9bd697d33bb2f0a205ca260"
 dependencies = [
  "comemo",
  "ecow",
+ "evalexpr",
  "lazy_static",
  "miette",
  "phf 0.11.3",
@@ -1035,6 +1036,15 @@ dependencies = [
  "cfg-if",
  "home",
  "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "evalexpr"
+version = "12.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02a3229bec56a977f174b32fe7b8d89e8c79ebb4493d10ad763b6676dc2dc0c9"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

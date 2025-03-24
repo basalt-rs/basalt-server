@@ -32,7 +32,15 @@ pub struct SubmissionHistory {
     pub compile_fail: bool,
     pub code: String,
     pub question_index: i64, // _really_ should be usize, but sqlx doesn't like that
-    pub score: i64,
+    pub score: f64,
+}
+
+pub struct NewSubmissionHistory<'a> {
+    pub submitter: &'a Username,
+    pub compile_fail: bool,
+    pub code: &'a str,
+    pub question_index: usize,
+    pub score: f64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -89,23 +97,18 @@ pub struct NewSubmissionTestHistory {
 
 pub async fn create_submission_history<'a>(
     db: impl Executor<'_, Database = Sqlite>,
-    submitter: &Username,
-    compile_fail: bool,
-    code: impl AsRef<str>,
-    question_index: usize,
-    score: u32,
+    new: NewSubmissionHistory<'a>,
 ) -> anyhow::Result<SubmissionHistory> {
-    let code = code.as_ref();
     let id = SubmissionId::new();
-    let question_index = question_index as i64;
+    let question_index = new.question_index as i64;
     sqlx::query_as!(SubmissionHistory,
             "INSERT INTO submission_history (id, submitter, compile_fail, code, question_index, score) VALUES (?, ?, ?, ?, ?, ?) RETURNING id, submitter, time, compile_fail, code, question_index, score",
             id,
-            submitter,
-            compile_fail,
-            code,
+            new.submitter,
+            new.compile_fail,
+            new.code,
             question_index,
-            score
+            new.score
         )
         .fetch_one(db)
         .await
@@ -133,13 +136,29 @@ pub async fn create_submission_test_history<'a>(
         .context("Failed to create submission test history")
 }
 
+pub async fn count_other_submissions<'a>(
+    db: impl Executor<'_, Database = Sqlite>,
+    question_index: usize,
+) -> anyhow::Result<u32> {
+    let question_index = question_index as i64;
+    let attempts = sqlx::query_scalar!(
+        "SELECT COUNT(submitter) FROM submission_history WHERE question_index = ? AND success = TRUE AND time < CURRENT_TIMESTAMP",
+        question_index
+    )
+    .fetch_one(db)
+    .await
+    .context("Failed to create submission test history")?;
+
+    Ok(attempts as _)
+}
+
 pub async fn count_previous_submissions<'a>(
     db: impl Executor<'_, Database = Sqlite>,
     submitter: &Username,
     question_index: usize,
-) -> anyhow::Result<usize> {
+) -> anyhow::Result<u32> {
     let question_index = question_index as i64;
-    let count = sqlx::query_scalar!(
+    let attempts = sqlx::query_scalar!(
         "SELECT COUNT(*) FROM submission_history WHERE submitter = ? AND question_index = ?",
         submitter,
         question_index
@@ -147,5 +166,6 @@ pub async fn count_previous_submissions<'a>(
     .fetch_one(db)
     .await
     .context("Failed to create submission test history")?;
-    Ok(count as usize)
+
+    Ok(attempts as _)
 }

@@ -1,7 +1,7 @@
 use std::{borrow::Cow, net::SocketAddr, sync::Arc};
 
 use anyhow::{bail, Context};
-use bedrock::packet::Test;
+use bedrock::{packet::Test, scoring::Scorable};
 use erudite::{RunOutput, TestCase, TestFailReason, TestOutput};
 use leucite::Rules;
 use serde::{Deserialize, Serialize};
@@ -14,7 +14,7 @@ use crate::{
     extractors::auth::AuthUser,
     repositories::{
         self,
-        submissions::{NewSubmissionTestHistory, TestResult},
+        submissions::{NewSubmissionHistory, NewSubmissionTestHistory, TestResult},
     },
     server::AppState,
 };
@@ -254,14 +254,14 @@ impl WebSocketRecv<'_> {
                 };
 
                 let sql = state.db.read().await;
-                let n = repositories::submissions::count_previous_submissions(
+                let attempts = repositories::submissions::count_previous_submissions(
                     &sql.db,
                     &user.username,
                     problem_index,
                 )
                 .await
                 .context("getting previous submissions")?;
-                if n >= 5 {
+                if attempts >= 5 {
                     // TODO: move this to the config
                     return self.error(ws, "Only 5 submissions are allowed.");
                 }
@@ -314,11 +314,13 @@ impl WebSocketRecv<'_> {
                         let sql = state.db.read().await;
                         repositories::submissions::create_submission_history(
                             &sql.db,
-                            &user.username,
-                            true,
-                            solution,
-                            problem_index,
-                            0,
+                            NewSubmissionHistory {
+                                submitter: &user.username,
+                                compile_fail: true,
+                                code: solution,
+                                question_index: problem_index,
+                                score: 0.,
+                            },
                         )
                         .await
                         .context("creating submission history")?;
@@ -328,11 +330,13 @@ impl WebSocketRecv<'_> {
                         let sql = state.db.read().await;
                         repositories::submissions::create_submission_history(
                             &sql.db,
-                            &user.username,
-                            true,
-                            solution,
-                            problem_index,
-                            0,
+                            NewSubmissionHistory {
+                                submitter: &user.username,
+                                compile_fail: true,
+                                code: solution,
+                                question_index: problem_index,
+                                score: 0.,
+                            },
                         )
                         .await
                         .context("creating submission history")?;
@@ -340,14 +344,32 @@ impl WebSocketRecv<'_> {
                     }
                     RunOutput::RunSuccess(vec) => {
                         let sql = state.db.read().await;
+                        let other_completions = repositories::submissions::count_other_submissions(
+                            &sql.db,
+                            problem_index,
+                        )
+                        .await
+                        .context("getting other submissions")?;
                         let mut txn = sql.db.begin().await.unwrap();
+                        let score = state
+                            .config
+                            .score(
+                                problem_index,
+                                bedrock::scoring::EvaluationContext {
+                                    num_completions: other_completions,
+                                    num_attempts: attempts,
+                                },
+                            )
+                            .context("calculating score")?;
                         let history = repositories::submissions::create_submission_history(
                             txn.acquire().await.unwrap(),
-                            &user.username,
-                            false,
-                            solution,
-                            problem_index,
-                            10, // TODO: Use the scoring introduced in Bedrock
+                            NewSubmissionHistory {
+                                submitter: &user.username,
+                                compile_fail: false,
+                                code: solution,
+                                question_index: problem_index,
+                                score,
+                            },
                         )
                         .await
                         .context("creating submission history")?;
