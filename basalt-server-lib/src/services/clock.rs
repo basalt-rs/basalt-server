@@ -1,6 +1,7 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use axum::{extract::State, http::StatusCode, Json};
+use bedrock::{Game, PointsSettings};
 use tracing::{debug, trace};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
@@ -14,50 +15,60 @@ use crate::{
 };
 
 #[derive(serde::Deserialize, utoipa::ToSchema)]
-struct PauseRequest {
-    username: String,
-    password: String,
+#[serde(untagged)]
+pub enum UpdateClockRequest {
+    PauseUpdate { is_paused: bool },
 }
 
 #[derive(serde::Serialize, utoipa::ToSchema)]
-struct PauseResponse {
-    token: String,
-    role: Role,
+struct UpdateClockResponse {
+    is_paused: bool,
+    time_left_seconds: u64,
 }
 
 #[axum::debug_handler]
 #[utoipa::path(
-    put,
-    path="/", tag="auth", request_body=PauseRequest,
+    patch,
+    path="/", tag="auth", request_body=UpdateClockRequest,
     responses(
-        (status=OK, body=PauseResponse, description="Game is paused"),
-        (status=401, description="Insufficient permissions"),
+        (status=OK, body=UpdateClockResponse, description="Game is paused"),
+        (status=UNAUTHORIZED, description="Insufficient permissions"),
     )
 )]
-async fn pause(
+async fn update_clock(
     State(state): State<Arc<AppState>>,
-    Json(login): Json<PauseRequest>,
-) -> Result<Json<PauseResponse>, StatusCode> {
-    trace!(login.username, "attempt to login to user");
-    let db = state.db.read().await;
+    user: AuthUser,
+    Json(update): Json<UpdateClockRequest>,
+) -> Result<Json<UpdateClockResponse>, StatusCode> {
+    trace!(user.user.username, "attempt to pause server");
 
-    let login = UserLogin {
-        username: login.username,
-        password: login.password.into(),
+    let time_limit = match state.config.game {
+        // TODO: When time_limit is made public, update this
+        Game::Points(PointsSettings { .. }) => Duration::from_secs(60 * 75),
+        // TODO: When other modes are supported, provide correct values
+        _ => Duration::from_secs(60 * 75),
     };
 
-    let Ok(user) = repositories::users::login_user(&db, &login).await else {
-        debug!(login.username, "failed login attempt");
-        return Err(StatusCode::UNAUTHORIZED);
-    };
+    let mut clock = state.clock.write().await;
+    match update {
+        UpdateClockRequest::PauseUpdate { is_paused: true } => {
+            clock.pause();
+        }
+        UpdateClockRequest::PauseUpdate { is_paused: false } => {
+            clock.unpause();
+        }
+    }
 
-    let token = repositories::session::create_session(&db, &user)
-        .await
-        .unwrap();
-    let role = user.role;
-    debug!(login.username, "log in");
-
-    Ok(Json(LoginResponse { token, role }))
+    match clock.current_time() {
+        Ok(current_time) => Ok(Json(UpdateClockResponse {
+            is_paused: current_time.paused,
+            time_left_seconds: current_time.time_left(time_limit).as_secs(),
+        })),
+        Err(_) => Ok(Json(UpdateClockResponse {
+            is_paused: false,
+            time_left_seconds: Duration::from_secs(0).as_secs(),
+        })),
+    }
 }
 
 #[axum::debug_handler]

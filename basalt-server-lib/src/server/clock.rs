@@ -29,15 +29,15 @@ pub struct CurrentTime {
 }
 
 impl ClockInfo {
-    fn pause(&mut self) {
+    pub fn pause(&mut self) {
         self.pause_time = self.pause_time.or(Some(Instant::now()));
     }
-    fn unpause(&mut self) {
+    pub fn unpause(&mut self) {
         if let Some(pause_time) = self.pause_time {
             self.total_time_paused += pause_time.elapsed();
         }
     }
-    fn current_time(self) -> anyhow::Result<CurrentTime> {
+    pub fn current_time(&self) -> anyhow::Result<CurrentTime> {
         match self.pause_time {
             Some(pause_time) => Ok(CurrentTime {
                 paused: true,
@@ -55,5 +55,11 @@ impl ClockInfo {
                 })
             }
         }
+    }
+}
+
+impl CurrentTime {
+    pub fn time_left(self, time_limit: Duration) -> Duration {
+        time_limit - self.duration
     }
 }
