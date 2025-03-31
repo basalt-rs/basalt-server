@@ -2,9 +2,12 @@ use std::sync::Arc;
 
 use axum::Router;
 use bedrock::Config;
+use clock::ClockInfo;
 use dashmap::{DashMap, DashSet};
 use rand::{distributions::Alphanumeric, Rng};
 use tokio::sync::RwLock;
+
+pub mod clock;
 
 use crate::{
     services::{
@@ -19,6 +22,7 @@ pub struct AppState {
     pub active_connections: DashMap<ws::ConnectionKind, ws::ConnectedClient>,
     pub active_tests: DashSet<(ws::ConnectionKind, usize)>,
     pub config: Config,
+    pub clock: RwLock<ClockInfo>,
 }
 
 impl AppState {
@@ -28,6 +32,7 @@ impl AppState {
             active_connections: Default::default(),
             active_tests: Default::default(),
             config,
+            clock: Default::default(),
         }
     }
 
