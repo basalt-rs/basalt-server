@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
-use sqlx::{Executor, Sqlite};
+use sqlx::{Executor, Sqlite, SqliteExecutor};
 use time::OffsetDateTime;
 
 use super::users::Username;
@@ -33,6 +33,7 @@ pub struct SubmissionHistory {
     pub code: String,
     pub question_index: i64, // _really_ should be usize, but sqlx doesn't like that
     pub score: f64,
+    pub success: bool,
 }
 
 pub struct NewSubmissionHistory<'a> {
@@ -41,6 +42,7 @@ pub struct NewSubmissionHistory<'a> {
     pub code: &'a str,
     pub question_index: usize,
     pub score: f64,
+    pub success: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -102,13 +104,14 @@ pub async fn create_submission_history<'a>(
     let id = SubmissionId::new();
     let question_index = new.question_index as i64;
     sqlx::query_as!(SubmissionHistory,
-            "INSERT INTO submission_history (id, submitter, compile_fail, code, question_index, score) VALUES (?, ?, ?, ?, ?, ?) RETURNING id, submitter, time, compile_fail, code, question_index, score",
+            "INSERT INTO submission_history (id, submitter, compile_fail, code, question_index, score, success) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id, submitter, time, compile_fail, code, question_index, score, success",
             id,
             new.submitter,
             new.compile_fail,
             new.code,
             question_index,
-            new.score
+            new.score,
+            new.success,
         )
         .fetch_one(db)
         .await
@@ -168,4 +171,50 @@ pub async fn count_previous_submissions<'a>(
     .context("Failed to create submission test history")?;
 
     Ok(attempts as _)
+}
+
+pub async fn get_user_score(
+    db: impl SqliteExecutor<'_>,
+    username: &Username,
+) -> anyhow::Result<f64> {
+    sqlx::query_scalar!(
+        r#"
+            SELECT SUM(h.score)
+            FROM submission_history h
+            JOIN (
+                SELECT question_index, MAX(time) AS latest
+                FROM submission_history
+                GROUP BY question_index
+            ) t ON h.question_index = t.question_index AND h.time = t.latest
+            WHERE h.submitter = ?;
+        "#,
+        username
+    )
+    .fetch_one(db)
+    .await
+    .context("while querying the user's score")
+    .map(Option::unwrap_or_default)
+}
+
+pub async fn get_latest_submissions(
+    db: impl SqliteExecutor<'_>,
+    username: &Username,
+) -> anyhow::Result<Vec<SubmissionHistory>> {
+    sqlx::query_as!(
+        SubmissionHistory,
+        r#"
+            SELECT h.*
+            FROM submission_history h
+            JOIN (
+                SELECT question_index, MAX(time) AS latest
+                FROM submission_history
+                GROUP BY question_index
+            ) t ON h.question_index = t.question_index AND h.time = t.latest
+            WHERE h.submitter = ?;
+        "#,
+        username
+    )
+    .fetch_all(db)
+    .await
+    .context("while querying the user's question states")
 }

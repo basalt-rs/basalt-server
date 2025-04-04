@@ -33,9 +33,8 @@ impl AppState {
         }
     }
 
-    pub fn broadcast(self: Arc<Self>, broadcast: Broadcast) -> anyhow::Result<()> {
+    pub fn broadcast(self: Arc<Self>, broadcast: WebSocketSend) -> anyhow::Result<()> {
         let mut to_remove = Vec::new();
-        let broadcast = WebSocketSend::Broadcast { broadcast };
         for conn in &self.active_connections {
             if conn.send.send(broadcast.clone()).is_err() {
                 // This _shouldn't_ happen, but it _could_

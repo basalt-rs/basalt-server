@@ -15,6 +15,7 @@ use crate::{
     repositories::{
         self,
         submissions::{NewSubmissionHistory, NewSubmissionTestHistory, TestResult},
+        users::{QuestionState, Username},
     },
     server::AppState,
 };
@@ -53,11 +54,16 @@ pub enum Broadcast {
 }
 
 /// A message that is sent from the server onto the websocket
-#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum WebSocketSend {
     Broadcast {
         broadcast: Broadcast,
+    },
+    TeamUpdate {
+        team: Username,
+        new_score: f64,
+        new_states: Vec<QuestionState>,
     },
     TestResults {
         id: usize,
@@ -140,7 +146,9 @@ impl WebSocketRecv<'_> {
         }
 
         match self {
-            WebSocketRecv::Broadcast { broadcast } => state.broadcast(broadcast)?,
+            WebSocketRecv::Broadcast { broadcast } => {
+                state.broadcast(WebSocketSend::Broadcast { broadcast })?
+            }
             WebSocketRecv::RunTest {
                 id,
                 ref language,
@@ -320,6 +328,7 @@ impl WebSocketRecv<'_> {
                                 code: solution,
                                 question_index: problem_index,
                                 score: 0.,
+                                success: false,
                             },
                         )
                         .await
@@ -336,6 +345,7 @@ impl WebSocketRecv<'_> {
                                 code: solution,
                                 question_index: problem_index,
                                 score: 0.,
+                                success: false,
                             },
                         )
                         .await
@@ -351,16 +361,21 @@ impl WebSocketRecv<'_> {
                         .await
                         .context("getting other submissions")?;
                         let mut txn = sql.db.begin().await.unwrap();
-                        let score = state
-                            .config
-                            .score(
-                                problem_index,
-                                bedrock::scoring::EvaluationContext {
-                                    num_completions: other_completions,
-                                    num_attempts: attempts,
-                                },
-                            )
-                            .context("calculating score")?;
+                        let success = vec.iter().all(|x| matches!(x, TestOutput::Pass));
+                        let score = if success {
+                            state
+                                .config
+                                .score(
+                                    problem_index,
+                                    bedrock::scoring::EvaluationContext {
+                                        num_completions: other_completions,
+                                        num_attempts: attempts,
+                                    },
+                                )
+                                .context("calculating score")?
+                        } else {
+                            0.
+                        };
                         let history = repositories::submissions::create_submission_history(
                             txn.acquire().await.unwrap(),
                             NewSubmissionHistory {
@@ -369,6 +384,7 @@ impl WebSocketRecv<'_> {
                                 code: solution,
                                 question_index: problem_index,
                                 score,
+                                success,
                             },
                         )
                         .await
@@ -440,6 +456,34 @@ impl WebSocketRecv<'_> {
                             percent,
                         })
                         .context("sending test results message")?;
+
+                        let submissions = repositories::submissions::get_latest_submissions(
+                            &sql.db,
+                            &user.username,
+                        )
+                        .await
+                        .context("getting user submissions")?;
+
+                        let mut new_states =
+                            vec![QuestionState::NotAttempted; state.config.packet.problems.len()];
+                        for s in submissions {
+                            new_states[s.question_index as usize] = if s.success {
+                                QuestionState::Pass
+                            } else {
+                                QuestionState::Fail
+                            }
+                        }
+
+                        let new_score =
+                            repositories::submissions::get_user_score(&sql.db, &user.username)
+                                .await
+                                .context("getting user score")?;
+
+                        Arc::clone(&state).broadcast(WebSocketSend::TeamUpdate {
+                            team: user.username.clone(),
+                            new_score,
+                            new_states,
+                        })?;
                     }
                 }
             }

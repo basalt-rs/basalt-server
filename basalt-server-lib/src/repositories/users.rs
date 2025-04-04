@@ -5,9 +5,10 @@ use rand::rngs::OsRng;
 use redact::Secret;
 use serde::{Deserialize, Serialize};
 use sqlx::prelude::FromRow;
-use sqlx::{Executor, Sqlite};
+use sqlx::{Executor, Sqlite, SqliteExecutor};
 use utoipa::ToSchema;
 
+use crate::repositories::submissions::SubmissionHistory;
 use crate::storage::SqliteLayer;
 
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
@@ -154,6 +155,15 @@ pub async fn create_user(
             password_hash,
             role_int
         ).fetch_one(db).await.context("Failed to create user")
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum QuestionState {
+    Pass,
+    Fail,
+    InProgress,
+    NotAttempted,
 }
 
 #[cfg(test)]
