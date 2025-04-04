@@ -10,10 +10,12 @@ use crate::{extractors::auth::AuthUser, server::AppState};
 #[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(untagged)]
 pub enum UpdateClockRequest {
+    #[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
     PauseUpdate { is_paused: bool },
 }
 
 #[derive(serde::Serialize, utoipa::ToSchema)]
+#[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
 struct ClockStatusResponse {
     is_paused: bool,
     time_left_seconds: u64,

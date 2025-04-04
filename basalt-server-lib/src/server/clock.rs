@@ -17,7 +17,7 @@ impl Default for ClockInfo {
     fn default() -> Self {
         Self {
             start_time: Instant::now(),
-            pause_time: None,
+            pause_time: Some(Instant::now()),
             total_time_paused: Duration::from_millis(0),
         }
     }
@@ -35,6 +35,7 @@ impl ClockInfo {
     pub fn unpause(&mut self) {
         if let Some(pause_time) = self.pause_time {
             self.total_time_paused += pause_time.elapsed();
+            self.pause_time = None;
         }
     }
     pub fn current_time(&self) -> anyhow::Result<CurrentTime> {
