@@ -59,7 +59,7 @@ impl From<Role> for i32 {
     sqlx::Type,
 )]
 #[sqlx(transparent)]
-pub struct Username(String);
+pub struct Username(pub String);
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, FromRow, Serialize, Deserialize, ToSchema)]
 pub struct User {
@@ -182,15 +182,15 @@ mod tests {
     #[tokio::test]
     async fn get_existing_user() {
         let (f, sql_layer) = mock_db().await;
-        let mut db = sql_layer.write().await;
+        let sql = sql_layer.write().await;
         let dummy_user = crate::testing::users_repositories::dummy_user(
-            &mut db,
+            &sql.db,
             "awesome_user".to_string(),
             "awesome-password".to_string(),
             Role::Competitor,
         )
         .await;
-        let user = get_user_by_username(&db, "awesome_user".into())
+        let user = get_user_by_username(&sql, "awesome_user".into())
             .await
             .expect("Failed to find user");
         assert_eq!(user.username, dummy_user.username);
@@ -199,22 +199,22 @@ mod tests {
     #[tokio::test]
     async fn get_correct_user() {
         let (f, sql_layer) = mock_db().await;
-        let mut db = sql_layer.write().await;
+        let sql = sql_layer.write().await;
         let dummy_user = crate::testing::users_repositories::dummy_user(
-            &mut db,
+            &sql.db,
             "awesome_user".to_string(),
             "awesome-password".to_string(),
             Role::Competitor,
         )
         .await;
         crate::testing::users_repositories::dummy_user(
-            &mut db,
+            &sql.db,
             "awesome_user2".to_string(),
             "awesome-password".to_string(),
             Role::Competitor,
         )
         .await;
-        let user = get_user_by_username(&db, "awesome_user".into())
+        let user = get_user_by_username(&sql, "awesome_user".into())
             .await
             .expect("Failed to find user");
         assert_eq!(user.username, dummy_user.username);

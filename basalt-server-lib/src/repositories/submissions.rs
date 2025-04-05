@@ -45,7 +45,7 @@ pub struct NewSubmissionHistory<'a> {
     pub success: bool,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TestResult {
     Pass,
     Timeout,
@@ -217,4 +217,248 @@ pub async fn get_latest_submissions(
     .fetch_all(db)
     .await
     .context("while querying the user's question states")
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use crate::{
+        repositories::users::Role,
+        testing::{mock_db, users_repositories::dummy_user},
+    };
+
+    use super::*;
+
+    #[tokio::test]
+    async fn create_submission() {
+        let (f, sql_layer) = mock_db().await;
+        let sql = sql_layer.read().await;
+        let user = dummy_user(&sql.db, "dummy_user", "foobar", Role::Competitor).await;
+        let history = create_submission_history(
+            &sql.db,
+            NewSubmissionHistory {
+                submitter: &user.username,
+                compile_fail: true,
+                code: "this is some code",
+                question_index: 42,
+                score: 42.,
+                success: false,
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(history.submitter, user.username);
+        assert!(history.compile_fail);
+        assert_eq!(history.code.as_str(), "this is some code");
+        assert_eq!(history.question_index, 42);
+        assert_eq!(history.score, 42.);
+        assert!(!history.success);
+        drop(f)
+    }
+
+    #[tokio::test]
+    async fn create_submission_test() {
+        let (f, sql_layer) = mock_db().await;
+        let sql = sql_layer.read().await;
+        let user = dummy_user(&sql.db, "dummy_user", "foobar", Role::Competitor).await;
+        let history = create_submission_history(
+            &sql.db,
+            NewSubmissionHistory {
+                submitter: &user.username,
+                compile_fail: true,
+                code: "this is some code",
+                question_index: 42,
+                score: 42.,
+                success: false,
+            },
+        )
+        .await
+        .unwrap();
+
+        let test = create_submission_test_history(
+            &sql.db,
+            &history.id,
+            NewSubmissionTestHistory {
+                test_index: 42,
+                result: TestResult::Timeout,
+                stdout: Some("stdout".into()),
+                stderr: Some("stderr".into()),
+                exit_status: 1,
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(test.test_index, 42);
+        assert_eq!(test.result, TestResult::Timeout);
+        assert_eq!(test.stdout, Some("stdout".into()));
+        assert_eq!(test.stderr, Some("stderr".into()));
+        assert_eq!(test.exit_status, 1);
+        drop(f)
+    }
+
+    #[tokio::test]
+    async fn other_submissions() {
+        let (f, sql_layer) = mock_db().await;
+        let sql = sql_layer.read().await;
+
+        for i in 0..5 {
+            let user = dummy_user(
+                &sql.db,
+                &format!("submitter-{}", i),
+                "foobar",
+                Role::Competitor,
+            )
+            .await;
+            let history = create_submission_history(
+                &sql.db,
+                NewSubmissionHistory {
+                    submitter: &user.username,
+                    compile_fail: false,
+                    code: "",
+                    question_index: 1,
+                    score: 10.,
+                    success: true,
+                },
+            )
+            .await
+            .unwrap();
+
+            for i in 0..5 {
+                create_submission_test_history(
+                    &sql.db,
+                    &history.id,
+                    NewSubmissionTestHistory {
+                        test_index: i,
+                        result: TestResult::Pass,
+                        stdout: None,
+                        stderr: None,
+                        exit_status: 0,
+                    },
+                )
+                .await
+                .unwrap();
+            }
+        }
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let n = count_other_submissions(&sql.db, 1).await.unwrap();
+        assert_eq!(n, 5);
+
+        drop(f)
+    }
+
+    #[tokio::test]
+    async fn previous_submissions() {
+        let (f, sql_layer) = mock_db().await;
+        let sql = sql_layer.read().await;
+
+        let user = dummy_user(&sql.db, "dummy_user", "foobar", Role::Competitor).await;
+        for _ in 0..5 {
+            create_submission_history(
+                &sql.db,
+                NewSubmissionHistory {
+                    submitter: &user.username,
+                    compile_fail: true,
+                    code: "",
+                    question_index: 1,
+                    score: 10.,
+                    success: false,
+                },
+            )
+            .await
+            .unwrap();
+        }
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let n = count_previous_submissions(&sql.db, &user.username, 1)
+            .await
+            .unwrap();
+        assert_eq!(n, 5);
+
+        drop(f)
+    }
+
+    #[tokio::test]
+    async fn user_score() {
+        let (f, sql_layer) = mock_db().await;
+        let sql = sql_layer.read().await;
+
+        let user = dummy_user(&sql.db, "dummy_user", "foobar", Role::Competitor).await;
+        for i in 0..5 {
+            create_submission_history(
+                &sql.db,
+                NewSubmissionHistory {
+                    submitter: &user.username,
+                    compile_fail: false,
+                    code: "",
+                    question_index: i,
+                    score: 42.,
+                    success: true,
+                },
+            )
+            .await
+            .unwrap();
+        }
+
+        let n = get_user_score(&sql.db, &user.username).await.unwrap();
+        assert_eq!(n, 42. * 5.);
+
+        drop(f)
+    }
+
+    #[tokio::test]
+    async fn latest_submissions() {
+        let (f, sql_layer) = mock_db().await;
+        let sql = sql_layer.read().await;
+
+        let user = dummy_user(&sql.db, "dummy_user", "foobar", Role::Competitor).await;
+        for i in 0..5 {
+            create_submission_history(
+                &sql.db,
+                NewSubmissionHistory {
+                    submitter: &user.username,
+                    compile_fail: false,
+                    code: "not-latest",
+                    question_index: i,
+                    score: 42.,
+                    success: true,
+                },
+            )
+            .await
+            .unwrap();
+        }
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        for i in 0..5 {
+            create_submission_history(
+                &sql.db,
+                NewSubmissionHistory {
+                    submitter: &user.username,
+                    compile_fail: false,
+                    code: "latest",
+                    question_index: i,
+                    score: 42.,
+                    success: true,
+                },
+            )
+            .await
+            .unwrap();
+        }
+
+        let submissions = get_latest_submissions(&sql.db, &user.username)
+            .await
+            .unwrap();
+
+        for s in submissions {
+            assert_eq!(s.code, "latest");
+        }
+
+        drop(f)
+    }
 }
