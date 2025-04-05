@@ -5,10 +5,9 @@ use rand::rngs::OsRng;
 use redact::Secret;
 use serde::{Deserialize, Serialize};
 use sqlx::prelude::FromRow;
-use sqlx::{Executor, Sqlite, SqliteExecutor};
+use sqlx::{Executor, Sqlite};
 use utoipa::ToSchema;
 
-use crate::repositories::submissions::SubmissionHistory;
 use crate::storage::SqliteLayer;
 
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]

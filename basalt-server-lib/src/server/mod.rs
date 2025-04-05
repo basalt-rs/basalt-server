@@ -9,7 +9,7 @@ use tokio::sync::RwLock;
 use crate::{
     services::{
         self,
-        ws::{self, Broadcast, WebSocketSend},
+        ws::{self, WebSocketSend},
     },
     storage::SqliteLayer,
 };
