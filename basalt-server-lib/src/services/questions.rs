@@ -41,7 +41,7 @@ impl From<&Problem> for QuestionResponse {
 }
 
 #[axum::debug_handler]
-#[utoipa::path(get, path = "/", responses((status = OK, body = Vec<QuestionResponse>, content_type = "application/json")))]
+#[utoipa::path(get, tag = "questions", path = "/", responses((status = OK, body = Vec<QuestionResponse>, content_type = "application/json")))]
 pub async fn get_all(State(state): State<Arc<AppState>>) -> Json<Vec<QuestionResponse>> {
     let questions = state
         .config
@@ -57,7 +57,7 @@ pub async fn get_all(State(state): State<Arc<AppState>>) -> Json<Vec<QuestionRes
 #[axum::debug_handler]
 #[utoipa::path(
     get,
-    path = "/{id}",
+    path = "/{id}", tag = "questions",
     responses(
         (status=OK, body=QuestionResponse, content_type="application/json"),
         (status=404, description="Question Not Found"),
