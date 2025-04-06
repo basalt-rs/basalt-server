@@ -80,7 +80,7 @@ async fn patch_clock(
         }
     }
 
-    return Ok(Json(response));
+    Ok(Json(response))
 }
 
 #[axum::debug_handler]
