@@ -108,6 +108,7 @@ components:
     QuestionResponse:
       type: object
       required:
+      - languages
       - title
       - tests
       properties:
@@ -116,12 +117,15 @@ components:
           - string
           - 'null'
         languages:
-          type:
-          - array
-          - 'null'
+          type: array
           items:
             type: string
           uniqueItems: true
+        points:
+          type:
+          - integer
+          - 'null'
+          format: int32
         tests:
           type: array
           items:
@@ -138,11 +142,14 @@ components:
       required:
       - input
       - output
+      - visible
       properties:
         input:
           type: string
         output:
           type: string
+        visible:
+          type: boolean
     User:
       type: object
       required:
@@ -152,4 +159,6 @@ components:
         role:
           $ref: '#/components/schemas/Role'
         username:
-          type: string
+          $ref: '#/components/schemas/Username'
+    Username:
+      type: string
