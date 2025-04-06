@@ -7,7 +7,7 @@ mod cli;
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::registry()
         .with(
-            tracing_subscriber::EnvFilter::try_from_env("BASALT_SERVER_LOGGIN")
+            tracing_subscriber::EnvFilter::try_from_env("BASALT_SERVER_LOGGING")
                 .unwrap_or_else(|_| "basalt_server=debug".into()),
         )
         .with(tracing_subscriber::fmt::layer())

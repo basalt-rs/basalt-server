@@ -2,14 +2,12 @@ use argon2::{
     password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
     Argon2,
 };
+use sqlx::SqliteExecutor;
 
-use crate::{
-    repositories::users::{Role, User},
-    storage::SqliteLayer,
-};
+use crate::repositories::users::{Role, User};
 
 pub async fn dummy_user(
-    sql: &mut SqliteLayer,
+    db: impl SqliteExecutor<'_>,
     name: impl AsRef<str>,
     password: impl AsRef<[u8]>,
     role: Role,
@@ -26,5 +24,5 @@ pub async fn dummy_user(
         name,
         password_hash,
         role_int
-    ).fetch_one(&sql.db).await.expect("Failed to create user")
+    ).fetch_one(db).await.expect("Failed to create user")
 }

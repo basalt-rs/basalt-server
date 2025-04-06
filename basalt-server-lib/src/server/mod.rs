@@ -9,7 +9,7 @@ use tokio::sync::RwLock;
 use crate::{
     services::{
         self,
-        ws::{self, Broadcast, WebSocketSend},
+        ws::{self, WebSocketSend},
     },
     storage::SqliteLayer,
 };
@@ -18,6 +18,7 @@ pub struct AppState {
     pub db: RwLock<SqliteLayer>,
     pub active_connections: DashMap<ws::ConnectionKind, ws::ConnectedClient>,
     pub active_tests: DashSet<(ws::ConnectionKind, usize)>,
+    pub active_submissions: DashSet<(ws::ConnectionKind, usize)>,
     pub config: Config,
 }
 
@@ -27,13 +28,13 @@ impl AppState {
             db: RwLock::new(db),
             active_connections: Default::default(),
             active_tests: Default::default(),
+            active_submissions: Default::default(),
             config,
         }
     }
 
-    pub fn broadcast(self: Arc<Self>, broadcast: Broadcast) -> anyhow::Result<()> {
+    pub fn broadcast(self: Arc<Self>, broadcast: WebSocketSend) -> anyhow::Result<()> {
         let mut to_remove = Vec::new();
-        let broadcast = WebSocketSend::Broadcast { broadcast };
         for conn in &self.active_connections {
             if conn.send.send(broadcast.clone()).is_err() {
                 // This _shouldn't_ happen, but it _could_
