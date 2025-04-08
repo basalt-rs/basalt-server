@@ -311,6 +311,7 @@ dependencies = [
  "derive_more",
  "directories",
  "erudite",
+ "lazy_static",
  "leucite",
  "rand",
  "redact",
@@ -319,6 +320,7 @@ dependencies = [
  "serde_json",
  "sqlx",
  "thiserror 2.0.11",
+ "time",
  "tokio",
  "tower-http",
  "tracing",
@@ -347,7 +349,7 @@ checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
 [[package]]
 name = "bedrock"
 version = "0.1.0"
-source = "git+https://github.com/basalt-rs/bedrock.git?rev=10f884d#10f884ddcfedcf0ed4f34daa7888dbb2f0ef49ce"
+source = "git+https://github.com/basalt-rs/bedrock.git?rev=90122c8#90122c81849812f29d1d720d2f569181c2bd7191"
 dependencies = [
  "comemo",
  "ecow",
@@ -811,11 +813,12 @@ dependencies = [
 
 [[package]]
 name = "deranged"
-version = "0.3.11"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b42b6fa04a440b495c8b04d0e71b707c585f83cb9cb28cf8cd0d976c315e31b4"
+checksum = "9c9e6a11ca8224451684bc0d7d5a7adbf8f2fd6887261a1cfc3c0432f9d4068e"
 dependencies = [
  "powerfmt",
+ "serde",
 ]
 
 [[package]]
@@ -3181,6 +3184,7 @@ dependencies = [
  "sha2",
  "smallvec",
  "thiserror 2.0.11",
+ "time",
  "tokio",
  "tokio-stream",
  "tracing",
@@ -3264,6 +3268,7 @@ dependencies = [
  "sqlx-core",
  "stringprep",
  "thiserror 2.0.11",
+ "time",
  "tracing",
  "whoami",
 ]
@@ -3301,6 +3306,7 @@ dependencies = [
  "sqlx-core",
  "stringprep",
  "thiserror 2.0.11",
+ "time",
  "tracing",
  "whoami",
 ]
@@ -3324,6 +3330,7 @@ dependencies = [
  "serde",
  "serde_urlencoded",
  "sqlx-core",
+ "time",
  "tracing",
  "url",
 ]
@@ -3344,7 +3351,7 @@ dependencies = [
  "cfg-if",
  "libc",
  "psm",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3635,9 +3642,9 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.37"
+version = "0.3.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35e7868883861bd0e56d9ac6efcaaca0d6d5d82a2a7ec8209ff492c07cf37b21"
+checksum = "9d9c75b47bdff86fa3334a3db91356b8d7d86a9b839dab7d0bdc5c3d3a077618"
 dependencies = [
  "deranged",
  "itoa",
@@ -3650,15 +3657,15 @@ dependencies = [
 
 [[package]]
 name = "time-core"
-version = "0.1.2"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef927ca75afb808a4d64dd374f00a2adf8d0fcff8e7b184af886c3c87ec4a3f3"
+checksum = "c9e9a38711f559d9e3ce1cdb06dd7c5b8ea546bc90052da6d06bb76da74bb07c"
 
 [[package]]
 name = "time-macros"
-version = "0.2.19"
+version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2834e6017e3e5e4b9834939793b282bc03b37a3336245fa820e35e233e2a85de"
+checksum = "29aa485584182073ed57fd5004aa09c371f021325014694e432313345865fd04"
 dependencies = [
  "num-conv",
  "time-core",
@@ -4537,7 +4544,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
