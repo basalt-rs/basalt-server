@@ -18,7 +18,7 @@ impl Default for ClockInfo {
         Self {
             start_time: Instant::now(),
             pause_time: Some(Instant::now()),
-            total_time_paused: Duration::from_millis(0),
+            total_time_paused: Default::default(),
         }
     }
 }
