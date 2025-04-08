@@ -2,9 +2,12 @@ use std::sync::Arc;
 
 use axum::Router;
 use bedrock::Config;
+use clock::ClockInfo;
 use dashmap::{DashMap, DashSet};
 use rand::{distributions::Alphanumeric, Rng};
 use tokio::sync::RwLock;
+
+pub mod clock;
 
 use crate::{
     services::{
@@ -20,6 +23,7 @@ pub struct AppState {
     pub active_tests: DashSet<(ws::ConnectionKind, usize)>,
     pub active_submissions: DashSet<(ws::ConnectionKind, usize)>,
     pub config: Config,
+    pub clock: RwLock<ClockInfo>,
 }
 
 impl AppState {
@@ -30,6 +34,7 @@ impl AppState {
             active_tests: Default::default(),
             active_submissions: Default::default(),
             config,
+            clock: Default::default(),
         }
     }
 
@@ -54,6 +59,7 @@ pub fn router(initial_state: Arc<AppState>) -> axum::Router {
     Router::new()
         .nest("/auth", services::auth::service())
         .nest("/questions", services::questions::service())
+        .nest("/clock", services::clock::service())
         .nest("/ws", services::ws::service())
         .with_state(initial_state)
         .layer(tower_http::cors::CorsLayer::permissive())
@@ -81,6 +87,7 @@ pub fn doc_router(initial_state: Arc<AppState>) -> utoipa_axum::router::OpenApiR
     utoipa_axum::router::OpenApiRouter::new()
         .nest("/auth", services::auth::router())
         .nest("/questions", services::questions::router())
+        .nest("/clock", services::clock::router())
         .nest("/ws", services::ws::router())
         .with_state(initial_state)
         .layer(tower_http::cors::CorsLayer::permissive())
