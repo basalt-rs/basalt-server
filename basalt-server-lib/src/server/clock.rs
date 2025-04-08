@@ -30,12 +30,12 @@ pub struct CurrentTime {
 
 impl ClockInfo {
     pub fn pause(&mut self) -> bool {
-        let affected = self.pause_time.is_some();
+        let affected = self.pause_time.is_none();
         self.pause_time = self.pause_time.or(Some(Instant::now()));
         affected
     }
     pub fn unpause(&mut self) -> bool {
-        let affected = self.pause_time.is_none();
+        let affected = self.pause_time.is_some();
         if let Some(pause_time) = self.pause_time {
             self.total_time_paused += pause_time.elapsed();
             self.pause_time = None;
@@ -46,7 +46,13 @@ impl ClockInfo {
         match self.pause_time {
             Some(pause_time) => Ok(CurrentTime {
                 paused: true,
-                duration: pause_time.elapsed(),
+                duration: self
+                    .start_time
+                    .checked_add(pause_time.elapsed())
+                    .context("Failed to add pause duration to start time")?
+                    .checked_add(self.total_time_paused)
+                    .context("Failed to add total pause duration to start time")?
+                    .elapsed(),
             }),
             None => {
                 let duration = self

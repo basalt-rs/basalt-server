@@ -36,48 +36,58 @@ struct ClockStatusResponse {
 )]
 async fn patch_clock(
     State(state): State<Arc<AppState>>,
-    user: AuthUser,
+    _: AuthUser,
     Json(update): Json<UpdateClockRequest>,
 ) -> Result<Json<ClockStatusResponse>, StatusCode> {
-    trace!(user.user.username, "attempt to pause server");
-
-    let time_limit = match state.config.game {
-        // TODO: When time_limit is made public, update this
-        Game::Points(PointsSettings { .. }) => Duration::from_secs(60 * 75),
+    let time_limit = match &state.config.game {
+        &Game::Points(PointsSettings { time_limit, .. }) => time_limit,
         // TODO: When other modes are supported, provide correct values
         _ => Duration::from_secs(60 * 75),
     };
 
-    let mut clock = state.clock.write().await;
-    let response = match clock.current_time() {
-        Ok(current_time) => ClockStatusResponse {
-            is_paused: current_time.paused,
-            time_left_in_seconds: current_time.time_left(time_limit).as_secs(),
-        },
-        Err(_) => ClockStatusResponse {
-            is_paused: false,
-            time_left_in_seconds: Duration::from_secs(0).as_secs(),
-        },
-    };
-    let (affected, is_paused) = match update {
-        UpdateClockRequest::PauseUpdate { is_paused: true } => (clock.pause(), true),
-        UpdateClockRequest::PauseUpdate { is_paused: false } => (clock.unpause(), false),
+    let (response, broadcast) = {
+        let mut clock = state.clock.write().await;
+        // this should never error ever
+        let current_time = clock.current_time().unwrap();
+        match update {
+            UpdateClockRequest::PauseUpdate { is_paused: true } => {
+                let affected = clock.pause();
+                (
+                    ClockStatusResponse {
+                        is_paused: true,
+                        time_left_in_seconds: current_time.time_left(time_limit).as_secs(),
+                    },
+                    if affected {
+                        Some(Broadcast::GamePaused)
+                    } else {
+                        None
+                    },
+                )
+            }
+            UpdateClockRequest::PauseUpdate { is_paused: false } => {
+                let affected = clock.unpause();
+                let time_left_in_seconds = current_time.time_left(time_limit).as_secs();
+                (
+                    ClockStatusResponse {
+                        is_paused: false,
+                        time_left_in_seconds,
+                    },
+                    if affected {
+                        Some(Broadcast::GameUnpaused {
+                            time_left_in_seconds,
+                        })
+                    } else {
+                        None
+                    },
+                )
+            }
+        }
     };
 
-    if affected && is_paused {
-        for conn in &state.active_connections {
-            let _ = conn.value().send.send(WebSocketSend::Broadcast {
-                broadcast: Broadcast::GamePaused,
-            });
-        }
-    } else if affected {
-        for conn in &state.active_connections {
-            let _ = conn.value().send.send(WebSocketSend::Broadcast {
-                broadcast: Broadcast::GameUnpaused {
-                    time_left_in_seconds: response.time_left_in_seconds,
-                },
-            });
-        }
+    if let Some(broadcast) = broadcast {
+        state
+            .broadcast(WebSocketSend::Broadcast { broadcast })
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     }
 
     Ok(Json(response))
