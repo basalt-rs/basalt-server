@@ -96,6 +96,6 @@ define_router! {
     auth,
     questions,
     competition,
-    clock
+    clock,
     ws,
 }
