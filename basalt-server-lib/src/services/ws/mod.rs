@@ -52,6 +52,8 @@ pub struct ConnectedClient {
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum Broadcast {
     Announce { message: String },
+    GamePaused,
+    GameUnpaused { time_left_in_seconds: u64 },
 }
 
 /// A message that is sent from the server onto the websocket

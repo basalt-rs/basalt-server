@@ -13,12 +13,22 @@ argon2 = { version = "0.5.3", features = ["password-hash"] }
 async-tempfile = "0.6.0"
 axum-extra = { version = "0.10.0", features = ["typed-header"] }
 axum = { version = "0.8.1", features = ["macros", "ws"] }
-bedrock = { git = "https://github.com/basalt-rs/bedrock.git", rev = "90122c8", features = ["tokio"] }
+bedrock = { git = "https://github.com/basalt-rs/bedrock.git", rev = "90122c8", features = [
+  "tokio",
+] }
 clap = { version = "4.5.23", features = ["derive"] }
 dashmap = "6.1.0"
-derive_more = { version = "2.0.1", features = ["debug", "from", "deref", "into", "from_str"] }
+derive_more = { version = "2.0.1", features = [
+  "debug",
+  "from",
+  "deref",
+  "into",
+  "from_str",
+] }
 directories = "6.0.0"
-erudite = { git = "https://github.com/basalt-rs/erudite.git", rev = "7de318e", features = ["serde"] }
+erudite = { git = "https://github.com/basalt-rs/erudite.git", rev = "7de318e", features = [
+  "serde",
+] }
 lazy_static = "1.5.0"
 leucite = "0.2.0"
 rand = "0.8.5"
@@ -26,7 +36,11 @@ redact = { version = "0.1.10", features = ["serde"] }
 scopeguard = "1.2.0"
 serde_json = "1.0.138"
 serde = { version = "1.0.217", features = ["derive"] }
-sqlx = { version = "0.8.3", features = ["sqlite", "runtime-tokio-native-tls", "time"] }
+sqlx = { version = "0.8.3", features = [
+  "sqlite",
+  "runtime-tokio-native-tls",
+  "time",
+] }
 thiserror = "2.0.11"
 time = { version = "0.3.40", features = ["serde"] }
 tokio = { version = "1.43.0", features = ["full"] }
