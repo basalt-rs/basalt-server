@@ -1,10 +1,9 @@
 use crate::{extractors::auth::OptionalAuthUser, repositories::users::Role, server::AppState};
 use axum::{extract::State, Json};
 use bedrock::{
-    language::LanguageSet,
+    language::{Language, LanguageSet, Syntax},
     packet::{Problem, Test},
 };
-use std::collections::BTreeSet;
 use std::sync::Arc;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
@@ -13,6 +12,13 @@ pub struct TestResponse {
     pub input: String,
     pub output: String,
     pub visible: bool,
+}
+
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub struct LanguageSyntax {
+    language: String,
+    #[schema(value_type = String)]
+    syntax: Syntax,
 }
 
 impl From<&Test> for TestResponse {
@@ -25,9 +31,18 @@ impl From<&Test> for TestResponse {
     }
 }
 
+impl From<&Language> for LanguageSyntax {
+    fn from(value: &Language) -> Self {
+        Self {
+            language: value.name().to_string(),
+            syntax: value.syntax(),
+        }
+    }
+}
+
 #[derive(serde::Serialize, utoipa::ToSchema)]
 pub struct QuestionResponse {
-    languages: BTreeSet<String>,
+    languages: Vec<LanguageSyntax>,
     title: String,
     description: Option<String>,
     tests: Vec<TestResponse>,
@@ -37,10 +52,7 @@ pub struct QuestionResponse {
 impl QuestionResponse {
     fn from(value: &Problem, languages: &LanguageSet, show_hidden: bool) -> Self {
         Self {
-            languages: value
-                .languages
-                .clone()
-                .unwrap_or_else(|| languages.iter().map(|l| l.name().to_string()).collect()),
+            languages: languages.iter().map(LanguageSyntax::from).collect(),
             title: value.title.clone(),
             description: value.description.as_ref().map(|x| x.html().unwrap()),
             tests: value
