@@ -52,7 +52,11 @@ pub struct QuestionResponse {
 impl QuestionResponse {
     fn from(value: &Problem, languages: &LanguageSet, show_hidden: bool) -> Self {
         Self {
-            languages: languages.iter().map(LanguageSyntax::from).collect(),
+            languages: value
+                .languages
+                .clone()
+                .map(|l| l.iter().map(LanguageSyntax::from).collect())
+                .unwrap_or_else(|| languages.iter().map(LanguageSyntax::from).collect()),
             title: value.title.clone(),
             description: value.description.as_ref().map(|x| x.html().unwrap()),
             tests: value
