@@ -2,7 +2,7 @@ use std::{borrow::Cow, net::SocketAddr, sync::Arc};
 
 use anyhow::{bail, Context};
 use bedrock::{packet::Test, scoring::Scorable};
-use erudite::{RunOutput, TestCase, TestFailReason, TestOutput};
+use erudite::{RunOutput, SimpleOutput, TestCase, TestFailReason, TestOutput};
 use lazy_static::lazy_static;
 use leucite::Rules;
 use serde::{Deserialize, Serialize};
@@ -56,6 +56,14 @@ pub enum Broadcast {
     GameUnpaused { time_left_in_seconds: u64 },
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum TestResults {
+    InternalError,
+    CompileFail(SimpleOutput),
+    Individual { tests: Vec<(TestOutput, Test)> },
+}
+
 /// A message that is sent from the server onto the websocket
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
@@ -70,12 +78,12 @@ pub enum WebSocketSend {
     },
     TestResults {
         id: usize,
-        results: Vec<(TestOutput, Test)>,
+        results: TestResults,
         percent: usize,
     },
     Submit {
         id: usize,
-        results: Vec<(TestOutput, Test)>,
+        results: TestResults,
         percent: usize,
     },
     Error {
@@ -203,6 +211,12 @@ impl WebSocketRecv<'_> {
             }
             RunOutput::CompileFail(simple_output) => {
                 debug!(?simple_output, "Failed to build");
+                ws.send(WebSocketSend::TestResults {
+                    id,
+                    results: TestResults::CompileFail(simple_output),
+                    percent: 0,
+                })
+                .context("sending test results message")?;
             }
             RunOutput::RunSuccess(vec) => {
                 trace!(?vec, "Raw test output");
@@ -221,7 +235,7 @@ impl WebSocketRecv<'_> {
                 let percent = success * 100 / problem.tests.len();
                 ws.send(WebSocketSend::TestResults {
                     id,
-                    results,
+                    results: TestResults::Individual { tests: results },
                     percent,
                 })
                 .context("sending test results message")?;
@@ -318,6 +332,12 @@ impl WebSocketRecv<'_> {
                 .await
                 .context("creating submission history")?;
                 tracing::error!("Failed to spawn compile command: {:?}", s);
+                ws.send(WebSocketSend::TestResults {
+                    id,
+                    results: TestResults::InternalError,
+                    percent: 0,
+                })
+                .context("sending submission results message")?;
             }
             RunOutput::CompileFail(simple_output) => {
                 let sql = state.db.read().await;
@@ -335,6 +355,12 @@ impl WebSocketRecv<'_> {
                 .await
                 .context("creating submission history")?;
                 debug!(?simple_output, "Failed to build");
+                ws.send(WebSocketSend::TestResults {
+                    id,
+                    results: TestResults::CompileFail(simple_output),
+                    percent: 0,
+                })
+                .context("sending test results message")?;
             }
             RunOutput::RunSuccess(vec) => {
                 let sql = state.db.read().await;
@@ -432,7 +458,7 @@ impl WebSocketRecv<'_> {
                 txn.commit().await.context("committing transaction")?;
                 ws.send(WebSocketSend::TestResults {
                     id,
-                    results,
+                    results: TestResults::Individual { tests: results },
                     percent,
                 })
                 .context("sending test results message")?;
