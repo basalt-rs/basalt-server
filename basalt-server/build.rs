@@ -23,7 +23,11 @@ pub async fn main() -> anyhow::Result<()> {
         .await
         .context("Failed to create sqlite layer")?;
 
-    let dummy_state = Arc::new(AppState::new(sqlite_layer, bedrock::Config::default()));
+    let dummy_state = Arc::new(AppState::new(
+        sqlite_layer,
+        bedrock::Config::default(),
+        None,
+    ));
     let router = basalt_server_lib::server::doc_router(dummy_state);
 
     let content = ApiDoc::openapi()

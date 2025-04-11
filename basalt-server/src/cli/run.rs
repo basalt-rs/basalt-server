@@ -23,6 +23,10 @@ pub struct RunArgs {
     /// Path to the configuration to use to host the server.
     #[arg(default_value = "basalt.toml")]
     config: PathBuf,
+    /// Directory in which files for the web client are stored -- if not specified, the web client
+    /// is disabled.
+    #[arg(long, short)]
+    web_dir: Option<PathBuf>,
 }
 
 fn default_name() -> String {
@@ -77,7 +81,7 @@ pub async fn handle(args: RunArgs) -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(
         listener,
-        server::router(Arc::new(AppState::new(db, config)))
+        server::router(Arc::new(AppState::new(db, config, args.web_dir)))
             .into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await?;

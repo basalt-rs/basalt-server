@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use axum::Router;
 use bedrock::Config;
@@ -19,6 +19,7 @@ use crate::{
 
 pub struct AppState {
     pub db: RwLock<SqliteLayer>,
+    pub web_dir: Option<PathBuf>,
     pub active_connections: DashMap<ws::ConnectionKind, ws::ConnectedClient>,
     pub active_tests: DashSet<(ws::ConnectionKind, usize)>,
     pub active_submissions: DashSet<(ws::ConnectionKind, usize)>,
@@ -27,9 +28,10 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(db: SqliteLayer, config: Config) -> Self {
+    pub fn new(db: SqliteLayer, config: Config, web_dir: Option<PathBuf>) -> Self {
         Self {
             db: RwLock::new(db),
+            web_dir,
             active_connections: Default::default(),
             active_tests: Default::default(),
             active_submissions: Default::default(),
@@ -56,11 +58,17 @@ impl AppState {
 }
 
 pub fn router(initial_state: Arc<AppState>) -> axum::Router {
-    Router::new()
+    let router = Router::new()
         .nest("/auth", services::auth::service())
         .nest("/questions", services::questions::service())
         .nest("/clock", services::clock::service())
-        .nest("/ws", services::ws::service())
+        .nest("/ws", services::ws::service());
+    let router = if let Some(path) = &initial_state.web_dir {
+        router.fallback_service(tower_http::services::ServeDir::new(path))
+    } else {
+        router
+    };
+    router
         .with_state(initial_state)
         .layer(tower_http::cors::CorsLayer::permissive())
         .layer(
@@ -84,11 +92,17 @@ pub fn router(initial_state: Arc<AppState>) -> axum::Router {
 
 #[cfg(feature = "doc-gen")]
 pub fn doc_router(initial_state: Arc<AppState>) -> utoipa_axum::router::OpenApiRouter {
-    utoipa_axum::router::OpenApiRouter::new()
+    let router = utoipa_axum::router::OpenApiRouter::new()
         .nest("/auth", services::auth::router())
         .nest("/questions", services::questions::router())
         .nest("/clock", services::clock::router())
-        .nest("/ws", services::ws::router())
+        .nest("/ws", services::ws::router());
+    let router = if let Some(path) = &initial_state.web_dir {
+        router.fallback_service(tower_http::services::ServeDir::new(path))
+    } else {
+        router
+    };
+    router
         .with_state(initial_state)
         .layer(tower_http::cors::CorsLayer::permissive())
         .layer(tower_http::trace::TraceLayer::new_for_http())
