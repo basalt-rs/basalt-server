@@ -1,6 +1,6 @@
 use std::{borrow::Cow, net::SocketAddr, sync::Arc};
 
-use anyhow::{bail, Context};
+use anyhow::Context;
 use bedrock::{packet::Test, scoring::Scorable};
 use erudite::{RunOutput, SimpleOutput, TestCase, TestFailReason, TestOutput};
 use lazy_static::lazy_static;
@@ -41,6 +41,13 @@ impl ConnectionKind {
             ConnectionKind::Leaderboard { .. } => false,
         }
     }
+
+    pub fn user(&self) -> Option<&AuthUser> {
+        match self {
+            ConnectionKind::User { user } => Some(user),
+            ConnectionKind::Leaderboard { .. } => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -66,11 +73,41 @@ pub enum Broadcast {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "reason", rename_all = "kebab-case")]
+pub enum TestFail {
+    Timeout,
+    IncorrectOutput(SimpleOutput),
+    Crash(SimpleOutput),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum TestOutputResponse {
+    Pass,
+    Fail(TestFail),
+}
+
+impl From<TestOutput> for TestOutputResponse {
+    fn from(value: TestOutput) -> Self {
+        match value {
+            TestOutput::Pass => Self::Pass,
+            TestOutput::Fail(TestFailReason::Timeout) => Self::Fail(TestFail::Timeout),
+            TestOutput::Fail(TestFailReason::IncorrectOutput(o)) => {
+                Self::Fail(TestFail::IncorrectOutput(o))
+            }
+            TestOutput::Fail(TestFailReason::Crash(o)) => Self::Fail(TestFail::Crash(o)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum TestResults {
     InternalError,
     CompileFail(SimpleOutput),
-    Individual { tests: Vec<(TestOutput, Test)> },
+    Individual {
+        tests: Vec<(TestOutputResponse, Test)>,
+    },
 }
 
 /// A message that is sent from the server onto the websocket
@@ -217,12 +254,7 @@ impl WebSocketRecv<'_> {
             return self.error(ws, "Tests are already running");
         };
 
-        let ConnectionKind::User {
-            user: AuthUser { user, .. },
-        } = who
-        else {
-            unreachable!("is_user called above")
-        };
+        let AuthUser { user, .. } = who.user().unwrap();
 
         scopeguard::defer! {
             state.active_tests.remove(&key);
@@ -254,14 +286,19 @@ impl WebSocketRecv<'_> {
         repositories::submissions::add_test(&sql.db, &user.username, problem_index)
             .await
             .context("adding user test")?;
-        drop(sql);
-        tracing::trace!("start broadcast");
         Self::broadcast_team_update(Arc::clone(&state), &user.username).await?;
-        tracing::trace!("done broadcast");
 
         match results {
             RunOutput::CompileSpawnFail(s) => {
-                bail!("Failed to spawn compile command: {:?}", s)
+                tracing::error!("Failed to spawn compile command: {:?}", s);
+                ws.send(WebSocketSend::TestResults {
+                    id,
+                    results: TestResults::InternalError,
+                    percent: 0,
+                })
+                .context("sending submission results message")?;
+
+                Self::broadcast_team_update(Arc::clone(&state), &user.username).await?;
             }
             RunOutput::CompileFail(simple_output) => {
                 debug!(?simple_output, "Failed to build");
@@ -283,7 +320,7 @@ impl WebSocketRecv<'_> {
                     .into_iter()
                     .zip(problem.tests.iter())
                     .filter(|(_, t)| t.visible)
-                    .map(|(r, t)| (r, t.clone()))
+                    .map(|(r, t)| (r.into(), t.clone()))
                     .collect::<Vec<_>>();
 
                 let percent = success * 100 / problem.tests.len();
@@ -313,12 +350,7 @@ impl WebSocketRecv<'_> {
             .context("websocket not in active_connections")?
             .send;
 
-        let ConnectionKind::User {
-            user: AuthUser { user, .. },
-        } = who
-        else {
-            unreachable!("is_user called above")
-        };
+        let AuthUser { user, .. } = who.user().unwrap();
 
         let Some(language) = state.config.languages.get_by_str(language) else {
             return self.error(ws, format!("Unknown language '{}'", language));
@@ -332,9 +364,11 @@ impl WebSocketRecv<'_> {
         )
         .await
         .context("getting previous submissions")?;
+
+        // TODO: move this to the config
         const MAX_ATTEMPTS: u32 = 5;
+
         if attempts >= MAX_ATTEMPTS {
-            // TODO: move this to the config
             return self.error(
                 ws,
                 format!("Only {} submissions are allowed.", MAX_ATTEMPTS),
@@ -398,7 +432,6 @@ impl WebSocketRecv<'_> {
                 })
                 .context("sending submission results message")?;
 
-                drop(sql);
                 Self::broadcast_team_update(Arc::clone(&state), &user.username).await?;
             }
             RunOutput::CompileFail(simple_output) => {
@@ -425,7 +458,6 @@ impl WebSocketRecv<'_> {
                 })
                 .context("sending test results message")?;
 
-                drop(sql);
                 Self::broadcast_team_update(Arc::clone(&state), &user.username).await?;
             }
             RunOutput::RunSuccess(vec) => {
@@ -517,7 +549,7 @@ impl WebSocketRecv<'_> {
                     .into_iter()
                     .zip(problem.tests.iter())
                     .filter(|(_, t)| t.visible)
-                    .map(|(r, t)| (r, t.clone()))
+                    .map(|(r, t)| (r.into(), t.clone()))
                     .collect::<Vec<_>>();
 
                 let percent = success * 100 / problem.tests.len();
@@ -529,7 +561,6 @@ impl WebSocketRecv<'_> {
                     remaining_attempts: MAX_ATTEMPTS - attempts - 1,
                 })
                 .context("sending test results message")?;
-                drop(sql);
                 Self::broadcast_team_update(Arc::clone(&state), &user.username).await?;
             }
         }
