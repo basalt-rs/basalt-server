@@ -8,6 +8,7 @@ use std::sync::Arc;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 #[derive(serde::Serialize, utoipa::ToSchema, Copy, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct QuestionSubmissionState {
     state: QuestionState,
     remaining_attempts: u32,
@@ -21,7 +22,7 @@ pub async fn get_submissions_state(
 ) -> Result<Json<Vec<QuestionSubmissionState>>, StatusCode> {
     let sql = state.db.read().await;
 
-    // TODO: get this from the config
+    // TODO: add this to the config
     const MAX_ATTEMPTS: u32 = 5;
 
     let mut states = vec![
@@ -32,31 +33,51 @@ pub async fn get_submissions_state(
         state.config.packet.problems.len()
     ];
 
-    let submissions =
-        match repositories::submissions::get_latest_submissions(&sql.db, &user.username).await {
-            Ok(s) => s,
-            Err(err) => {
-                tracing::error!("Error while getting submissions: {}", err);
-                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    match repositories::submissions::get_latest_submissions(&sql.db, &user.username).await {
+        Ok(submissions) => {
+            for s in submissions {
+                states[s.question_index as usize].state = if s.success {
+                    QuestionState::Pass
+                } else {
+                    QuestionState::Fail
+                }
             }
-        };
-    for s in submissions {
-        states[s.question_index as usize].state = if s.success {
-            QuestionState::Pass
-        } else {
-            QuestionState::Fail
         }
-    }
+        Err(err) => {
+            tracing::error!("Error while getting submissions: {}", err);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
 
-    let attempts = match repositories::submissions::get_attempts(&sql.db, &user.username).await {
-        Ok(s) => s,
+    match repositories::submissions::count_tests(&sql.db, &user.username).await {
+        Ok(counts) => {
+            for c in counts {
+                if states[c.question_index as usize].state == QuestionState::NotAttempted {
+                    states[c.question_index as usize].state = if c.count > 0 {
+                        QuestionState::InProgress
+                    } else {
+                        QuestionState::NotAttempted
+                    };
+                }
+            }
+        }
         Err(err) => {
             tracing::error!("Error while getting attempts: {}", err);
             return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
-    };
-    for a in attempts {
-        states[a.question_index as usize].remaining_attempts = MAX_ATTEMPTS - a.attempts as u32;
+    }
+
+    match repositories::submissions::get_attempts(&sql.db, &user.username).await {
+        Ok(attempts) => {
+            for a in attempts {
+                states[a.question_index as usize].remaining_attempts =
+                    MAX_ATTEMPTS - a.attempts as u32;
+            }
+        }
+        Err(err) => {
+            tracing::error!("Error while getting attempts: {}", err);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
     }
 
     Ok(Json(states))

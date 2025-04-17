@@ -244,6 +244,53 @@ pub async fn get_attempts(
     .context("while querying the user's score")
 }
 
+pub async fn add_test(
+    db: impl SqliteExecutor<'_>,
+    username: &Username,
+    question_index: usize,
+) -> anyhow::Result<()> {
+    let question_index = question_index as i64;
+    let id = SubmissionId::new();
+    sqlx::query!(
+        r#"
+        INSERT INTO test_runs (id, username, question_index)
+        VALUES (?, ?, ?)
+        "#,
+        id,
+        username,
+        question_index,
+    )
+    .execute(db)
+    .await
+    .context("while adding the user's test")?;
+    Ok(())
+}
+
+#[derive(Serialize, Deserialize, sqlx::FromRow)]
+pub struct TestCount {
+    pub question_index: i64,
+    pub count: i64,
+}
+
+pub async fn count_tests(
+    db: impl SqliteExecutor<'_>,
+    username: &Username,
+) -> anyhow::Result<Vec<TestCount>> {
+    sqlx::query_as!(
+        TestCount,
+        r#"
+            SELECT question_index, count(id) as count
+            FROM test_runs
+            WHERE username = ?
+            GROUP BY question_index;
+        "#,
+        username
+    )
+    .fetch_all(db)
+    .await
+    .context("while querying the user's test runs")
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;

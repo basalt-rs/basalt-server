@@ -31,3 +31,10 @@ CREATE TABLE IF NOT EXISTS submission_test_history (
   stderr TEXT,
   exit_status INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS test_runs (
+    id VARCHAR(32) NOT NULL PRIMARY KEY,
+    username VARCHAR(32) NOT NULL REFERENCES users(username),
+    question_index INTEGER NOT NULL,
+    time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
