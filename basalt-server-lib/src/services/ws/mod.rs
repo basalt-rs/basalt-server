@@ -48,12 +48,21 @@ pub struct ConnectedClient {
     pub send: mpsc::UnboundedSender<WebSocketSend>,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum Broadcast {
-    Announce { message: String },
+    Announce {
+        message: String,
+    },
     GamePaused,
-    GameUnpaused { time_left_in_seconds: u64 },
+    GameUnpaused {
+        time_left_in_seconds: u64,
+    },
+    TeamUpdate {
+        team: Username,
+        new_score: f64,
+        new_states: Vec<QuestionState>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -71,11 +80,6 @@ pub enum WebSocketSend {
     Broadcast {
         broadcast: Broadcast,
     },
-    TeamUpdate {
-        team: Username,
-        new_score: f64,
-        new_states: Vec<QuestionState>,
-    },
     TestResults {
         id: usize,
         results: TestResults,
@@ -85,6 +89,7 @@ pub enum WebSocketSend {
         id: usize,
         results: TestResults,
         percent: usize,
+        remaining_attempts: u32,
     },
     Error {
         id: Option<usize>,
@@ -93,7 +98,7 @@ pub enum WebSocketSend {
 }
 
 /// A message that is recieved from the websocket
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum WebSocketRecv<'a> {
     Broadcast {
@@ -278,9 +283,13 @@ impl WebSocketRecv<'_> {
         )
         .await
         .context("getting previous submissions")?;
-        if attempts >= 5 {
+        const MAX_ATTEMPTS: u32 = 5;
+        if attempts >= MAX_ATTEMPTS {
             // TODO: move this to the config
-            return self.error(ws, "Only 5 submissions are allowed.");
+            return self.error(
+                ws,
+                format!("Only {} submissions are allowed.", MAX_ATTEMPTS),
+            );
         }
         drop(sql); // ensure we don't hold the lock while doing time-consuming things
 
@@ -332,12 +341,40 @@ impl WebSocketRecv<'_> {
                 .await
                 .context("creating submission history")?;
                 tracing::error!("Failed to spawn compile command: {:?}", s);
-                ws.send(WebSocketSend::TestResults {
+                ws.send(WebSocketSend::Submit {
                     id,
                     results: TestResults::InternalError,
                     percent: 0,
+                    remaining_attempts: MAX_ATTEMPTS - attempts - 1,
                 })
                 .context("sending submission results message")?;
+
+                let submissions =
+                    repositories::submissions::get_latest_submissions(&sql.db, &user.username)
+                        .await
+                        .context("getting user submissions")?;
+
+                let mut new_states =
+                    vec![QuestionState::NotAttempted; state.config.packet.problems.len()];
+                for s in submissions {
+                    new_states[s.question_index as usize] = if s.success {
+                        QuestionState::Pass
+                    } else {
+                        QuestionState::Fail
+                    }
+                }
+
+                let new_score = repositories::submissions::get_user_score(&sql.db, &user.username)
+                    .await
+                    .context("getting user score")?;
+
+                Arc::clone(&state).broadcast(WebSocketSend::Broadcast {
+                    broadcast: Broadcast::TeamUpdate {
+                        team: user.username.clone(),
+                        new_score,
+                        new_states,
+                    },
+                })?;
             }
             RunOutput::CompileFail(simple_output) => {
                 let sql = state.db.read().await;
@@ -355,12 +392,40 @@ impl WebSocketRecv<'_> {
                 .await
                 .context("creating submission history")?;
                 debug!(?simple_output, "Failed to build");
-                ws.send(WebSocketSend::TestResults {
+                ws.send(WebSocketSend::Submit {
                     id,
                     results: TestResults::CompileFail(simple_output),
                     percent: 0,
+                    remaining_attempts: MAX_ATTEMPTS - attempts - 1,
                 })
                 .context("sending test results message")?;
+
+                let submissions =
+                    repositories::submissions::get_latest_submissions(&sql.db, &user.username)
+                        .await
+                        .context("getting user submissions")?;
+
+                let mut new_states =
+                    vec![QuestionState::NotAttempted; state.config.packet.problems.len()];
+                for s in submissions {
+                    new_states[s.question_index as usize] = if s.success {
+                        QuestionState::Pass
+                    } else {
+                        QuestionState::Fail
+                    }
+                }
+
+                let new_score = repositories::submissions::get_user_score(&sql.db, &user.username)
+                    .await
+                    .context("getting user score")?;
+
+                Arc::clone(&state).broadcast(WebSocketSend::Broadcast {
+                    broadcast: Broadcast::TeamUpdate {
+                        team: user.username.clone(),
+                        new_score,
+                        new_states,
+                    },
+                })?;
             }
             RunOutput::RunSuccess(vec) => {
                 let sql = state.db.read().await;
@@ -456,10 +521,11 @@ impl WebSocketRecv<'_> {
 
                 let percent = success * 100 / problem.tests.len();
                 txn.commit().await.context("committing transaction")?;
-                ws.send(WebSocketSend::TestResults {
+                ws.send(WebSocketSend::Submit {
                     id,
                     results: TestResults::Individual { tests: results },
                     percent,
+                    remaining_attempts: MAX_ATTEMPTS - attempts - 1,
                 })
                 .context("sending test results message")?;
 
@@ -482,10 +548,12 @@ impl WebSocketRecv<'_> {
                     .await
                     .context("getting user score")?;
 
-                Arc::clone(&state).broadcast(WebSocketSend::TeamUpdate {
-                    team: user.username.clone(),
-                    new_score,
-                    new_states,
+                Arc::clone(&state).broadcast(WebSocketSend::Broadcast {
+                    broadcast: Broadcast::TeamUpdate {
+                        team: user.username.clone(),
+                        new_score,
+                        new_states,
+                    },
                 })?;
             }
         }

@@ -219,6 +219,31 @@ pub async fn get_latest_submissions(
     .context("while querying the user's question states")
 }
 
+#[derive(Serialize, Deserialize, sqlx::FromRow)]
+pub struct Attempt {
+    pub question_index: i64,
+    pub attempts: i64,
+}
+
+pub async fn get_attempts(
+    db: impl SqliteExecutor<'_>,
+    username: &Username,
+) -> anyhow::Result<Vec<Attempt>> {
+    sqlx::query_as!(
+        Attempt,
+        r#"
+            SELECT question_index, count(id) as attempts
+            FROM submission_history
+            WHERE submitter = ?
+            GROUP BY question_index;
+        "#,
+        username
+    )
+    .fetch_all(db)
+    .await
+    .context("while querying the user's score")
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
