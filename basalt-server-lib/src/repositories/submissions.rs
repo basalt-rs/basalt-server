@@ -4,10 +4,11 @@ use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use sqlx::{Executor, Sqlite, SqliteExecutor};
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 
 use super::users::Username;
 
-#[derive(Serialize, Deserialize, derive_more::From, derive_more::Into, sqlx::Type)]
+#[derive(Serialize, Deserialize, derive_more::From, derive_more::Into, sqlx::Type, ToSchema)]
 #[sqlx(transparent)]
 pub struct SubmissionId(String);
 
@@ -23,11 +24,12 @@ impl SubmissionId {
     }
 }
 
-#[derive(Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Serialize, Deserialize, sqlx::FromRow, ToSchema)]
 pub struct SubmissionHistory {
     pub id: SubmissionId,
     pub submitter: Username,
     #[serde(with = "time::serde::rfc3339")]
+    #[schema(value_type = String, format = Date)]
     pub time: OffsetDateTime,
     pub compile_fail: bool,
     pub code: String,
@@ -289,6 +291,28 @@ pub async fn count_tests(
     .fetch_all(db)
     .await
     .context("while querying the user's test runs")
+}
+
+pub async fn get_submissions(
+    db: impl SqliteExecutor<'_>,
+    username: &Username,
+    question_index: usize,
+) -> anyhow::Result<Vec<SubmissionHistory>> {
+    let question_index = question_index as i64;
+
+    sqlx::query_as!(
+        SubmissionHistory,
+        r#"
+        SELECT * FROM submission_history
+        WHERE submitter = ? AND question_index = ?
+        ORDER BY time ASC;
+        "#,
+        username,
+        question_index
+    )
+    .fetch_all(db)
+    .await
+    .context("getting user submissions")
 }
 
 #[cfg(test)]

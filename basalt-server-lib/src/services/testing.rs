@@ -1,13 +1,23 @@
 use crate::{
     extractors::auth::AuthUser,
-    repositories::{self, users::QuestionState},
+    repositories::{
+        self,
+        submissions::SubmissionHistory,
+        users::{QuestionState, Role, Username},
+    },
     server::AppState,
 };
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{
+    extract::{Query, State},
+    http::StatusCode,
+    Json,
+};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::{IntoParams, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
-#[derive(serde::Serialize, utoipa::ToSchema, Copy, Clone)]
+#[derive(Serialize, ToSchema, Copy, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct QuestionSubmissionState {
     state: QuestionState,
@@ -15,7 +25,7 @@ pub struct QuestionSubmissionState {
 }
 
 #[axum::debug_handler]
-#[utoipa::path(get, path = "/state", responses((status = OK, body = Vec<QuestionSubmissionState>, content_type = "application/json")))]
+#[utoipa::path(get, path = "/state", tag = "testing", responses((status = OK, body = Vec<QuestionSubmissionState>, content_type = "application/json")))]
 pub async fn get_submissions_state(
     AuthUser { user, .. }: AuthUser,
     State(state): State<Arc<AppState>>,
@@ -83,8 +93,56 @@ pub async fn get_submissions_state(
     Ok(Json(states))
 }
 
+#[derive(Deserialize, IntoParams)]
+pub struct SubmissionsParams {
+    username: Option<Username>,
+    question_index: usize,
+}
+
+#[derive(Serialize, ToSchema, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SubmissionHistoryResponse {
+    content: String,
+}
+
+#[axum::debug_handler]
+#[utoipa::path(
+    get, path = "/submissions", tag = "testing",
+    params(SubmissionsParams),
+    responses(
+        (status = OK, body = Vec<SubmissionHistory>, content_type = "application/json"),
+        (status = 403, description = "User does not have permission to view the submissions for this user"),
+    )
+)]
+pub async fn get_submissions(
+    AuthUser { user, .. }: AuthUser,
+    params: Query<SubmissionsParams>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Vec<SubmissionHistory>>, StatusCode> {
+    let username = params.username.as_ref().unwrap_or(&user.username);
+    if !(user.role == Role::Host || user.username == *username) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    let sql = state.db.read().await;
+    let subs =
+        match repositories::submissions::get_submissions(&sql.db, username, params.question_index)
+            .await
+        {
+            Ok(subs) => subs,
+            Err(err) => {
+                tracing::error!("Error getting subs for user: {}", err);
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            }
+        };
+
+    Ok(Json(subs))
+}
+
 pub fn router() -> OpenApiRouter<Arc<AppState>> {
-    OpenApiRouter::new().routes(routes!(get_submissions_state))
+    OpenApiRouter::new()
+        .routes(routes!(get_submissions_state))
+        .routes(routes!(get_submissions))
 }
 
 pub fn service() -> axum::Router<Arc<AppState>> {
