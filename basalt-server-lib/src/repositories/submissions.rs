@@ -305,7 +305,7 @@ pub async fn get_submissions(
         r#"
         SELECT * FROM submission_history
         WHERE submitter = ? AND question_index = ?
-        ORDER BY time ASC;
+        ORDER BY time DESC;
         "#,
         username,
         question_index

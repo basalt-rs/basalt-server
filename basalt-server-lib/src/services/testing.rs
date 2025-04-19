@@ -24,12 +24,37 @@ pub struct QuestionSubmissionState {
     remaining_attempts: u32,
 }
 
+#[derive(Deserialize, ToSchema, Clone, IntoParams)]
+#[serde(rename_all = "camelCase")]
+pub struct SubmissionStateParams {
+    username: Option<Username>,
+}
+
 #[axum::debug_handler]
-#[utoipa::path(get, path = "/state", tag = "testing", responses((status = OK, body = Vec<QuestionSubmissionState>, content_type = "application/json")))]
+#[utoipa::path(
+    get, path = "/state",
+    tag = "testing",
+    description = "Get the current state of the current user's submissions",
+    responses(
+        (status = OK, body = Vec<QuestionSubmissionState>, content_type = "application/json"),
+        (status = 403, description = "User does not have permission to view the submissions for this user"),
+    ),
+)]
 pub async fn get_submissions_state(
     AuthUser { user, .. }: AuthUser,
+    Query(SubmissionStateParams { username }): Query<SubmissionStateParams>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<QuestionSubmissionState>>, StatusCode> {
+    let username = if let Some(ref username) = username {
+        if user.role == Role::Host {
+            username
+        } else {
+            return Err(StatusCode::FORBIDDEN);
+        }
+    } else {
+        &user.username
+    };
+
     let sql = state.db.read().await;
 
     // TODO: add this to the config
@@ -43,7 +68,7 @@ pub async fn get_submissions_state(
         state.config.packet.problems.len()
     ];
 
-    match repositories::submissions::get_latest_submissions(&sql.db, &user.username).await {
+    match repositories::submissions::get_latest_submissions(&sql.db, username).await {
         Ok(submissions) => {
             for s in submissions {
                 states[s.question_index as usize].state = if s.success {
@@ -59,7 +84,7 @@ pub async fn get_submissions_state(
         }
     };
 
-    match repositories::submissions::count_tests(&sql.db, &user.username).await {
+    match repositories::submissions::count_tests(&sql.db, username).await {
         Ok(counts) => {
             for c in counts {
                 if states[c.question_index as usize].state == QuestionState::NotAttempted {
@@ -77,7 +102,7 @@ pub async fn get_submissions_state(
         }
     }
 
-    match repositories::submissions::get_attempts(&sql.db, &user.username).await {
+    match repositories::submissions::get_attempts(&sql.db, username).await {
         Ok(attempts) => {
             for a in attempts {
                 states[a.question_index as usize].remaining_attempts =
@@ -97,12 +122,6 @@ pub async fn get_submissions_state(
 pub struct SubmissionsParams {
     username: Option<Username>,
     question_index: usize,
-}
-
-#[derive(Serialize, ToSchema, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct SubmissionHistoryResponse {
-    content: String,
 }
 
 #[axum::debug_handler]
