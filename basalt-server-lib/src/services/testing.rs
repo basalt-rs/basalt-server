@@ -13,7 +13,7 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::{num::NonZero, sync::Arc};
 use utoipa::{IntoParams, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
@@ -21,7 +21,7 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 #[serde(rename_all = "camelCase")]
 pub struct QuestionSubmissionState {
     state: QuestionState,
-    remaining_attempts: u32,
+    remaining_attempts: Option<u32>,
 }
 
 #[derive(Deserialize, ToSchema, Clone, IntoParams)]
@@ -54,16 +54,14 @@ pub async fn get_submissions_state(
     } else {
         &user.username
     };
+    let max_attempts = state.config.max_submissions.map(NonZero::get);
 
     let sql = state.db.read().await;
-
-    // TODO: add this to the config
-    const MAX_ATTEMPTS: u32 = 5;
 
     let mut states = vec![
         QuestionSubmissionState {
             state: QuestionState::NotAttempted,
-            remaining_attempts: MAX_ATTEMPTS
+            remaining_attempts: max_attempts,
         };
         state.config.packet.problems.len()
     ];
@@ -106,7 +104,7 @@ pub async fn get_submissions_state(
         Ok(attempts) => {
             for a in attempts {
                 states[a.question_index as usize].remaining_attempts =
-                    MAX_ATTEMPTS - a.attempts as u32;
+                    max_attempts.map(|x| x - a.attempts as u32);
             }
         }
         Err(err) => {

@@ -1,4 +1,4 @@
-use std::{borrow::Cow, net::SocketAddr, sync::Arc};
+use std::{borrow::Cow, net::SocketAddr, num::NonZero, sync::Arc};
 
 use anyhow::Context;
 use bedrock::{packet::Test, scoring::Scorable};
@@ -127,7 +127,7 @@ pub enum WebSocketSend {
         results: TestResults,
         percent: usize,
         #[serde(rename = "remainingAttempts")]
-        remaining_attempts: u32,
+        remaining_attempts: Option<u32>,
     },
     Error {
         id: Option<usize>,
@@ -365,13 +365,12 @@ impl WebSocketRecv<'_> {
         .await
         .context("getting previous submissions")?;
 
-        // TODO: move this to the config
-        const MAX_ATTEMPTS: u32 = 5;
+        let max_attempts: Option<u32> = state.config.max_submissions.map(NonZero::get);
 
-        if attempts >= MAX_ATTEMPTS {
+        if max_attempts.is_some_and(|max| attempts >= max) {
             return self.error(
                 ws,
-                format!("Only {} submissions are allowed.", MAX_ATTEMPTS),
+                format!("Only {} submissions are allowed.", max_attempts.unwrap()),
             );
         }
         drop(sql); // ensure we don't hold the lock while doing time-consuming things
@@ -428,7 +427,7 @@ impl WebSocketRecv<'_> {
                     id,
                     results: TestResults::InternalError,
                     percent: 0,
-                    remaining_attempts: MAX_ATTEMPTS - attempts - 1,
+                    remaining_attempts: max_attempts.map(|x| x - attempts - 1),
                 })
                 .context("sending submission results message")?;
 
@@ -454,7 +453,7 @@ impl WebSocketRecv<'_> {
                     id,
                     results: TestResults::CompileFail(simple_output),
                     percent: 0,
-                    remaining_attempts: MAX_ATTEMPTS - attempts - 1,
+                    remaining_attempts: max_attempts.map(|x| x - attempts - 1),
                 })
                 .context("sending test results message")?;
 
@@ -558,7 +557,7 @@ impl WebSocketRecv<'_> {
                     id,
                     results: TestResults::Individual { tests: results },
                     percent,
-                    remaining_attempts: MAX_ATTEMPTS - attempts - 1,
+                    remaining_attempts: max_attempts.map(|x| x - attempts - 1),
                 })
                 .context("sending test results message")?;
                 Self::broadcast_team_update(Arc::clone(&state), &user.username).await?;
