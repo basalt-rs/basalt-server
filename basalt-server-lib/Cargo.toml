@@ -33,6 +33,7 @@ tower-http.workspace = true
 tracing.workspace = true
 utoipa-axum.workspace = true
 utoipa.workspace = true
+chrono = { version = "0.4.40", features = ["serde"] }
 
 [dev-dependencies]
 async-tempfile = "0.6.0"
