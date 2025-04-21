@@ -36,7 +36,7 @@ impl AnnouncementId {
     }
 }
 
-#[derive(Serialize, Deserialize, sqlx::FromRow, ToSchema)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, sqlx::FromRow, ToSchema)]
 pub struct Announcement {
     pub id: AnnouncementId,
     pub sender: Username,

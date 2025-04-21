@@ -55,8 +55,14 @@ pub async fn new(
 
     let new =
         repositories::announcements::create_announcement(&sql.db, &user.username, &message).await;
+    drop(sql);
     match new {
-        Ok(new) => Ok(Json(new)),
+        Ok(new) => {
+            state.broadcast(super::ws::WebSocketSend::Broadcast {
+                broadcast: super::ws::Broadcast::NewAnnouncement(new.clone()),
+            });
+            Ok(Json(new))
+        }
         Err(err) => {
             tracing::error!("Error getting announcements: {:?}", err);
             Err(StatusCode::INTERNAL_SERVER_ERROR)
@@ -82,8 +88,14 @@ pub async fn delete(
     let sql = state.db.read().await;
 
     let del = repositories::announcements::delete_announcement(&sql.db, &id).await;
+    drop(sql);
     match del {
-        Ok(Some(del)) => Ok(Json(del)),
+        Ok(Some(del)) => {
+            state.broadcast(super::ws::WebSocketSend::Broadcast {
+                broadcast: super::ws::Broadcast::DeleteAnnouncement { id },
+            });
+            Ok(Json(del))
+        }
         Ok(None) => Err(StatusCode::NOT_FOUND),
         Err(err) => {
             tracing::error!("Error getting announcements: {:?}", err);

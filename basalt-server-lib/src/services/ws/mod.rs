@@ -15,6 +15,7 @@ use crate::{
     extractors::auth::AuthUser,
     repositories::{
         self,
+        announcements::{Announcement, AnnouncementId},
         submissions::{NewSubmissionHistory, NewSubmissionTestHistory, TestResult},
         users::{QuestionState, Username},
     },
@@ -51,7 +52,8 @@ pub struct ConnectedClient {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum Broadcast {
-    Announce { message: String },
+    NewAnnouncement(Announcement),
+    DeleteAnnouncement { id: AnnouncementId },
     GamePaused,
     GameUnpaused { time_left_in_seconds: u64 },
 }
@@ -88,9 +90,6 @@ pub enum WebSocketSend {
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum WebSocketRecv<'a> {
-    Broadcast {
-        broadcast: Broadcast,
-    },
     RunTest {
         id: usize,
         language: Cow<'a, str>,
@@ -121,7 +120,6 @@ lazy_static! {
 impl WebSocketRecv<'_> {
     fn can_use(&self, who: &ConnectionKind) -> bool {
         match self {
-            WebSocketRecv::Broadcast { .. } => true,
             WebSocketRecv::RunTest { .. } => who.is_user(),
             WebSocketRecv::Submit { .. } => who.is_user(),
         }
@@ -129,7 +127,6 @@ impl WebSocketRecv<'_> {
 
     fn id(&self) -> Option<usize> {
         match self {
-            WebSocketRecv::Broadcast { .. } => None,
             WebSocketRecv::RunTest { id, .. } => Some(*id),
             WebSocketRecv::Submit { id, .. } => Some(*id),
         }
@@ -460,7 +457,7 @@ impl WebSocketRecv<'_> {
                     team: user.username.clone(),
                     new_score,
                     new_states,
-                })?;
+                });
             }
         }
         Ok(())
@@ -481,9 +478,6 @@ impl WebSocketRecv<'_> {
         }
 
         match self {
-            WebSocketRecv::Broadcast { broadcast } => {
-                state.broadcast(WebSocketSend::Broadcast { broadcast })?
-            }
             WebSocketRecv::RunTest {
                 id,
                 ref language,
