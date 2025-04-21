@@ -12,9 +12,46 @@ const SPEC_PATH: &str = "../openapi.yaml";
 #[openapi()]
 struct ApiDoc;
 
+#[cfg(feature = "doc-gen")]
+async fn gen_docs(path: &Path) -> anyhow::Result<()> {
+    let out_dir = path.with_file_name("doc").join("index.html");
+
+    // npx -y @redocly/cli build-docs <SPEC_PATH> -o <out_dir>
+    let result = Command::new("npx")
+        .arg("-y")
+        .arg("@redocly/cli")
+        .arg("build-docs")
+        .arg(SPEC_PATH)
+        .arg("-o")
+        .arg(out_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("spawning redocly command")?
+        .wait_with_output()
+        .await
+        .context("waiting for redocly command")?;
+
+    if !result.status.success() {
+        println!("cargo::warning=Redocly exited with nonzero exit code.");
+        // Give a lot of error information so we can easily fix
+        for line in result.stdout.lines() {
+            println!("cargo::warning=[STDOUT] {}", line.unwrap());
+        }
+        for line in result.stderr.lines() {
+            println!("cargo::warning=[STDERR] {}", line.unwrap());
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(feature = "doc-gen"))]
+async fn gen_docs(path: &Path) {}
+
 #[tokio::main]
 pub async fn main() -> anyhow::Result<()> {
     println!("cargo::rerun-if-changed={}", SPEC_PATH);
+
     let tempfile = async_tempfile::TempFile::new()
         .await
         .context("Failed to create tempfile")?;
@@ -25,7 +62,6 @@ pub async fn main() -> anyhow::Result<()> {
 
     let dummy_state = Arc::new(AppState::new(sqlite_layer, bedrock::Config::default()));
     let router = basalt_server_lib::server::doc_router(dummy_state);
-
     let content = ApiDoc::openapi()
         .merge_from(router.into_openapi())
         .to_yaml()
@@ -46,35 +82,7 @@ pub async fn main() -> anyhow::Result<()> {
             .await
             .with_context(|| format!("Writing to {}", SPEC_PATH))?;
 
-        let out_dir = path.with_file_name("doc").join("index.html");
-
-        // npx -y @redocly/cli build-docs <SPEC_PATH> -o <out_dir>
-        let result = Command::new("npx")
-            .arg("-y")
-            .arg("@redocly/cli")
-            .arg("build-docs")
-            .arg(SPEC_PATH)
-            .arg("-o")
-            .arg(out_dir)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .context("spawning redocly command")?
-            .wait_with_output()
-            .await
-            .context("waiting for redocly command")?;
-
-        if !result.status.success() {
-            println!("cargo::warning=Redocly exited with nonzero exit code.");
-            // Give a lot of error information so we can easily fix
-            for line in result.stdout.lines() {
-                println!("cargo::warning=[STDOUT] {}", line.unwrap());
-            }
-            for line in result.stderr.lines() {
-                println!("cargo::warning=[STDERR] {}", line.unwrap());
-            }
-        }
+        gen_docs(path).await?;
     }
-
     Ok(())
 }
