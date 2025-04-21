@@ -17,7 +17,13 @@ use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 #[axum::debug_handler]
-#[utoipa::path(get, tag = "announcements", path = "/", responses((status = OK, body = Vec<Announcement>, content_type = "application/json")))]
+#[utoipa::path(
+    get,
+    path = "/", tag = "announcements",
+    responses(
+        (status = OK, body = Vec<Announcement>, content_type = "application/json")
+    )
+)]
 pub async fn get_all(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<Announcement>>, StatusCode> {
@@ -39,7 +45,7 @@ pub struct NewAnnouncement {
 #[axum::debug_handler]
 #[utoipa::path(
     post,
-    path = "/",
+    path = "/", tag = "announcements",
     request_body = NewAnnouncement,
     responses(
         (status=201, body=Announcement, content_type="application/json"),
@@ -73,7 +79,7 @@ pub async fn new(
 #[axum::debug_handler]
 #[utoipa::path(
     delete,
-    path = "/{id}",
+    path = "/{id}", tag = "announcements",
     responses(
         (status=OK, body=Announcement, content_type="application/json"),
         (status=404, description="Announcement with provided id does not exists"),
