@@ -1,7 +1,7 @@
-use std::{io::BufRead, path::Path, process::Stdio, sync::Arc};
+use std::{path::Path, sync::Arc};
 
 use anyhow::Context;
-use tokio::{fs, process::Command};
+use tokio::fs;
 use utoipa::OpenApi;
 
 use basalt_server_lib::{server::AppState, storage::SqliteLayer};
@@ -14,6 +14,9 @@ struct ApiDoc;
 
 #[cfg(feature = "doc-gen")]
 async fn gen_docs(path: &Path) -> anyhow::Result<()> {
+    use std::{io::BufRead, process::Stdio};
+    use tokio::process::Command;
+
     let out_dir = path.with_file_name("doc").join("index.html");
 
     // npx -y @redocly/cli build-docs <SPEC_PATH> -o <out_dir>
@@ -44,9 +47,6 @@ async fn gen_docs(path: &Path) -> anyhow::Result<()> {
     }
     Ok(())
 }
-
-#[cfg(not(feature = "doc-gen"))]
-async fn gen_docs(path: &Path) {}
 
 #[tokio::main]
 pub async fn main() -> anyhow::Result<()> {
@@ -82,6 +82,7 @@ pub async fn main() -> anyhow::Result<()> {
             .await
             .with_context(|| format!("Writing to {}", SPEC_PATH))?;
 
+        #[cfg(feature = "doc-gen")]
         gen_docs(path).await?;
     }
     Ok(())
