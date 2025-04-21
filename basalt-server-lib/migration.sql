@@ -31,3 +31,10 @@ CREATE TABLE IF NOT EXISTS submission_test_history (
   stderr TEXT,
   exit_status INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS announcements (
+    id VARCHAR(32) NOT NULL PRIMARY KEY,
+    sender VARCHAR(32) NOT NULL REFERENCES users(username),
+    time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    message TEXT NOT NULL
+);

@@ -61,6 +61,12 @@ impl From<Role> for i32 {
 #[sqlx(transparent)]
 pub struct Username(pub String);
 
+impl Username {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 #[derive(Debug, Clone, Hash, Eq, PartialEq, FromRow, Serialize, Deserialize, ToSchema)]
 pub struct User {
     pub username: Username,
