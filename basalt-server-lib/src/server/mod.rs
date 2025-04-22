@@ -1,10 +1,13 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use axum::Router;
 use bedrock::Config;
+use clock::ClockInfo;
 use dashmap::{DashMap, DashSet};
 use rand::{distributions::Alphanumeric, Rng};
 use tokio::sync::RwLock;
+
+pub mod clock;
 
 use crate::{
     services::{
@@ -16,20 +19,24 @@ use crate::{
 
 pub struct AppState {
     pub db: RwLock<SqliteLayer>,
+    pub web_dir: Option<PathBuf>,
     pub active_connections: DashMap<ws::ConnectionKind, ws::ConnectedClient>,
     pub active_tests: DashSet<(ws::ConnectionKind, usize)>,
     pub active_submissions: DashSet<(ws::ConnectionKind, usize)>,
     pub config: Config,
+    pub clock: RwLock<ClockInfo>,
 }
 
 impl AppState {
-    pub fn new(db: SqliteLayer, config: Config) -> Self {
+    pub fn new(db: SqliteLayer, config: Config, web_dir: Option<PathBuf>) -> Self {
         Self {
             db: RwLock::new(db),
+            web_dir,
             active_connections: Default::default(),
             active_tests: Default::default(),
             active_submissions: Default::default(),
             config,
+            clock: Default::default(),
         }
     }
 
@@ -53,9 +60,16 @@ impl AppState {
 macro_rules! define_router {
     ($($route: ident),+$(,)?) => {
         pub fn router(initial_state: Arc<AppState>) -> axum::Router {
-            Router::new()
-                $(.nest(concat!("/", stringify!($route)), services::$route::service()))+
-                .with_state(initial_state)
+            let router = Router::new()
+                $(.nest(concat!("/", stringify!($route)), services::$route::service()))+;
+
+                let router = if let Some(path) = &initial_state.web_dir {
+                    router.fallback_service(tower_http::services::ServeDir::new(path))
+                } else {
+                    router
+                };
+
+            router.with_state(initial_state)
                 .layer(tower_http::cors::CorsLayer::permissive())
                 .layer(
                     tower_http::trace::TraceLayer::new_for_http().make_span_with(
