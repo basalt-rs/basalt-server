@@ -16,7 +16,7 @@ pub struct TestResponse {
 
 #[derive(serde::Serialize, utoipa::ToSchema)]
 pub struct LanguageSyntax {
-    language: String,
+    name: String,
     #[schema(value_type = String)]
     syntax: Syntax,
 }
@@ -34,7 +34,7 @@ impl From<&Test> for TestResponse {
 impl From<&Language> for LanguageSyntax {
     fn from(value: &Language) -> Self {
         Self {
-            language: value.name().to_string(),
+            name: value.name().to_string(),
             syntax: value.syntax(),
         }
     }
