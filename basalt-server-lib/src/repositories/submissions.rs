@@ -1,8 +1,7 @@
-use std::fmt::Display;
-
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use sqlx::{Executor, Sqlite, SqliteExecutor};
+use std::fmt::Display;
 use time::OffsetDateTime;
 
 use super::users::Username;
