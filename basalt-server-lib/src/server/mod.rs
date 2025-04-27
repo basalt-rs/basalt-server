@@ -106,4 +106,5 @@ define_router! {
     questions,
     competition,
     ws,
+    clock,
 }
