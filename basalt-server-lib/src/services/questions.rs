@@ -55,7 +55,7 @@ impl QuestionResponse {
 }
 
 #[axum::debug_handler]
-#[utoipa::path(get, path = "/", responses((status = OK, body = Vec<QuestionResponse>, content_type = "application/json")))]
+#[utoipa::path(get, tag = "questions", path = "/", responses((status = OK, body = Vec<QuestionResponse>, content_type = "application/json")))]
 pub async fn get_all(
     OptionalAuthUser(user): OptionalAuthUser,
     State(state): State<Arc<AppState>>,
@@ -75,7 +75,7 @@ pub async fn get_all(
 #[axum::debug_handler]
 #[utoipa::path(
     get,
-    path = "/{id}",
+    path = "/{id}", tag = "questions",
     responses(
         (status=OK, body=QuestionResponse, content_type="application/json"),
         (status=404, description="Question Not Found"),
