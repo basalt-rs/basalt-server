@@ -1,52 +1,32 @@
 use crate::{
-    extractors::auth::AuthUser,
     repositories::{
         self,
-        submissions::SubmissionHistory,
-        users::{QuestionState, Role, Username},
+        users::{QuestionState, Username},
     },
     server::AppState,
 };
-use axum::{
-    extract::{Query, State},
-    http::StatusCode,
-    Json,
-};
-use serde::{Deserialize, Serialize};
-use std::{num::NonZero, sync::Arc};
-use utoipa::{IntoParams, ToSchema};
+use axum::{extract::State, http::StatusCode, Json};
+use serde::Serialize;
+use std::sync::Arc;
+use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
-#[derive(Serialize, ToSchema, Copy, Clone)]
+#[derive(Serialize, ToSchema, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct LeaderBoard {
     leadboard_information: Vec<TeamProgression>,
 }
 
-#[derive(Serialize, ToSchema, Copy, Clone)]
+#[derive(Serialize, ToSchema, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct TeamProgression {
-    total_points: u32,
+    total_points: f64,
     submission_states: Vec<QuestionState>,
 }
 
-// we can remove this until we created our functions
-// #[derive(Serialize, ToSchema, Copy, Clone)]
-// #[serde(rename_all = "camelCase")]
-// pub struct QuestionSubmissionState {
-//     state: QuestionState,
-//     remaining_attempts: Option<u32>,
-// }
-
-// #[derive(Deserialize, ToSchema, Clone, IntoParams)]
-// #[serde(rename_all = "camelCase")]
-// pub struct SubmissionStateParams {
-//     username: Option<Username>,
-// }
-
 #[axum::debug_handler]
 #[utoipa::path(
-    get, path = "/leadboard",
+    get, path = "/",
     tag = "testing",
     description = "Gets all team's submission states and total number of points",
     responses(
@@ -56,97 +36,60 @@ pub struct TeamProgression {
 )]
 
 pub async fn get_leaderboard_info(
-    AuthUser { user, .. }: AuthUser,
-    Query(SubmissionStateParams { username }): Query<SubmissionStateParams>,
     State(state): State<Arc<AppState>>,
-) -> Result<Json<Vec<QuestionSubmissionState>>, StatusCode> {
-    let username = if let Some(ref username) = username {
-        if user.role == Role::Host {
-            username
-        } else {
-            return Err(StatusCode::FORBIDDEN);
-        }
-    } else {
-        &user.username
-    };
-    let max_attempts = state.config.max_submissions.map(NonZero::get);
+) -> Result<Json<LeaderBoard>, StatusCode> {
+    let competitors: Vec<Username> = state
+        .config
+        .accounts
+        .competitors
+        .iter()
+        .map(|user| (user.name.clone().into()))
+        .collect();
 
     let sql = state.db.read().await;
 
-    let mut states = vec![
-        QuestionSubmissionState {
-            state: QuestionState::NotAttempted,
-            remaining_attempts: max_attempts,
-        };
-        state.config.packet.problems.len()
-    ];
+    let mut leaderboard_info = Vec::new();
 
-    match repositories::submissions::get_latest_submissions(&sql.db, username).await {
-        Ok(submissions) => {
-            for s in submissions {
-                states[s.question_index as usize].state = if s.success {
-                    QuestionState::Pass
-                } else {
-                    QuestionState::Fail
+    for username in &competitors {
+        // Get list size
+        let mut submission_states =
+            vec![QuestionState::NotAttempted; state.config.packet.problems.len()];
+
+        let submissions =
+            match repositories::submissions::get_latest_submissions(&sql.db, username).await {
+                Ok(submissions) => submissions,
+                Err(err) => {
+                    tracing::error!("Error while getting submissions: {}", err);
+                    return Err(StatusCode::INTERNAL_SERVER_ERROR);
                 }
-            }
+            };
+
+        for s in submissions {
+            submission_states[s.question_index as usize] = if s.success {
+                QuestionState::Pass
+            } else {
+                QuestionState::Fail
+            };
         }
-        Err(err) => {
-            tracing::error!("Error while getting submissions: {}", err);
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
-    };
 
-    match repositories::submissions::count_tests(&sql.db, username).await {
-        Ok(counts) => {
-            for c in counts {
-                if states[c.question_index as usize].state == QuestionState::NotAttempted {
-                    states[c.question_index as usize].state = if c.count > 0 {
-                        QuestionState::InProgress
-                    } else {
-                        QuestionState::NotAttempted
-                    };
-                }
-            }
-        }
-        Err(err) => {
-            tracing::error!("Error while getting attempts: {}", err);
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    Ok(Json(states))
-}
-
-#[derive(Deserialize, IntoParams)]
-pub struct SubmissionsParams {
-    username: Option<Username>,
-    question_index: usize,
-}
-
-pub async fn get_submissions(
-    AuthUser { user, .. }: AuthUser,
-    params: Query<SubmissionsParams>,
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<Vec<SubmissionHistory>>, StatusCode> {
-    let username = params.username.as_ref().unwrap_or(&user.username);
-    if !(user.role == Role::Host || user.username == *username) {
-        return Err(StatusCode::FORBIDDEN);
-    }
-
-    let sql = state.db.read().await;
-    let subs =
-        match repositories::submissions::get_submissions(&sql.db, username, params.question_index)
-            .await
+        let total_points = match repositories::submissions::get_user_score(&sql.db, username).await
         {
-            Ok(subs) => subs,
+            Ok(score) => score,
             Err(err) => {
-                tracing::error!("Error getting subs for user: {}", err);
+                tracing::error!("Error while getting score: {}", err);
                 return Err(StatusCode::INTERNAL_SERVER_ERROR);
             }
         };
 
-    Ok(Json(subs))
+        leaderboard_info.push(TeamProgression {
+            total_points,
+            submission_states,
+        });
+    }
+
+    Ok(Json(LeaderBoard {
+        leadboard_information: leaderboard_info,
+    }))
 }
 
 pub fn router() -> OpenApiRouter<Arc<AppState>> {

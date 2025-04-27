@@ -61,6 +61,7 @@ pub fn router(initial_state: Arc<AppState>) -> axum::Router {
     let router = Router::new()
         .nest("/auth", services::auth::service())
         .nest("/questions", services::questions::service())
+        .nest("/leaderboard", services::leaderboard::service())
         .nest("/clock", services::clock::service())
         .nest("/ws", services::ws::service());
     let router = if let Some(path) = &initial_state.web_dir {
@@ -95,6 +96,7 @@ pub fn doc_router(initial_state: Arc<AppState>) -> utoipa_axum::router::OpenApiR
     let router = utoipa_axum::router::OpenApiRouter::new()
         .nest("/auth", services::auth::router())
         .nest("/questions", services::questions::router())
+        .nest("/leaderboard", services::leaderboard::router())
         .nest("/clock", services::clock::router())
         .nest("/ws", services::ws::router());
     let router = if let Some(path) = &initial_state.web_dir {
