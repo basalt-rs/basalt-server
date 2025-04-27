@@ -51,39 +51,26 @@ paths:
                 $ref: '#/components/schemas/User'
         '401':
           description: Auth token is expired
-  /clock:
+  /competition/packet:
     get:
       tags:
-      - clock
-      operationId: get_clock
+      - competition
+      operationId: download_packet
       responses:
         '200':
-          description: Information about the clock
+          description: ''
           content:
-            application/json:
+            application/pdf:
               schema:
-                $ref: '#/components/schemas/ClockStatusResponse'
-    patch:
-      tags:
-      - clock
-      operationId: patch_clock
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateClockRequest'
-        required: true
-      responses:
-        '200':
-          description: Game is paused
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ClockStatusResponse'
-        '401':
-          description: Insufficient permissions
+                type: array
+                items:
+                  type: integer
+                  format: int32
+                  minimum: 0
   /questions:
     get:
+      tags:
+      - questions
       operationId: get_all
       responses:
         '200':
@@ -96,6 +83,8 @@ paths:
                   $ref: '#/components/schemas/QuestionResponse'
   /questions/{id}:
     get:
+      tags:
+      - questions
       operationId: get_specific_question
       responses:
         '200':
@@ -116,18 +105,6 @@ paths:
           description: connected to websocket
 components:
   schemas:
-    ClockStatusResponse:
-      type: object
-      required:
-      - is_paused
-      - time_left_in_seconds
-      properties:
-        is_paused:
-          type: boolean
-        time_left_in_seconds:
-          type: integer
-          format: int64
-          minimum: 0
     LoginRequest:
       type: object
       required:
@@ -193,14 +170,6 @@ components:
           type: string
         visible:
           type: boolean
-    UpdateClockRequest:
-      oneOf:
-      - type: object
-        required:
-        - is_paused
-        properties:
-          is_paused:
-            type: boolean
     User:
       type: object
       required:
