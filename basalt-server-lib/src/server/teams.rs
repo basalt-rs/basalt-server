@@ -80,3 +80,64 @@ impl TeamManagement {
         self.teams.clone()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    const TEST_TEAM_1: &str = "team1";
+    #[test]
+    fn check_works() {
+        let teams = DashMap::new();
+        teams.insert(
+            TEST_TEAM_1.into(),
+            TeamInfo {
+                last_seen: None,
+                checked_in: false,
+                disconnected: false,
+            },
+        );
+
+        let manager = TeamManagement { teams };
+        let team = manager.get_team(TEST_TEAM_1.into()).unwrap();
+        assert!(!team.info.checked_in);
+        assert_eq!(team.info.disconnected, false);
+        assert!(team.info.last_seen.is_none());
+
+        manager.check_in(TEST_TEAM_1.into());
+
+        let team = manager.get_team(TEST_TEAM_1.into()).unwrap();
+        let team_name: String = team.team.clone().into();
+        assert_eq!(TEST_TEAM_1.to_owned(), team_name);
+        assert!(team.info.checked_in);
+        assert_eq!(team.info.disconnected, false);
+        assert!(team.info.last_seen.is_some());
+    }
+
+    #[test]
+    fn disconnect_works() {
+        let teams = DashMap::new();
+        teams.insert(
+            TEST_TEAM_1.into(),
+            TeamInfo {
+                last_seen: None,
+                checked_in: false,
+                disconnected: false,
+            },
+        );
+
+        let manager = TeamManagement { teams };
+        let team = manager.get_team(TEST_TEAM_1.into()).unwrap();
+        assert!(!team.info.checked_in);
+        assert!(!team.info.disconnected);
+        assert!(team.info.last_seen.is_none());
+
+        manager.disconnect(TEST_TEAM_1.into());
+
+        let team = manager.get_team(TEST_TEAM_1.into()).unwrap();
+        let team_name: String = team.team.clone().into();
+        assert_eq!(TEST_TEAM_1.to_owned(), team_name);
+        assert!(!team.info.checked_in);
+        assert!(team.info.disconnected);
+        assert!(team.info.last_seen.is_none());
+    }
+}
