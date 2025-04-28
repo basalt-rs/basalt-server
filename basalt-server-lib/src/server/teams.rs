@@ -165,6 +165,8 @@ mod tests {
         let manager = TeamManagement { teams };
         let team1 = manager.get_team(TEST_TEAM_1.into()).unwrap();
         let team2 = manager.get_team(TEST_TEAM_2.into()).unwrap();
+        let team3 = manager.get_team("nuhuh".into());
+        assert!(team3.is_none());
         assert!(!team1.info.checked_in);
         assert!(!team1.info.disconnected);
         assert!(team1.info.last_seen.is_none());

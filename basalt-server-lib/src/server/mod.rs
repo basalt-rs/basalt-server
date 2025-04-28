@@ -105,7 +105,6 @@ macro_rules! define_router {
     };
 }
 
-
 define_router! {
     auth,
     questions,
