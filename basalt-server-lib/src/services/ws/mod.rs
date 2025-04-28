@@ -18,7 +18,7 @@ use crate::{
         submissions::{NewSubmissionHistory, NewSubmissionTestHistory, TestResult},
         users::{QuestionState, Username},
     },
-    server::AppState,
+    server::{teams::TeamFull, AppState},
 };
 pub mod connect;
 
@@ -54,6 +54,8 @@ pub enum Broadcast {
     Announce { message: String },
     GamePaused,
     GameUnpaused { time_left_in_seconds: u64 },
+    TeamConnected(TeamFull),
+    TeamDisconnected(TeamFull),
 }
 
 /// A message that is sent from the server onto the websocket

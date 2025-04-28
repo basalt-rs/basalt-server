@@ -4,13 +4,11 @@ use axum::{extract::State, Json};
 use tracing::trace;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
-use crate::server::{teams::TeamInfo, AppState};
+use crate::server::{teams::TeamFull, AppState};
 
 #[derive(serde::Serialize, utoipa::ToSchema)]
 #[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
-struct TeamsListResponse {
-    teams: Vec<TeamInfo>,
-}
+struct TeamsListResponse(Vec<TeamFull>);
 
 #[axum::debug_handler]
 #[utoipa::path(
@@ -23,7 +21,7 @@ struct TeamsListResponse {
 async fn get_teams(State(state): State<Arc<AppState>>) -> Json<TeamsListResponse> {
     trace!("user getting teams info");
     let teams = state.team_manager.list();
-    Json(TeamsListResponse { teams })
+    Json(TeamsListResponse(teams))
 }
 
 pub fn router() -> OpenApiRouter<Arc<AppState>> {

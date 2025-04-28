@@ -101,6 +101,7 @@ pub fn doc_router(initial_state: Arc<AppState>) -> utoipa_axum::router::OpenApiR
         .nest("/auth", services::auth::router())
         .nest("/questions", services::questions::router())
         .nest("/clock", services::clock::router())
+        .nest("/teams", services::teams::router())
         .nest("/ws", services::ws::router());
     let router = if let Some(path) = &initial_state.web_dir {
         router.fallback_service(tower_http::services::ServeDir::new(path))

@@ -1,20 +1,38 @@
 use bedrock::Config;
 use chrono::Utc;
 use dashmap::DashMap;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Default, Copy, Clone, Serialize, utoipa::ToSchema)]
+use crate::repositories::users::Username;
+
+#[derive(Debug, PartialEq, Eq, Default, Copy, Clone, Deserialize, Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct TeamInfo {
     /// When the team last contacted the server
     pub last_seen: Option<chrono::DateTime<Utc>>,
     /// Whether or not the team has checked into the competition by logging in
     pub checked_in: bool,
+    /// Just a flag stating whether or not the team has deliberately disconnected
+    pub disconnected: bool,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamFull {
+    /// Username of team/player
+    pub team: Username,
+    /// Contains full information about team
+    pub info: TeamInfo,
 }
 
 impl TeamInfo {
     fn check(&mut self) {
         self.checked_in = true;
         self.last_seen = Some(Utc::now());
+        self.disconnected = false;
+    }
+    fn disconnect(&mut self) {
+        self.disconnected = true;
     }
 }
 
@@ -31,16 +49,34 @@ impl TeamManagement {
         TeamManagement { teams }
     }
 
-    pub fn check_in(self, name: String) {
+    pub fn check_in(&self, name: String) {
         self.teams.entry(name).and_modify(|t| t.check());
     }
 
-    pub fn list(&self) -> Vec<TeamInfo> {
+    pub fn disconnect(&self, name: String) {
+        self.teams.entry(name).and_modify(|t| t.disconnect());
+    }
+
+    pub fn list(&self) -> Vec<TeamFull> {
         self.teams
             .clone()
             .into_read_only()
-            .values()
-            .copied()
-            .collect::<Vec<TeamInfo>>()
+            .iter()
+            .map(|(k, v)| TeamFull {
+                team: k.clone().into(),
+                info: *v,
+            })
+            .collect::<Vec<TeamFull>>()
+    }
+
+    pub fn get_team(&self, team: String) -> Option<TeamFull> {
+        self.teams.get(&team).map(|t| *t).map(|t| TeamFull {
+            team: team.into(),
+            info: t,
+        })
+    }
+
+    pub fn get_all(&self) -> DashMap<String, TeamInfo> {
+        self.teams.clone()
     }
 }

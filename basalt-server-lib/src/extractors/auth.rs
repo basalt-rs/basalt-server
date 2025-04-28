@@ -63,6 +63,8 @@ async fn extract(parts: &mut Parts, state: &Arc<AppState>) -> Result<Option<Auth
         })?;
     trace!(?user.username, "resolved user");
 
+    state.team_manager.check_in(user.username.clone().into());
+
     Ok(Some(AuthUser {
         user,
         session_id: session_id.into(),

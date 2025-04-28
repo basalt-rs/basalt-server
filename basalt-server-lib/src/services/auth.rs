@@ -54,6 +54,19 @@ async fn login(
     let token = repositories::session::create_session(&db, &user)
         .await
         .unwrap();
+    drop(db);
+
+    state.team_manager.check_in(user.username.clone().into());
+
+    state
+        .team_manager
+        .get_team(user.username.into())
+        .map(|team| {
+            state.broadcast(crate::services::ws::WebSocketSend::Broadcast {
+                broadcast: crate::services::ws::Broadcast::TeamConnected(team),
+            })
+        });
+
     let role = user.role;
     debug!(login.username, "log in");
 
@@ -76,6 +89,20 @@ async fn logout(State(state): State<Arc<AppState>>, user: AuthUser) -> Result<()
     repositories::session::close_session(&db, &user.session_id)
         .await
         .unwrap();
+    drop(db);
+
+    state
+        .team_manager
+        .disconnect(user.user.username.clone().into());
+
+    state
+        .team_manager
+        .get_team(user.user.username.into())
+        .map(|team| {
+            state.broadcast(crate::services::ws::WebSocketSend::Broadcast {
+                broadcast: crate::services::ws::Broadcast::TeamDisconnected(team),
+            })
+        });
 
     Ok(())
 }
