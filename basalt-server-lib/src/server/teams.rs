@@ -85,6 +85,7 @@ impl TeamManagement {
 mod tests {
     use super::*;
     const TEST_TEAM_1: &str = "team1";
+    const TEST_TEAM_2: &str = "team2";
     #[test]
     fn check_works() {
         let teams = DashMap::new();
@@ -139,5 +140,37 @@ mod tests {
         assert!(!team.info.checked_in);
         assert!(team.info.disconnected);
         assert!(team.info.last_seen.is_none());
+    }
+
+    #[test]
+    fn get_team_works() {
+        let teams = DashMap::new();
+        teams.insert(
+            TEST_TEAM_1.into(),
+            TeamInfo {
+                last_seen: None,
+                checked_in: false,
+                disconnected: false,
+            },
+        );
+        teams.insert(
+            TEST_TEAM_2.into(),
+            TeamInfo {
+                last_seen: None,
+                checked_in: true,
+                disconnected: true,
+            },
+        );
+
+        let manager = TeamManagement { teams };
+        let team1 = manager.get_team(TEST_TEAM_1.into()).unwrap();
+        let team2 = manager.get_team(TEST_TEAM_2.into()).unwrap();
+        assert!(!team1.info.checked_in);
+        assert!(!team1.info.disconnected);
+        assert!(team1.info.last_seen.is_none());
+        assert!(team2.info.checked_in);
+        assert!(team2.info.disconnected);
+        assert!(team2.info.last_seen.is_none());
+        assert_ne!(team1.team, team2.team);
     }
 }
