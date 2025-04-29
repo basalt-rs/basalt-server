@@ -66,7 +66,6 @@ pub async fn get_leaderboard_info(
             };
 
         for s in submissions {
-            dbg!(s.question_index, s.success);
             submission_states[s.question_index as usize] = if s.success {
                 QuestionState::Pass
             } else {
