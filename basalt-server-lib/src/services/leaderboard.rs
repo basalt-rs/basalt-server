@@ -21,7 +21,7 @@ pub struct LeaderBoard {
 #[serde(rename_all = "camelCase")]
 pub struct TeamProgression {
     username: Username,
-    total_points: f64,
+    score: f64,
     submission_states: Vec<QuestionState>,
 }
 
@@ -66,6 +66,7 @@ pub async fn get_leaderboard_info(
             };
 
         for s in submissions {
+            dbg!(s.question_index, s.success);
             submission_states[s.question_index as usize] = if s.success {
                 QuestionState::Pass
             } else {
@@ -73,8 +74,7 @@ pub async fn get_leaderboard_info(
             };
         }
 
-        let total_points = match repositories::submissions::get_user_score(&sql.db, username).await
-        {
+        let score = match repositories::submissions::get_user_score(&sql.db, username).await {
             Ok(score) => score,
             Err(err) => {
                 tracing::error!("Error while getting score: {}", err);
@@ -84,7 +84,7 @@ pub async fn get_leaderboard_info(
 
         leaderboard_info.push(TeamProgression {
             username: username.clone(),
-            total_points,
+            score,
             submission_states,
         });
     }
