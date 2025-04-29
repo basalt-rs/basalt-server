@@ -37,6 +37,13 @@ impl TeamInfo {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, serde::Serialize, utoipa::ToSchema)]
+pub struct TeamWithScore {
+    pub score: f64,
+    #[serde(flatten)]
+    pub team_info: TeamFull,
+}
+
 pub struct TeamManagement {
     teams: DashMap<Username, TeamInfo>,
 }

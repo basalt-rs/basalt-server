@@ -10,7 +10,7 @@ use crate::{
         self,
         users::{Role, User, UserLogin},
     },
-    server::AppState,
+    server::{teams::TeamWithScore, AppState},
 };
 
 #[derive(serde::Deserialize, utoipa::ToSchema)]
@@ -54,13 +54,19 @@ async fn login(
     let token = repositories::session::create_session(&sql.db, &user)
         .await
         .unwrap();
+    let score = repositories::submissions::get_user_score(&sql.db, &user.username)
+        .await
+        .unwrap();
     drop(sql);
 
     state.team_manager.check_in(&user.username);
 
     state.team_manager.get_team(&user.username).map(|team| {
         state.broadcast(crate::services::ws::WebSocketSend::Broadcast {
-            broadcast: crate::services::ws::Broadcast::TeamConnected(team),
+            broadcast: crate::services::ws::Broadcast::TeamConnected(TeamWithScore {
+                score,
+                team_info: team,
+            }),
         })
     });
 
@@ -82,13 +88,17 @@ async fn login(
 async fn logout(State(state): State<Arc<AppState>>, user: AuthUser) -> Result<(), StatusCode> {
     debug!(?user.user.username, "logout");
 
-    {
+    let score = {
         let sql = state.db.read().await;
 
         repositories::session::close_session(&sql.db, &user.session_id)
             .await
             .unwrap();
-    }
+
+        repositories::submissions::get_user_score(&sql.db, &user.user.username)
+            .await
+            .unwrap()
+    };
 
     state.team_manager.disconnect(&user.user.username);
 
@@ -97,7 +107,10 @@ async fn logout(State(state): State<Arc<AppState>>, user: AuthUser) -> Result<()
         .get_team(&user.user.username)
         .map(|team| {
             state.broadcast(crate::services::ws::WebSocketSend::Broadcast {
-                broadcast: crate::services::ws::Broadcast::TeamDisconnected(team),
+                broadcast: crate::services::ws::Broadcast::TeamDisconnected(TeamWithScore {
+                    score,
+                    team_info: team,
+                }),
             })
         });
 

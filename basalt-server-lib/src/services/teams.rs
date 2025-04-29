@@ -7,19 +7,12 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
     repositories::submissions::get_user_score,
-    server::{teams::TeamFull, AppState},
+    server::{teams::TeamWithScore, AppState},
 };
 
 #[derive(Debug, serde::Serialize, utoipa::ToSchema)]
-struct TeamResponseInfo {
-    score: f64,
-    #[serde(flatten)]
-    team_info: TeamFull,
-}
-
-#[derive(Debug, serde::Serialize, utoipa::ToSchema)]
 #[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
-struct TeamsListResponse(Vec<TeamResponseInfo>);
+struct TeamsListResponse(Vec<TeamWithScore>);
 
 #[axum::debug_handler]
 #[utoipa::path(
@@ -42,7 +35,7 @@ async fn get_teams(
             let sql = state.db.read().await;
             get_user_score(&sql.db, &t.team)
                 .await
-                .map(|score| TeamResponseInfo {
+                .map(|score| TeamWithScore {
                     team_info: t,
                     score,
                 })
@@ -52,7 +45,7 @@ async fn get_teams(
         .join_all()
         .await
         .into_iter()
-        .collect::<anyhow::Result<Vec<TeamResponseInfo>>>()
+        .collect::<anyhow::Result<Vec<TeamWithScore>>>()
         .map_err(|e| {
             error!("Failed to retrieve scores for teams: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR

@@ -18,8 +18,9 @@ use crate::{
         submissions::{NewSubmissionHistory, NewSubmissionTestHistory, TestResult},
         users::{QuestionState, Username},
     },
-    server::{teams::TeamFull, AppState},
+    server::{teams::TeamWithScore, AppState},
 };
+
 pub mod connect;
 
 #[derive(Clone, Eq, PartialEq, Hash, derive_more::Debug)]
@@ -48,18 +49,18 @@ pub struct ConnectedClient {
     pub send: mpsc::UnboundedSender<WebSocketSend>,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum Broadcast {
     Announce { message: String },
     GamePaused,
     GameUnpaused { time_left_in_seconds: u64 },
-    TeamConnected(TeamFull),
-    TeamDisconnected(TeamFull),
+    TeamConnected(TeamWithScore),
+    TeamDisconnected(TeamWithScore),
 }
 
 /// A message that is sent from the server onto the websocket
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum WebSocketSend {
     Broadcast {
@@ -87,7 +88,7 @@ pub enum WebSocketSend {
 }
 
 /// A message that is recieved from the websocket
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum WebSocketRecv<'a> {
     Broadcast {
