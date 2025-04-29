@@ -20,6 +20,7 @@ pub struct LeaderBoard {
 #[derive(Serialize, ToSchema, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct TeamProgression {
+    username: Username,
     total_points: f64,
     submission_states: Vec<QuestionState>,
 }
@@ -51,7 +52,7 @@ pub async fn get_leaderboard_info(
     let mut leaderboard_info = Vec::new();
 
     for username in &competitors {
-        // Get list size
+        // Get list size and sets values to not-attempted by default
         let mut submission_states =
             vec![QuestionState::NotAttempted; state.config.packet.problems.len()];
 
@@ -82,6 +83,7 @@ pub async fn get_leaderboard_info(
         };
 
         leaderboard_info.push(TeamProgression {
+            username: username.clone(),
             total_points,
             submission_states,
         });
