@@ -7,7 +7,7 @@ use time::OffsetDateTime;
 
 use super::users::Username;
 
-#[derive(Serialize, Deserialize, derive_more::From, derive_more::Into, sqlx::Type)]
+#[derive(Debug, Serialize, Deserialize, derive_more::From, derive_more::Into, sqlx::Type)]
 #[sqlx(transparent)]
 pub struct SubmissionId(String);
 
@@ -23,7 +23,7 @@ impl SubmissionId {
     }
 }
 
-#[derive(Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct SubmissionHistory {
     pub id: SubmissionId,
     pub submitter: Username,
@@ -232,8 +232,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_submission() {
-        let (f, sql_layer) = mock_db().await;
-        let sql = sql_layer.read().await;
+        let (f, sql) = mock_db().await;
         let user = dummy_user(&sql.db, "dummy_user", "foobar", Role::Competitor).await;
         let history = create_submission_history(
             &sql.db,
@@ -260,8 +259,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_submission_test() {
-        let (f, sql_layer) = mock_db().await;
-        let sql = sql_layer.read().await;
+        let (f, sql) = mock_db().await;
         let user = dummy_user(&sql.db, "dummy_user", "foobar", Role::Competitor).await;
         let history = create_submission_history(
             &sql.db,
@@ -301,8 +299,7 @@ mod tests {
 
     #[tokio::test]
     async fn other_submissions() {
-        let (f, sql_layer) = mock_db().await;
-        let sql = sql_layer.read().await;
+        let (f, sql) = mock_db().await;
 
         for i in 0..5 {
             let user = dummy_user(
@@ -353,8 +350,7 @@ mod tests {
 
     #[tokio::test]
     async fn previous_submissions() {
-        let (f, sql_layer) = mock_db().await;
-        let sql = sql_layer.read().await;
+        let (f, sql) = mock_db().await;
 
         let user = dummy_user(&sql.db, "dummy_user", "foobar", Role::Competitor).await;
         for _ in 0..5 {
@@ -385,8 +381,7 @@ mod tests {
 
     #[tokio::test]
     async fn user_score() {
-        let (f, sql_layer) = mock_db().await;
-        let sql = sql_layer.read().await;
+        let (f, sql) = mock_db().await;
 
         let user = dummy_user(&sql.db, "dummy_user", "foobar", Role::Competitor).await;
         for i in 0..5 {
@@ -413,8 +408,7 @@ mod tests {
 
     #[tokio::test]
     async fn latest_submissions() {
-        let (f, sql_layer) = mock_db().await;
-        let sql = sql_layer.read().await;
+        let (f, sql) = mock_db().await;
 
         let user = dummy_user(&sql.db, "dummy_user", "foobar", Role::Competitor).await;
         for i in 0..5 {
