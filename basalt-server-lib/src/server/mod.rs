@@ -56,56 +56,55 @@ impl AppState {
         Ok(())
     }
 }
+macro_rules! define_router {
+    ($($route: ident),+$(,)?) => {
+        pub fn router(initial_state: Arc<AppState>) -> axum::Router {
+            let router = Router::new()
+                $(.nest(concat!("/", stringify!($route)), services::$route::service()))+;
 
-pub fn router(initial_state: Arc<AppState>) -> axum::Router {
-    let router = Router::new()
-        .nest("/auth", services::auth::service())
-        .nest("/questions", services::questions::service())
-        .nest("/leaderboard", services::leaderboard::service())
-        .nest("/clock", services::clock::service())
-        .nest("/ws", services::ws::service());
-    let router = if let Some(path) = &initial_state.web_dir {
-        router.fallback_service(tower_http::services::ServeDir::new(path))
-    } else {
-        router
+                let router = if let Some(path) = &initial_state.web_dir {
+                    router.fallback_service(tower_http::services::ServeDir::new(path))
+                } else {
+                    router
+                };
+
+            router.with_state(initial_state)
+                .layer(tower_http::cors::CorsLayer::permissive())
+                .layer(
+                    tower_http::trace::TraceLayer::new_for_http().make_span_with(
+                        |request: &axum::http::Request<axum::body::Body>| {
+                            tracing::trace_span!(
+                                "request",
+                                method = %request.method(),
+                                uri = %request.uri(),
+                                version = ?request.version(),
+                                id = %rand::thread_rng()
+                                    .sample_iter(Alphanumeric)
+                                    .take(10)
+                                    .map(char::from)
+                                    .collect::<String>()
+                            )
+                        },
+                    ),
+                )
+        }
+
+        #[cfg(feature = "doc-gen")]
+        pub fn doc_router(initial_state: Arc<AppState>) -> utoipa_axum::router::OpenApiRouter {
+            utoipa_axum::router::OpenApiRouter::new()
+                $(.nest(concat!("/", stringify!($route)), services::$route::router()))+
+                .with_state(initial_state)
+                .layer(tower_http::cors::CorsLayer::permissive())
+                .layer(tower_http::trace::TraceLayer::new_for_http())
+        }
     };
-    router
-        .with_state(initial_state)
-        .layer(tower_http::cors::CorsLayer::permissive())
-        .layer(
-            tower_http::trace::TraceLayer::new_for_http().make_span_with(
-                |request: &axum::http::Request<axum::body::Body>| {
-                    tracing::trace_span!(
-                        "request",
-                        method = %request.method(),
-                        uri = %request.uri(),
-                        version = ?request.version(),
-                        id = %rand::thread_rng()
-                            .sample_iter(Alphanumeric)
-                            .take(10)
-                            .map(char::from)
-                            .collect::<String>()
-                    )
-                },
-            ),
-        )
 }
 
-#[cfg(feature = "doc-gen")]
-pub fn doc_router(initial_state: Arc<AppState>) -> utoipa_axum::router::OpenApiRouter {
-    let router = utoipa_axum::router::OpenApiRouter::new()
-        .nest("/auth", services::auth::router())
-        .nest("/questions", services::questions::router())
-        .nest("/leaderboard", services::leaderboard::router())
-        .nest("/clock", services::clock::router())
-        .nest("/ws", services::ws::router());
-    let router = if let Some(path) = &initial_state.web_dir {
-        router.fallback_service(tower_http::services::ServeDir::new(path))
-    } else {
-        router
-    };
-    router
-        .with_state(initial_state)
-        .layer(tower_http::cors::CorsLayer::permissive())
-        .layer(tower_http::trace::TraceLayer::new_for_http())
+define_router! {
+    auth,
+    questions,
+    competition,
+    ws,
+    clock,
+    leaderboard,
 }
