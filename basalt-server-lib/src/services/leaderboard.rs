@@ -31,14 +31,14 @@ pub struct TeamProgression {
     tag = "testing",
     description = "Gets all team's submission states and total number of points",
     responses(
-        (status = OK, body = LeaderBoard, content_type = "application/json"),
+        (status = OK, body = Vec<TeamProgression>, content_type = "application/json"),
         (status = 403, description = "User does not have permission to view the leaderboard"),
     ),
 )]
 
 pub async fn get_leaderboard_info(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<LeaderBoard>, StatusCode> {
+) -> Result<Json<Vec<TeamProgression>>, StatusCode> {
     let competitors: Vec<Username> = state
         .config
         .accounts
@@ -89,9 +89,7 @@ pub async fn get_leaderboard_info(
         });
     }
 
-    Ok(Json(LeaderBoard {
-        leadboard_information: leaderboard_info,
-    }))
+    Ok(Json(leaderboard_info))
 }
 
 pub fn router() -> OpenApiRouter<Arc<AppState>> {
