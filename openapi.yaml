@@ -148,6 +148,16 @@ components:
           type: integer
           format: int64
           minimum: 0
+    LanguageSyntax:
+      type: object
+      required:
+      - name
+      - syntax
+      properties:
+        name:
+          type: string
+        syntax:
+          type: string
     LoginRequest:
       type: object
       required:
@@ -182,8 +192,7 @@ components:
         languages:
           type: array
           items:
-            type: string
-          uniqueItems: true
+            $ref: '#/components/schemas/LanguageSyntax'
         points:
           type:
           - integer
