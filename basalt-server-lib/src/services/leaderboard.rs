@@ -73,6 +73,24 @@ pub async fn get_leaderboard_info(
             };
         }
 
+        match repositories::submissions::count_tests(&sql.db, username).await {
+            Ok(counts) => {
+                for c in counts {
+                    if submission_states[c.question_index as usize] == QuestionState::NotAttempted {
+                        submission_states[c.question_index as usize] = if c.count > 0 {
+                            QuestionState::InProgress
+                        } else {
+                            QuestionState::NotAttempted
+                        };
+                    }
+                }
+            }
+            Err(err) => {
+                tracing::error!("Error while getting attempts: {}", err);
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            }
+        }
+
         let score = match repositories::submissions::get_user_score(&sql.db, username).await {
             Ok(score) => score,
             Err(err) => {
