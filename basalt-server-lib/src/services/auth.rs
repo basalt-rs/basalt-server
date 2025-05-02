@@ -11,6 +11,7 @@ use crate::{
         users::{Role, User, UserLogin},
     },
     server::{teams::TeamWithScore, AppState},
+    services::ws::{Broadcast, WebSocketSend},
 };
 
 #[derive(serde::Deserialize, utoipa::ToSchema)]
@@ -62,8 +63,8 @@ async fn login(
     state.team_manager.check_in(&user.username);
 
     state.team_manager.get_team(&user.username).map(|team| {
-        state.broadcast(crate::services::ws::WebSocketSend::Broadcast {
-            broadcast: crate::services::ws::Broadcast::TeamConnected(TeamWithScore {
+        state.broadcast(WebSocketSend::Broadcast {
+            broadcast: Broadcast::TeamConnected(TeamWithScore {
                 score,
                 team_info: team,
             }),
