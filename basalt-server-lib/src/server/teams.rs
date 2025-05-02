@@ -82,9 +82,9 @@ impl TeamManagement {
     }
 
     pub fn get_team(&self, team: &Username) -> Option<TeamFull> {
-        self.teams.get(team).map(|t| *t).map(|t| TeamFull {
+        self.teams.get(team).map(|t| TeamFull {
             team: team.clone(),
-            info: t,
+            info: *t,
         })
     }
 
