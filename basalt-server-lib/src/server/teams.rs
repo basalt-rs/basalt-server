@@ -69,16 +69,14 @@ impl TeamManagement {
         }
     }
 
-    pub fn list(&self) -> Vec<TeamFull> {
+    pub fn list(&self) -> impl Iterator<Item = TeamFull> {
         self.teams
             .clone()
-            .into_read_only()
-            .iter()
+            .into_iter()
             .map(|(k, v)| TeamFull {
-                team: k.clone(),
-                info: *v,
+                team: k,
+                info: v,
             })
-            .collect::<Vec<TeamFull>>()
     }
 
     pub fn get_team(&self, team: &Username) -> Option<TeamFull> {
