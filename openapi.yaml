@@ -126,6 +126,53 @@ paths:
                 $ref: '#/components/schemas/QuestionResponse'
         '404':
           description: Question Not Found
+  /testing/state:
+    get:
+      tags:
+      - testing
+      description: Get the current state of the current user's submissions
+      operationId: get_submissions_state
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/QuestionSubmissionState'
+        '403':
+          description: User does not have permission to view the submissions for this user
+  /testing/submissions:
+    get:
+      tags:
+      - testing
+      operationId: get_submissions
+      parameters:
+      - name: username
+        in: path
+        required: true
+        schema:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/Username'
+      - name: question_index
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 0
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SubmissionHistory'
+        '403':
+          description: User does not have permission to view the submissions for this user
   /ws:
     get:
       tags:
@@ -204,11 +251,64 @@ components:
             $ref: '#/components/schemas/TestResponse'
         title:
           type: string
+    QuestionState:
+      type: string
+      enum:
+      - pass
+      - fail
+      - in-progress
+      - not-attempted
+    QuestionSubmissionState:
+      type: object
+      required:
+      - state
+      properties:
+        remainingAttempts:
+          type:
+          - integer
+          - 'null'
+          format: int32
+          minimum: 0
+        state:
+          $ref: '#/components/schemas/QuestionState'
     Role:
       type: string
       enum:
       - competitor
       - host
+    SubmissionHistory:
+      type: object
+      required:
+      - id
+      - submitter
+      - time
+      - compile_fail
+      - code
+      - question_index
+      - score
+      - success
+      properties:
+        code:
+          type: string
+        compile_fail:
+          type: boolean
+        id:
+          $ref: '#/components/schemas/SubmissionId'
+        question_index:
+          type: integer
+          format: int64
+        score:
+          type: number
+          format: double
+        submitter:
+          $ref: '#/components/schemas/Username'
+        success:
+          type: boolean
+        time:
+          type: string
+          format: date
+    SubmissionId:
+      type: string
     TestResponse:
       type: object
       required:
