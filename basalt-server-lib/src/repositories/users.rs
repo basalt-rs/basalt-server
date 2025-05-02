@@ -162,7 +162,7 @@ pub async fn create_user(
         ).fetch_one(db).await.context("Failed to create user")
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum QuestionState {
     Pass,
