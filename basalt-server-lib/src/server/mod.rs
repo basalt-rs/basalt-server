@@ -1,10 +1,9 @@
-use std::{path::PathBuf, sync::Arc};
-
 use axum::Router;
 use bedrock::Config;
 use clock::ClockInfo;
 use dashmap::{DashMap, DashSet};
 use rand::{distributions::Alphanumeric, Rng};
+use std::{path::PathBuf, sync::Arc};
 use tokio::sync::RwLock;
 
 pub mod clock;
@@ -56,6 +55,7 @@ impl AppState {
         Ok(())
     }
 }
+
 macro_rules! define_router {
     ($($route: ident),+$(,)?) => {
         pub fn router(initial_state: Arc<AppState>) -> axum::Router {
