@@ -126,6 +126,20 @@ paths:
                 $ref: '#/components/schemas/QuestionResponse'
         '404':
           description: Question Not Found
+  /teams:
+    get:
+      tags:
+      - teams
+      operationId: get_teams
+      responses:
+        '200':
+          description: Information about teams
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamsListResponse'
+        '500':
+          description: ''
   /testing/state:
     get:
       tags:
@@ -309,6 +323,49 @@ components:
           format: date
     SubmissionId:
       type: string
+    TeamFull:
+      allOf:
+      - $ref: '#/components/schemas/TeamInfo'
+        description: Contains full information about team
+      - type: object
+        required:
+        - team
+        properties:
+          team:
+            $ref: '#/components/schemas/Username'
+            description: Username of team/player
+    TeamInfo:
+      type: object
+      required:
+      - checkedIn
+      - disconnected
+      properties:
+        checkedIn:
+          type: boolean
+          description: Whether or not the team has checked into the competition by logging in
+        disconnected:
+          type: boolean
+          description: Just a flag stating whether or not the team has deliberately disconnected
+        lastSeen:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: When the team last contacted the server
+    TeamWithScore:
+      allOf:
+      - $ref: '#/components/schemas/TeamFull'
+      - type: object
+        required:
+        - score
+        properties:
+          score:
+            type: number
+            format: double
+    TeamsListResponse:
+      type: array
+      items:
+        $ref: '#/components/schemas/TeamWithScore'
     TestResponse:
       type: object
       required:
