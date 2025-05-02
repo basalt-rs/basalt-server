@@ -35,7 +35,6 @@ pub struct TeamProgression {
         (status = 403, description = "User does not have permission to view the leaderboard"),
     ),
 )]
-
 pub async fn get_leaderboard_info(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<TeamProgression>>, StatusCode> {
