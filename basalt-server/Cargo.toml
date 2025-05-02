@@ -4,6 +4,10 @@ edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
+[features]
+default = ["doc-gen"]
+doc-gen = []
+
 [dependencies]
 basalt-server-lib = { path = "../basalt-server-lib" }
 anyhow.workspace = true
