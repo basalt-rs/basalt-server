@@ -107,4 +107,5 @@ define_router! {
     competition,
     ws,
     clock,
+    testing,
 }
