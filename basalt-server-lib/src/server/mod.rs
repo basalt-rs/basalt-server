@@ -112,4 +112,5 @@ define_router! {
     teams,
     ws,
     clock,
+    testing,
 }
