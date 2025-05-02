@@ -73,10 +73,7 @@ impl TeamManagement {
         self.teams
             .clone()
             .into_iter()
-            .map(|(k, v)| TeamFull {
-                team: k,
-                info: v,
-            })
+            .map(|(k, v)| TeamFull { team: k, info: v })
     }
 
     pub fn get_team(&self, team: &Username) -> Option<TeamFull> {
