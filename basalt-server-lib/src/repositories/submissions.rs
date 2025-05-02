@@ -8,7 +8,9 @@ use utoipa::ToSchema;
 
 use super::users::Username;
 
-#[derive(Debug, Serialize, Deserialize, derive_more::From, derive_more::Into, sqlx::Type, ToSchema)]
+#[derive(
+    Debug, Serialize, Deserialize, derive_more::From, derive_more::Into, sqlx::Type, ToSchema,
+)]
 #[sqlx(transparent)]
 pub struct SubmissionId(String);
 
