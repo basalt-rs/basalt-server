@@ -37,7 +37,7 @@ impl TeamInfo {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, serde::Serialize, utoipa::ToSchema)]
+#[derive(Clone, Debug, PartialEq, Deserialize, serde::Serialize, utoipa::ToSchema)]
 pub struct TeamWithScore {
     pub score: f64,
     #[serde(flatten)]

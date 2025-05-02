@@ -63,7 +63,6 @@ pub enum Broadcast {
         message: String,
     },
     GamePaused,
-    GameUnpaused { time_left_in_seconds: u64 },
     TeamConnected(TeamWithScore),
     TeamDisconnected(TeamWithScore),
     GameUnpaused {
