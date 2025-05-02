@@ -109,7 +109,7 @@ async fn get_clock(
 
     let time_limit = match state.config.game {
         // TODO: When time_limit is made public, update this
-        Game::Points(PointsSettings { .. }) => Duration::from_secs(60 * 75),
+        Game::Points(PointsSettings { time_limit, .. }) => time_limit,
         // TODO: When other modes are supported, provide correct values
         _ => Duration::from_secs(60 * 75),
     };
