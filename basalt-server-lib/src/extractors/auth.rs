@@ -65,7 +65,6 @@ async fn extract(parts: &mut Parts, state: &Arc<AppState>) -> Result<Option<Auth
 
     state.team_manager.check_in(&user.username);
 
-    drop(db);
     Ok(Some(AuthUser {
         user,
         session_id: session_id.into(),
