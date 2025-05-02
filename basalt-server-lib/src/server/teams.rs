@@ -58,13 +58,15 @@ impl TeamManagement {
     }
 
     pub fn check_in(&self, name: &Username) {
-        self.teams.entry(name.clone()).and_modify(|t| t.check());
+        if let Some(mut t) = self.teams.get_mut(name) {
+            t.check();
+        }
     }
 
     pub fn disconnect(&self, name: &Username) {
-        self.teams
-            .entry(name.clone())
-            .and_modify(|t| t.disconnect());
+        if let Some(mut t) = self.teams.get_mut(name) {
+            t.disconnect();
+        }
     }
 
     pub fn list(&self) -> Vec<TeamFull> {
