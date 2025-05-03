@@ -216,6 +216,24 @@ impl WebSocketRecv<'_> {
             }
         }
 
+        match repositories::submissions::count_tests(&sql.db, username).await {
+            Ok(counts) => {
+                for c in counts {
+                    if new_states[c.question_index as usize] == QuestionState::NotAttempted {
+                        new_states[c.question_index as usize] = if c.count > 0 {
+                            QuestionState::InProgress
+                        } else {
+                            QuestionState::NotAttempted
+                        };
+                    }
+                }
+            }
+            Err(err) => {
+                tracing::error!("Error while getting attempts: {}", err);
+                return Ok(());
+            }
+        }
+
         let new_score = repositories::submissions::get_user_score(&sql.db, username)
             .await
             .context("getting user score")?;
