@@ -105,14 +105,11 @@ macro_rules! define_router {
 define_router! {
     announcements,
     auth,
-    questions,
-    competition,
-    teams,
-    ws,
     clock,
     competition,
+    leaderboard,
     questions,
+    teams,
     testing,
     ws,
-    leaderboard,
 }
