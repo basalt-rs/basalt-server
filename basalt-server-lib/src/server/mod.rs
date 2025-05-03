@@ -54,7 +54,6 @@ impl AppState {
         });
     }
 }
-
 macro_rules! define_router {
     ($($route: ident),+$(,)?) => {
         pub fn router(initial_state: Arc<AppState>) -> axum::Router {
@@ -107,4 +106,5 @@ define_router! {
     questions,
     testing,
     ws,
+    leaderboard,
 }
