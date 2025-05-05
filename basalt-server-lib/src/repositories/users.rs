@@ -5,7 +5,7 @@ use rand::rngs::OsRng;
 use redact::Secret;
 use serde::{Deserialize, Serialize};
 use sqlx::prelude::FromRow;
-use sqlx::{Executor, Sqlite};
+use sqlx::SqliteExecutor;
 use utoipa::ToSchema;
 
 use crate::storage::SqliteLayer;
@@ -101,13 +101,16 @@ pub struct UserLogin {
     pub password: Secret<String>,
 }
 
-pub async fn login_user(sql: &SqliteLayer, login: &UserLogin) -> Result<User, GetUserError> {
+pub async fn login_user(
+    db: impl SqliteExecutor<'_>,
+    login: &UserLogin,
+) -> Result<User, GetUserError> {
     let user = sqlx::query_as!(
         User,
         "SELECT * from users WHERE username = $1",
         login.username,
     )
-    .fetch_optional(&sql.db)
+    .fetch_optional(db)
     .await
     .map_err(|e| GetUserError::QueryError(e.to_string()))?
     .ok_or_else(|| GetUserError::UserNotFound {
@@ -135,7 +138,7 @@ pub async fn login_user(sql: &SqliteLayer, login: &UserLogin) -> Result<User, Ge
 ///
 /// Uses Argon2 to hash the password
 pub async fn create_user(
-    db: impl Executor<'_, Database = Sqlite>,
+    db: impl SqliteExecutor<'_>,
     username: impl AsRef<str>,
     password: impl AsRef<str>,
     role: Role,
@@ -156,7 +159,7 @@ pub async fn create_user(
         ).fetch_one(db).await.context("Failed to create user")
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum QuestionState {
     Pass,
@@ -172,17 +175,15 @@ mod tests {
     use super::*;
     #[tokio::test]
     async fn get_nonexistent_user() {
-        let (f, sql_layer) = mock_db().await;
-        let db = sql_layer.read().await;
-        let response = get_user_by_username(&db, "superuser".into()).await;
+        let (f, sql) = mock_db().await;
+        let response = get_user_by_username(&sql, "superuser".into()).await;
         assert!(response.is_err());
         drop(f)
     }
 
     #[tokio::test]
     async fn get_existing_user() {
-        let (f, sql_layer) = mock_db().await;
-        let sql = sql_layer.write().await;
+        let (f, sql) = mock_db().await;
         let dummy_user = crate::testing::users_repositories::dummy_user(
             &sql.db,
             "awesome_user".to_string(),
@@ -198,8 +199,7 @@ mod tests {
     }
     #[tokio::test]
     async fn get_correct_user() {
-        let (f, sql_layer) = mock_db().await;
-        let sql = sql_layer.write().await;
+        let (f, sql) = mock_db().await;
         let dummy_user = crate::testing::users_repositories::dummy_user(
             &sql.db,
             "awesome_user".to_string(),

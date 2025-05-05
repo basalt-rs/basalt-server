@@ -3,7 +3,7 @@ use std::time::{Duration, SystemTime};
 use rand::{distributions::Alphanumeric, Rng};
 use redact::{expose_secret, Secret};
 use serde::{Deserialize, Serialize};
-use sqlx::prelude::FromRow;
+use sqlx::{prelude::FromRow, SqliteExecutor};
 
 use crate::{repositories::users::Role, storage::SqliteLayer};
 
@@ -23,7 +23,10 @@ pub enum CreateSessionError {
     QueryError(String),
 }
 
-pub async fn create_session(sql: &SqliteLayer, user: &User) -> Result<String, CreateSessionError> {
+pub async fn create_session(
+    db: impl SqliteExecutor<'_>,
+    user: &User,
+) -> Result<String, CreateSessionError> {
     let session_id = rand::thread_rng()
         .sample_iter(Alphanumeric)
         .take(40)
@@ -44,7 +47,7 @@ pub async fn create_session(sql: &SqliteLayer, user: &User) -> Result<String, Cr
         user.username,
         expire,
     )
-    .execute(&sql.db)
+    .execute(db)
     .await
     .map_err(|e| CreateSessionError::QueryError(e.to_string()))?;
 
@@ -111,13 +114,16 @@ pub enum CloseSessionError {
     QueryError(#[from] sqlx::Error),
 }
 
-pub async fn close_session(sql: &SqliteLayer, session_id: &str) -> Result<(), CloseSessionError> {
+pub async fn close_session(
+    db: impl SqliteExecutor<'_>,
+    session_id: &str,
+) -> Result<(), CloseSessionError> {
     sqlx::query_as!(
         Session,
         "delete from sessions where session_id = $1",
         session_id,
     )
-    .execute(&sql.db)
+    .execute(db)
     .await?;
 
     Ok(())
