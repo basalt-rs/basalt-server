@@ -100,8 +100,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_announcement() {
-        let (f, sql_layer) = mock_db().await;
-        let sql = sql_layer.read().await;
+        let (f, sql) = mock_db().await;
         let user = dummy_user(&sql.db, "dummy_user", "foobar", Role::Competitor).await;
         let announcement = super::create_announcement(&sql.db, &user.username, "hello world")
             .await
@@ -114,8 +113,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_announcements() {
-        let (f, sql_layer) = mock_db().await;
-        let sql = sql_layer.read().await;
+        let (f, sql) = mock_db().await;
         let user = dummy_user(&sql.db, "dummy_user", "foobar", Role::Competitor).await;
         super::create_announcement(&sql.db, &user.username, "foo")
             .await
@@ -133,8 +131,7 @@ mod tests {
 
     #[tokio::test]
     async fn delete_announcement() {
-        let (f, sql_layer) = mock_db().await;
-        let sql = sql_layer.read().await;
+        let (f, sql) = mock_db().await;
         let user = dummy_user(&sql.db, "dummy_user", "foobar", Role::Competitor).await;
         let Announcement { id, .. } = super::create_announcement(&sql.db, &user.username, "foo")
             .await
