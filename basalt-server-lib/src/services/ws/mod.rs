@@ -19,8 +19,9 @@ use crate::{
         submissions::{NewSubmissionHistory, NewSubmissionTestHistory, TestResult},
         users::{QuestionState, Username},
     },
-    server::AppState,
+    server::{teams::TeamWithScore, AppState},
 };
+
 pub mod connect;
 
 #[derive(Clone, Eq, PartialEq, Hash, derive_more::Debug)]
@@ -67,6 +68,8 @@ pub enum Broadcast {
         message: String,
     },
     GamePaused,
+    TeamConnected(TeamWithScore),
+    TeamDisconnected(TeamWithScore),
     GameUnpaused {
         time_left_in_seconds: u64,
     },
@@ -116,7 +119,7 @@ pub enum TestResults {
 }
 
 /// A message that is sent from the server onto the websocket
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum WebSocketSend {
     Broadcast {

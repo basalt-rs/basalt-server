@@ -15,17 +15,17 @@ axum-extra = { version = "0.10.0", features = ["typed-header"] }
 axum = { version = "0.8.1", features = ["macros", "ws"] }
 bedrock = { git = "https://github.com/basalt-rs/bedrock.git", rev = "f4494e7", features = ["tokio"] }
 clap = { version = "4.5.23", features = ["derive"] }
-dashmap = "6.1.0"
+dashmap = { version = "6.1.0", features = ["serde"] }
 derive_more = { version = "2.0.1", features = [
-  "debug",
-  "from",
-  "deref",
-  "into",
-  "from_str",
+    "debug",
+    "from",
+    "deref",
+    "into",
+    "from_str",
 ] }
 directories = "6.0.0"
 erudite = { git = "https://github.com/basalt-rs/erudite.git", rev = "7de318e", features = [
-  "serde",
+    "serde",
 ] }
 lazy_static = "1.5.0"
 leucite = "0.2.0"
@@ -35,9 +35,9 @@ scopeguard = "1.2.0"
 serde_json = "1.0.138"
 serde = { version = "1.0.217", features = ["derive"] }
 sqlx = { version = "0.8.3", features = [
-  "sqlite",
-  "runtime-tokio-native-tls",
-  "time",
+    "sqlite",
+    "runtime-tokio-native-tls",
+    "time",
 ] }
 thiserror = "2.0.11"
 time = { version = "0.3.40", features = ["serde"] }
@@ -46,4 +46,4 @@ tower-http = { version = "0.6.2", features = ["cors", "trace", "fs"] }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 tracing = { version = "0.1.41", features = ["release_max_level_debug"] }
 utoipa-axum = { version = "0.2.0", features = ["debug"] }
-utoipa = { version = "5.3.1", features = ["debug", "yaml"] }
+utoipa = { version = "5.3.1", features = ["chrono", "debug", "yaml"] }

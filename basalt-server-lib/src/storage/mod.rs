@@ -110,9 +110,8 @@ mod tests {
             Some("single.toml"),
         )
         .unwrap();
-        let (f, sql_layer) = mock_db().await;
-        let db = sql_layer.write().await;
-        db.ingest(&cfg).await.expect("Failed to ingest config");
+        let (f, sql) = mock_db().await;
+        sql.ingest(&cfg).await.expect("Failed to ingest config");
 
         drop(f)
     }
