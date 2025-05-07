@@ -44,7 +44,7 @@ impl AppState {
         }
     }
 
-    pub fn broadcast(self: Arc<Self>, broadcast: WebSocketSend) -> anyhow::Result<()> {
+    pub fn broadcast(&self, broadcast: WebSocketSend) {
         let mut to_remove = Vec::new();
         for conn in &self.active_connections {
             if conn.send.send(broadcast.clone()).is_err() {
@@ -56,8 +56,6 @@ impl AppState {
         to_remove.iter().for_each(|x| {
             self.active_connections.remove(x);
         });
-
-        Ok(())
     }
 }
 
@@ -106,11 +104,12 @@ macro_rules! define_router {
 }
 
 define_router! {
+    announcements,
     auth,
-    questions,
-    competition,
-    teams,
-    ws,
     clock,
+    competition,
+    questions,
+    teams,
     testing,
+    ws,
 }
