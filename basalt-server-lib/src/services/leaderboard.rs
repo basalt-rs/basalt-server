@@ -48,7 +48,7 @@ pub async fn get_leaderboard_info(
 
     let sql = state.db.read().await;
 
-    let mut leaderboard_info = Vec::new();
+    let mut leaderboard_info = Vec::with_capacity(competitors.len());
 
     for username in &competitors {
         // Get list size and sets values to not-attempted by default
