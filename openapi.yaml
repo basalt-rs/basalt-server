@@ -147,6 +147,23 @@ paths:
                   type: integer
                   format: int32
                   minimum: 0
+  /leaderboard:
+    get:
+      tags:
+      - leaderboard
+      description: Gets all team's submission states and total number of points
+      operationId: get_leaderboard_info
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TeamProgression'
+        '403':
+          description: User does not have permission to view the leaderboard
   /questions:
     get:
       tags:
@@ -427,6 +444,22 @@ components:
           - 'null'
           format: date-time
           description: When the team last contacted the server
+    TeamProgression:
+      type: object
+      required:
+      - username
+      - score
+      - submissionStates
+      properties:
+        score:
+          type: number
+          format: double
+        submissionStates:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionState'
+        username:
+          $ref: '#/components/schemas/Username'
     TeamWithScore:
       allOf:
       - $ref: '#/components/schemas/TeamFull'
