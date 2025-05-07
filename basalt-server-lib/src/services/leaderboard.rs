@@ -28,7 +28,7 @@ pub struct TeamProgression {
 #[axum::debug_handler]
 #[utoipa::path(
     get, path = "/",
-    tag = "testing",
+    tag = "leaderboard",
     description = "Gets all team's submission states and total number of points",
     responses(
         (status = OK, body = Vec<TeamProgression>, content_type = "application/json"),
