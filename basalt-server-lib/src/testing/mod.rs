@@ -1,12 +1,11 @@
-use std::sync::Arc;
-
-use tokio::sync::RwLock;
-
 use crate::storage::SqliteLayer;
 
+pub mod submissions_repositories;
 pub mod users_repositories;
 
-pub async fn mock_db() -> (async_tempfile::TempFile, Arc<RwLock<SqliteLayer>>) {
+pub const SAMPLE_1: &str = include_str!("../../../samples/single.toml");
+
+pub async fn mock_db() -> (async_tempfile::TempFile, SqliteLayer) {
     let db_tempfile = async_tempfile::TempFile::new()
         .await
         .expect("Failed to create temporary file for datafile");
@@ -15,6 +14,5 @@ pub async fn mock_db() -> (async_tempfile::TempFile, Arc<RwLock<SqliteLayer>>) {
         .await
         .expect("Failed to create SqliteDB");
 
-    let db = Arc::new(RwLock::new(sqlite_layer));
-    (db_tempfile, db)
+    (db_tempfile, sqlite_layer)
 }

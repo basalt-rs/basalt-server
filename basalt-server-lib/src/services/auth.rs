@@ -10,7 +10,8 @@ use crate::{
         self,
         users::{Role, User, UserLogin},
     },
-    server::AppState,
+    server::{teams::TeamWithScore, AppState},
+    services::ws::{Broadcast, WebSocketSend},
 };
 
 #[derive(serde::Deserialize, utoipa::ToSchema)]
@@ -39,21 +40,37 @@ async fn login(
     Json(login): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, StatusCode> {
     trace!(login.username, "attempt to login to user");
-    let db = state.db.read().await;
+    let sql = state.db.read().await;
 
     let login = UserLogin {
         username: login.username,
         password: login.password.into(),
     };
 
-    let Ok(user) = repositories::users::login_user(&db, &login).await else {
+    let Ok(user) = repositories::users::login_user(&sql.db, &login).await else {
         debug!(login.username, "failed login attempt");
         return Err(StatusCode::UNAUTHORIZED);
     };
 
-    let token = repositories::session::create_session(&db, &user)
+    let token = repositories::session::create_session(&sql.db, &user)
         .await
         .unwrap();
+    let score = repositories::submissions::get_user_score(&sql.db, &user.username)
+        .await
+        .unwrap();
+    drop(sql);
+
+    state.team_manager.check_in(&user.username);
+
+    state.team_manager.get_team(&user.username).map(|team| {
+        state.broadcast(WebSocketSend::Broadcast {
+            broadcast: Broadcast::TeamConnected(TeamWithScore {
+                score,
+                team_info: team,
+            }),
+        })
+    });
+
     let role = user.role;
     debug!(login.username, "log in");
 
@@ -71,11 +88,32 @@ async fn login(
 )]
 async fn logout(State(state): State<Arc<AppState>>, user: AuthUser) -> Result<(), StatusCode> {
     debug!(?user.user.username, "logout");
-    let db = state.db.read().await;
 
-    repositories::session::close_session(&db, &user.session_id)
-        .await
-        .unwrap();
+    let score = {
+        let sql = state.db.read().await;
+
+        repositories::session::close_session(&sql.db, &user.session_id)
+            .await
+            .unwrap();
+
+        repositories::submissions::get_user_score(&sql.db, &user.user.username)
+            .await
+            .unwrap()
+    };
+
+    state.team_manager.disconnect(&user.user.username);
+
+    state
+        .team_manager
+        .get_team(&user.user.username)
+        .map(|team| {
+            state.broadcast(crate::services::ws::WebSocketSend::Broadcast {
+                broadcast: crate::services::ws::Broadcast::TeamDisconnected(TeamWithScore {
+                    score,
+                    team_info: team,
+                }),
+            })
+        });
 
     Ok(())
 }

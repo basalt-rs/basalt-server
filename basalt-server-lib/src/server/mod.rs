@@ -4,9 +4,11 @@ use clock::ClockInfo;
 use dashmap::{DashMap, DashSet};
 use rand::{distributions::Alphanumeric, Rng};
 use std::{path::PathBuf, sync::Arc};
+use teams::TeamManagement;
 use tokio::sync::RwLock;
 
 pub mod clock;
+pub mod teams;
 
 use crate::{
     services::{
@@ -20,6 +22,7 @@ pub struct AppState {
     pub db: RwLock<SqliteLayer>,
     pub web_dir: Option<PathBuf>,
     pub active_connections: DashMap<ws::ConnectionKind, ws::ConnectedClient>,
+    pub team_manager: TeamManagement,
     pub active_tests: DashSet<(ws::ConnectionKind, usize)>,
     pub active_submissions: DashSet<(ws::ConnectionKind, usize)>,
     pub config: Config,
@@ -32,6 +35,7 @@ impl AppState {
             db: RwLock::new(db),
             web_dir,
             active_connections: Default::default(),
+            team_manager: TeamManagement::from_config(&config),
             active_tests: Default::default(),
             active_submissions: Default::default(),
             config,
@@ -104,6 +108,7 @@ define_router! {
     auth,
     questions,
     competition,
+    teams,
     ws,
     clock,
     testing,
