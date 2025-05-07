@@ -1,10 +1,9 @@
-use std::{path::PathBuf, sync::Arc};
-
 use axum::Router;
 use bedrock::Config;
 use clock::ClockInfo;
 use dashmap::{DashMap, DashSet};
 use rand::{distributions::Alphanumeric, Rng};
+use std::{path::PathBuf, sync::Arc};
 use teams::TeamManagement;
 use tokio::sync::RwLock;
 
@@ -112,4 +111,5 @@ define_router! {
     teams,
     testing,
     ws,
+    leaderboard,
 }
