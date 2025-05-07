@@ -6,6 +6,55 @@ info:
     name: ''
   version: 0.1.0
 paths:
+  /announcements:
+    get:
+      tags:
+      - announcements
+      operationId: get_all
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Announcement'
+    post:
+      tags:
+      - announcements
+      operationId: new
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewAnnouncement'
+        required: true
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Announcement'
+        '401':
+          description: User may not create announcements
+  /announcements/{id}:
+    delete:
+      tags:
+      - announcements
+      operationId: delete
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Announcement'
+        '401':
+          description: User may not delete announcements
+        '404':
+          description: Announcement with provided id does not exists
   /auth/login:
     post:
       tags:
@@ -197,6 +246,25 @@ paths:
           description: connected to websocket
 components:
   schemas:
+    Announcement:
+      type: object
+      required:
+      - id
+      - sender
+      - time
+      - message
+      properties:
+        id:
+          $ref: '#/components/schemas/AnnouncementId'
+        message:
+          type: string
+        sender:
+          $ref: '#/components/schemas/Username'
+        time:
+          type: string
+          format: date
+    AnnouncementId:
+      type: string
     ClockStatusResponse:
       type: object
       required:
@@ -238,6 +306,13 @@ components:
         role:
           $ref: '#/components/schemas/Role'
         token:
+          type: string
+    NewAnnouncement:
+      type: object
+      required:
+      - message
+      properties:
+        message:
           type: string
     QuestionResponse:
       type: object
