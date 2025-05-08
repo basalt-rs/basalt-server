@@ -207,12 +207,27 @@ impl WebSocketRecv<'_> {
             .await
             .context("getting user submissions")?;
 
-        let mut new_states = vec![QuestionState::NotAttempted; state.config.packet.problems.len()];
+        let mut states = vec![QuestionState::NotAttempted; state.config.packet.problems.len()];
         for s in submissions {
-            new_states[s.question_index as usize] = if s.success {
+            states[s.question_index as usize] = if s.success {
                 QuestionState::Pass
             } else {
                 QuestionState::Fail
+            }
+        }
+
+        match repositories::submissions::count_tests(&sql.db, username).await {
+            Ok(counts) => {
+                for c in counts {
+                    if states[c.question_index as usize] == QuestionState::NotAttempted
+                        && c.count > 0
+                    {
+                        states[c.question_index as usize] = QuestionState::InProgress;
+                    }
+                }
+            }
+            Err(err) => {
+                tracing::error!("Error while getting attempts: {}", err);
             }
         }
 
@@ -224,7 +239,7 @@ impl WebSocketRecv<'_> {
             broadcast: Broadcast::TeamUpdate {
                 team: username.clone(),
                 new_score,
-                new_states,
+                new_states: states,
             },
         });
         Ok(())
