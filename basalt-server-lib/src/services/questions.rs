@@ -50,7 +50,12 @@ pub struct QuestionResponse {
 }
 
 impl QuestionResponse {
-    fn from(value: &Problem, languages: &LanguageSet, show_hidden: bool) -> Self {
+    fn from(
+        value: &Problem,
+        languages: &LanguageSet,
+        default_points: Option<i32>,
+        show_hidden: bool,
+    ) -> Self {
         Self {
             languages: value
                 .languages
@@ -69,7 +74,7 @@ impl QuestionResponse {
                 .map(TestResponse::from)
                 .filter(|t| show_hidden || t.visible)
                 .collect(),
-            points: value.points,
+            points: value.points.or(default_points),
         }
     }
 }
@@ -86,7 +91,17 @@ pub async fn get_all(
         .packet
         .problems
         .iter()
-        .map(|x| QuestionResponse::from(x, &state.config.languages, show_hidden))
+        .map(|x| {
+            QuestionResponse::from(
+                x,
+                &state.config.languages,
+                match &state.config.game {
+                    bedrock::Game::Points(x) => Some(x.question_point_value),
+                    bedrock::Game::Race(_) => None,
+                },
+                show_hidden,
+            )
+        })
         .collect();
 
     Json(questions)
@@ -115,6 +130,10 @@ pub async fn get_specific_question(
             Json(QuestionResponse::from(
                 x,
                 &state.config.languages,
+                match &state.config.game {
+                    bedrock::Game::Points(x) => Some(x.question_point_value),
+                    bedrock::Game::Race(_) => None,
+                },
                 user.is_some_and(|u| matches!(u.user.role, Role::Host)),
             ))
         })

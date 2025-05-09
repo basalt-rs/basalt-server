@@ -187,11 +187,13 @@ pub async fn get_user_score(
             JOIN (
                 SELECT question_index, MAX(time) AS latest
                 FROM submission_history
+                WHERE submitter = ?
                 GROUP BY question_index
             ) t ON h.question_index = t.question_index AND h.time = t.latest
             WHERE h.submitter = ?;
         "#,
-        username
+        username,
+        username,
     )
     .fetch_one(db)
     .await
@@ -211,11 +213,13 @@ pub async fn get_latest_submissions(
             JOIN (
                 SELECT question_index, MAX(time) AS latest
                 FROM submission_history
+                WHERE submitter = ?
                 GROUP BY question_index
             ) t ON h.question_index = t.question_index AND h.time = t.latest
             WHERE h.submitter = ?;
         "#,
-        username
+        username,
+        username,
     )
     .fetch_all(db)
     .await
