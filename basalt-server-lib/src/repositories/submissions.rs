@@ -383,6 +383,7 @@ mod tests {
                 question_index: 42,
                 score: 42.,
                 success: false,
+                language: "java",
             },
         )
         .await
@@ -410,6 +411,7 @@ mod tests {
                 question_index: 42,
                 score: 42.,
                 success: false,
+                language: "java",
             },
         )
         .await
@@ -418,8 +420,8 @@ mod tests {
         let test = create_submission_test_history(
             &sql.db,
             &history.id,
+            42,
             NewSubmissionTestHistory {
-                test_index: 42,
                 result: TestResult::Timeout,
                 stdout: Some("stdout".into()),
                 stderr: Some("stderr".into()),
@@ -458,6 +460,7 @@ mod tests {
                     question_index: 1,
                     score: 10.,
                     success: true,
+                    language: "java",
                 },
             )
             .await
@@ -467,8 +470,8 @@ mod tests {
                 create_submission_test_history(
                     &sql.db,
                     &history.id,
+                    i,
                     NewSubmissionTestHistory {
-                        test_index: i,
                         result: TestResult::Pass,
                         stdout: None,
                         stderr: None,
@@ -503,6 +506,7 @@ mod tests {
                     question_index: 1,
                     score: 10.,
                     success: false,
+                    language: "java",
                 },
             )
             .await
@@ -534,6 +538,7 @@ mod tests {
                     question_index: i,
                     score: 42.,
                     success: true,
+                    language: "java",
                 },
             )
             .await
@@ -561,6 +566,7 @@ mod tests {
                     question_index: i,
                     score: 42.,
                     success: true,
+                    language: "java",
                 },
             )
             .await
@@ -579,6 +585,7 @@ mod tests {
                     question_index: i,
                     score: 42.,
                     success: true,
+                    language: "java",
                 },
             )
             .await

@@ -18,6 +18,7 @@ pub async fn dummy_submission(
             question_index: 0,
             score,
             success: true,
+            language: "java",
         },
     )
     .await
