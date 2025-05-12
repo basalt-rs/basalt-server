@@ -64,9 +64,11 @@ pub async fn new(
     drop(sql);
     match new {
         Ok(new) => {
-            state.broadcast(super::ws::WebSocketSend::Broadcast {
-                broadcast: super::ws::Broadcast::NewAnnouncement(new.clone()),
-            });
+            state
+                .websocket
+                .broadcast(super::ws::WebSocketSend::Broadcast {
+                    broadcast: super::ws::Broadcast::NewAnnouncement(new.clone()),
+                });
             Ok(Json(new))
         }
         Err(err) => {
@@ -97,9 +99,11 @@ pub async fn delete(
     drop(sql);
     match del {
         Ok(Some(del)) => {
-            state.broadcast(super::ws::WebSocketSend::Broadcast {
-                broadcast: super::ws::Broadcast::DeleteAnnouncement { id },
-            });
+            state
+                .websocket
+                .broadcast(super::ws::WebSocketSend::Broadcast {
+                    broadcast: super::ws::Broadcast::DeleteAnnouncement { id },
+                });
             Ok(Json(del))
         }
         Ok(None) => Err(StatusCode::NOT_FOUND),

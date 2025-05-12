@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS submission_history (
   code TEXT NOT NULL,
   question_index INTEGER NOT NULL,
   score FLOAT NOT NULL,
-  success BOOLEAN NOT NULL
+  success BOOLEAN NOT NULL,
+  language TEXT NOT NULL
 );
 
 -- History of tests that have been run on submissions

@@ -13,11 +13,12 @@ use rand::Rng;
 use tokio::sync::mpsc;
 use tracing::{debug, error, trace, warn};
 
-use super::{ConnectedClient, ConnectionKind, WebSocketRecv};
+use super::WebSocketRecv;
 use crate::{
     extractors::auth::{AuthError, AuthUser},
     repositories,
-    server::AppState,
+    server::{websocket::ConnectedClient, AppState},
+    services::ws::ConnectionKind,
 };
 
 #[axum::debug_handler]
@@ -62,7 +63,7 @@ pub async fn connect_websocket(
     Ok(ws.on_upgrade(move |ws| async move {
         // Using defer here so that if the thread panics, we still remove the connection.
         scopeguard::defer! {
-            state.active_connections.remove(&who);
+            state.websocket.active_connections.remove(&who);
         }
         if let Err(e) = handle_socket(ws, who.clone(), Arc::clone(&state)).await {
             error!(?who, ?e, "Error handling websocket connection");
@@ -78,6 +79,7 @@ async fn handle_socket(
 ) -> anyhow::Result<()> {
     let (tx, mut rx) = mpsc::unbounded_channel();
     state
+        .websocket
         .active_connections
         .insert(who.clone(), ConnectedClient { send: tx });
 
@@ -109,7 +111,6 @@ async fn handle_socket(
                     return Ok(());
                 },
                 Some(Ok(msg)) => {
-                    trace!(?msg, "recv msg");
                     handle_message(msg, &mut ws, &who, Arc::clone(&state)).await?;
                 }
             }
