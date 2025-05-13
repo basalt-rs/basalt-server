@@ -36,6 +36,7 @@ redact = { version = "0.1.10", features = ["serde"] }
 scopeguard = "1.2.0"
 serde_json = "1.0.138"
 serde = { version = "1.0.217", features = ["derive"] }
+semver = { version = "1.0.26", features = ["serde"] }
 sqlx = { version = "0.8.3", features = [
   "sqlite",
   "runtime-tokio-native-tls",
