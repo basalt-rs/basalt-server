@@ -63,7 +63,7 @@ async fn login(
     state.team_manager.check_in(&user.username);
 
     state.team_manager.get_team(&user.username).map(|team| {
-        state.broadcast(WebSocketSend::Broadcast {
+        state.websocket.broadcast(WebSocketSend::Broadcast {
             broadcast: Broadcast::TeamConnected(TeamWithScore {
                 score,
                 team_info: team,
@@ -107,12 +107,14 @@ async fn logout(State(state): State<Arc<AppState>>, user: AuthUser) -> Result<()
         .team_manager
         .get_team(&user.user.username)
         .map(|team| {
-            state.broadcast(crate::services::ws::WebSocketSend::Broadcast {
-                broadcast: crate::services::ws::Broadcast::TeamDisconnected(TeamWithScore {
-                    score,
-                    team_info: team,
-                }),
-            })
+            state
+                .websocket
+                .broadcast(crate::services::ws::WebSocketSend::Broadcast {
+                    broadcast: crate::services::ws::Broadcast::TeamDisconnected(TeamWithScore {
+                        score,
+                        team_info: team,
+                    }),
+                })
         });
 
     Ok(())

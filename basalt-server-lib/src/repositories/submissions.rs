@@ -1,4 +1,5 @@
 use anyhow::Context;
+use erudite::{TestFailReason, TestOutput};
 use serde::{Deserialize, Serialize};
 use sqlx::{Executor, Sqlite, SqliteExecutor};
 use std::fmt::Display;
@@ -37,6 +38,7 @@ pub struct SubmissionHistory {
     pub question_index: i64, // _really_ should be usize, but sqlx doesn't like that
     pub score: f64,
     pub success: bool,
+    pub language: String,
 }
 
 pub struct NewSubmissionHistory<'a> {
@@ -46,6 +48,7 @@ pub struct NewSubmissionHistory<'a> {
     pub question_index: usize,
     pub score: f64,
     pub success: bool,
+    pub language: &'a str,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,11 +96,41 @@ pub struct SubmissionTestHistory {
 /// History of tests that have been run on submissions
 #[derive(Serialize, Deserialize)]
 pub struct NewSubmissionTestHistory {
-    pub test_index: usize,
     pub result: TestResult,
     pub stdout: Option<String>,
     pub stderr: Option<String>,
     pub exit_status: i64,
+}
+
+impl From<&TestOutput> for NewSubmissionTestHistory {
+    fn from(test: &TestOutput) -> Self {
+        match test {
+            TestOutput::Pass => Self {
+                result: TestResult::Pass,
+                stdout: None,
+                stderr: None,
+                exit_status: 0,
+            },
+            TestOutput::Fail(TestFailReason::Timeout) => Self {
+                result: TestResult::Timeout,
+                stdout: None,
+                stderr: None,
+                exit_status: 1,
+            },
+            TestOutput::Fail(TestFailReason::IncorrectOutput(output)) => Self {
+                result: TestResult::IncorrectOutput,
+                stdout: output.stdout.str().map(String::from),
+                stderr: output.stderr.str().map(String::from),
+                exit_status: output.status.into(),
+            },
+            TestOutput::Fail(TestFailReason::Crash(output)) => Self {
+                result: TestResult::Crash,
+                stdout: output.stdout.str().map(String::from),
+                stderr: output.stderr.str().map(String::from),
+                exit_status: output.status.into(),
+            },
+        }
+    }
 }
 
 pub async fn create_submission_history<'a>(
@@ -106,8 +139,10 @@ pub async fn create_submission_history<'a>(
 ) -> anyhow::Result<SubmissionHistory> {
     let id = SubmissionId::new();
     let question_index = new.question_index as i64;
-    sqlx::query_as!(SubmissionHistory,
-            "INSERT INTO submission_history (id, submitter, compile_fail, code, question_index, score, success) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id, submitter, time, compile_fail, code, question_index, score, success",
+    sqlx::query_as!(SubmissionHistory, r#"
+            INSERT INTO submission_history (id, submitter, compile_fail, code, question_index, score, success, language)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id, submitter, time, compile_fail, code, question_index, score, success, language"#,
             id,
             new.submitter,
             new.compile_fail,
@@ -115,6 +150,7 @@ pub async fn create_submission_history<'a>(
             question_index,
             new.score,
             new.success,
+            new.language,
         )
         .fetch_one(db)
         .await
@@ -124,12 +160,15 @@ pub async fn create_submission_history<'a>(
 pub async fn create_submission_test_history<'a>(
     db: impl Executor<'_, Database = Sqlite>,
     submission: &SubmissionId,
+    test_index: usize,
     new: NewSubmissionTestHistory,
 ) -> anyhow::Result<SubmissionTestHistory> {
-    let test_index = new.test_index as i64;
+    let test_index = test_index as i64;
     let result = new.result.to_string();
-    sqlx::query_as!(SubmissionTestHistory,
-            "INSERT INTO submission_test_history (submission, test_index, result, stdout, stderr, exit_status) VALUES (?, ?, ?, ?, ?, ?) RETURNING submission, test_index, result, stdout, stderr, exit_status",
+    sqlx::query_as!(SubmissionTestHistory, r#"
+            INSERT INTO submission_test_history (submission, test_index, result, stdout, stderr, exit_status)
+            VALUES (?, ?, ?, ?, ?, ?)
+            RETURNING submission, test_index, result, stdout, stderr, exit_status"#,
             submission,
             test_index,
             result,
@@ -344,6 +383,7 @@ mod tests {
                 question_index: 42,
                 score: 42.,
                 success: false,
+                language: "java",
             },
         )
         .await
@@ -371,6 +411,7 @@ mod tests {
                 question_index: 42,
                 score: 42.,
                 success: false,
+                language: "java",
             },
         )
         .await
@@ -379,8 +420,8 @@ mod tests {
         let test = create_submission_test_history(
             &sql.db,
             &history.id,
+            42,
             NewSubmissionTestHistory {
-                test_index: 42,
                 result: TestResult::Timeout,
                 stdout: Some("stdout".into()),
                 stderr: Some("stderr".into()),
@@ -419,6 +460,7 @@ mod tests {
                     question_index: 1,
                     score: 10.,
                     success: true,
+                    language: "java",
                 },
             )
             .await
@@ -428,8 +470,8 @@ mod tests {
                 create_submission_test_history(
                     &sql.db,
                     &history.id,
+                    i,
                     NewSubmissionTestHistory {
-                        test_index: i,
                         result: TestResult::Pass,
                         stdout: None,
                         stderr: None,
@@ -464,6 +506,7 @@ mod tests {
                     question_index: 1,
                     score: 10.,
                     success: false,
+                    language: "java",
                 },
             )
             .await
@@ -495,6 +538,7 @@ mod tests {
                     question_index: i,
                     score: 42.,
                     success: true,
+                    language: "java",
                 },
             )
             .await
@@ -522,6 +566,7 @@ mod tests {
                     question_index: i,
                     score: 42.,
                     success: true,
+                    language: "java",
                 },
             )
             .await
@@ -540,6 +585,7 @@ mod tests {
                     question_index: i,
                     score: 42.,
                     success: true,
+                    language: "java",
                 },
             )
             .await

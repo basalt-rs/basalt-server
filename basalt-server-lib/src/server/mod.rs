@@ -1,30 +1,26 @@
 use axum::Router;
 use bedrock::Config;
 use clock::ClockInfo;
-use dashmap::{DashMap, DashSet};
+use dashmap::DashSet;
 use rand::{distributions::Alphanumeric, Rng};
 use std::{path::PathBuf, sync::Arc};
 use teams::TeamManagement;
 use tokio::sync::RwLock;
+use websocket::WebSocketManager;
 
 pub mod clock;
 pub mod teams;
+pub mod websocket;
 
-use crate::{
-    services::{
-        self,
-        ws::{self, WebSocketSend},
-    },
-    storage::SqliteLayer,
-};
+use crate::{services, storage::SqliteLayer};
 
 pub struct AppState {
     pub db: RwLock<SqliteLayer>,
     pub web_dir: Option<PathBuf>,
-    pub active_connections: DashMap<ws::ConnectionKind, ws::ConnectedClient>,
+    pub websocket: WebSocketManager,
     pub team_manager: TeamManagement,
-    pub active_tests: DashSet<(ws::ConnectionKind, usize)>,
-    pub active_submissions: DashSet<(ws::ConnectionKind, usize)>,
+    pub active_tests: DashSet<(websocket::ConnectionKind, usize)>,
+    pub active_submissions: DashSet<(websocket::ConnectionKind, usize)>,
     pub config: Config,
     pub clock: RwLock<ClockInfo>,
 }
@@ -34,27 +30,13 @@ impl AppState {
         Self {
             db: RwLock::new(db),
             web_dir,
-            active_connections: Default::default(),
+            websocket: Default::default(),
             team_manager: TeamManagement::from_config(&config),
             active_tests: Default::default(),
             active_submissions: Default::default(),
             config,
             clock: Default::default(),
         }
-    }
-
-    pub fn broadcast(&self, broadcast: WebSocketSend) {
-        let mut to_remove = Vec::new();
-        for conn in &self.active_connections {
-            if conn.send.send(broadcast.clone()).is_err() {
-                // This _shouldn't_ happen, but it _could_
-                tracing::warn!(key = ?conn.key(), "Socket discovered to be closed when sending broadcast. Removing from active connections...");
-                to_remove.push(conn.key().clone());
-            }
-        }
-        to_remove.iter().for_each(|x| {
-            self.active_connections.remove(x);
-        });
     }
 }
 

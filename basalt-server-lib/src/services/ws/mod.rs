@@ -1,4 +1,4 @@
-use std::{borrow::Cow, net::SocketAddr, num::NonZero, sync::Arc};
+use std::{borrow::Cow, num::NonZero, sync::Arc};
 
 use anyhow::Context;
 use bedrock::{packet::Test, scoring::Scorable};
@@ -7,7 +7,7 @@ use lazy_static::lazy_static;
 use leucite::Rules;
 use serde::{Deserialize, Serialize};
 use sqlx::Acquire;
-use tokio::sync::mpsc::{self, UnboundedSender};
+use tokio::sync::mpsc::UnboundedSender;
 use tracing::{debug, trace};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
@@ -16,47 +16,13 @@ use crate::{
     repositories::{
         self,
         announcements::{Announcement, AnnouncementId},
-        submissions::{NewSubmissionHistory, NewSubmissionTestHistory, TestResult},
+        submissions::NewSubmissionHistory,
         users::{QuestionState, Username},
     },
-    server::{teams::TeamWithScore, AppState},
+    server::{teams::TeamWithScore, websocket::ConnectionKind, AppState},
 };
 
 pub mod connect;
-
-#[derive(Clone, Eq, PartialEq, Hash, derive_more::Debug)]
-pub enum ConnectionKind {
-    User {
-        #[debug("{:?}", user.user.username.0)]
-        user: AuthUser,
-    },
-    Leaderboard {
-        id: String,
-        #[debug(skip)]
-        addr: SocketAddr,
-    },
-}
-
-impl ConnectionKind {
-    pub fn is_user(&self) -> bool {
-        match self {
-            ConnectionKind::User { .. } => true,
-            ConnectionKind::Leaderboard { .. } => false,
-        }
-    }
-
-    pub fn user(&self) -> Option<&AuthUser> {
-        match self {
-            ConnectionKind::User { user } => Some(user),
-            ConnectionKind::Leaderboard { .. } => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ConnectedClient {
-    pub send: mpsc::UnboundedSender<WebSocketSend>,
-}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
@@ -129,12 +95,14 @@ pub enum WebSocketSend {
     TestResults {
         id: usize,
         results: TestResults,
-        percent: usize,
+        failed: usize,
+        passed: usize,
     },
     Submit {
         id: usize,
         results: TestResults,
-        percent: usize,
+        failed: usize,
+        passed: usize,
         #[serde(rename = "remainingAttempts")]
         remaining_attempts: Option<u32>,
     },
@@ -192,7 +160,7 @@ impl WebSocketRecv<'_> {
 
     fn error(
         &self,
-        ws: &UnboundedSender<WebSocketSend>,
+        ws: UnboundedSender<WebSocketSend>,
         message: impl Into<String>,
     ) -> anyhow::Result<()> {
         ws.send(WebSocketSend::Error {
@@ -236,7 +204,7 @@ impl WebSocketRecv<'_> {
             .await
             .context("getting user score")?;
 
-        state.broadcast(WebSocketSend::Broadcast {
+        state.websocket.broadcast(WebSocketSend::Broadcast {
             broadcast: Broadcast::TeamUpdate {
                 team: username.clone(),
                 new_score,
@@ -255,11 +223,10 @@ impl WebSocketRecv<'_> {
         state: Arc<AppState>,
         who: &ConnectionKind,
     ) -> anyhow::Result<()> {
-        let ws = &state
-            .active_connections
-            .get(who)
-            .context("websocket not in active_connections")?
-            .send;
+        let ws = state
+            .websocket
+            .get_sender(who)
+            .context("websocket not in active_connections")?;
 
         let Some(language) = state.config.languages.get_by_str(language) else {
             return self.error(ws, format!("Unknown language '{}'", language));
@@ -284,6 +251,7 @@ impl WebSocketRecv<'_> {
                 problem
                     .tests
                     .iter()
+                    .filter(|t| t.visible)
                     .map(|t| TestCase::new(&t.input, &t.output)),
             )
             .timeout(state.config.test_runner.timeout)
@@ -310,24 +278,24 @@ impl WebSocketRecv<'_> {
                 ws.send(WebSocketSend::TestResults {
                     id,
                     results: TestResults::InternalError,
-                    percent: 0,
+                    failed: 0,
+                    passed: 0,
                 })
                 .context("sending submission results message")?;
-
-                Self::broadcast_team_update(&state, &user.username).await?;
             }
             RunOutput::CompileFail(simple_output) => {
                 debug!(?simple_output, "Failed to build");
                 ws.send(WebSocketSend::TestResults {
                     id,
                     results: TestResults::CompileFail(simple_output),
-                    percent: 0,
+                    failed: 1,
+                    passed: 0,
                 })
                 .context("sending test results message")?;
             }
             RunOutput::RunSuccess(vec) => {
                 trace!(?vec, "Raw test output");
-                let success = vec
+                let passed = vec
                     .iter()
                     .filter(|&r| matches!(r, TestOutput::Pass))
                     .count();
@@ -339,11 +307,11 @@ impl WebSocketRecv<'_> {
                     .map(|(r, t)| (r.into(), t.clone()))
                     .collect::<Vec<_>>();
 
-                let percent = success * 100 / problem.tests.len();
                 ws.send(WebSocketSend::TestResults {
                     id,
                     results: TestResults::Individual { tests: results },
-                    percent,
+                    failed: problem.tests.iter().filter(|t| t.visible).count() - passed,
+                    passed,
                 })
                 .context("sending test results message")?;
             }
@@ -360,11 +328,10 @@ impl WebSocketRecv<'_> {
         state: Arc<AppState>,
         who: &ConnectionKind,
     ) -> anyhow::Result<()> {
-        let ws = &state
-            .active_connections
-            .get(who)
-            .context("websocket not in active_connections")?
-            .send;
+        let ws = state
+            .websocket
+            .get_sender(who)
+            .context("websocket not in active_connections")?;
 
         let AuthUser { user, .. } = who.user().unwrap();
 
@@ -380,6 +347,7 @@ impl WebSocketRecv<'_> {
         )
         .await
         .context("getting previous submissions")?;
+        drop(sql); // ensure we don't hold the lock while doing time-consuming things
 
         let max_attempts: Option<u32> = state.config.max_submissions.map(NonZero::get);
 
@@ -389,7 +357,6 @@ impl WebSocketRecv<'_> {
                 format!("Only {} submissions are allowed.", max_attempts.unwrap()),
             );
         }
-        drop(sql); // ensure we don't hold the lock while doing time-consuming things
 
         let key = (who.clone(), problem_index);
         if !state.active_submissions.insert(key.clone()) {
@@ -434,6 +401,7 @@ impl WebSocketRecv<'_> {
                         question_index: problem_index,
                         score: 0.,
                         success: false,
+                        language: language.raw_name(),
                     },
                 )
                 .await
@@ -442,7 +410,8 @@ impl WebSocketRecv<'_> {
                 ws.send(WebSocketSend::Submit {
                     id,
                     results: TestResults::InternalError,
-                    percent: 0,
+                    failed: 0,
+                    passed: 0,
                     remaining_attempts: max_attempts.map(|x| x - attempts - 1),
                 })
                 .context("sending submission results message")?;
@@ -460,6 +429,7 @@ impl WebSocketRecv<'_> {
                         question_index: problem_index,
                         score: 0.,
                         success: false,
+                        language: language.raw_name(),
                     },
                 )
                 .await
@@ -468,7 +438,8 @@ impl WebSocketRecv<'_> {
                 ws.send(WebSocketSend::Submit {
                     id,
                     results: TestResults::CompileFail(simple_output),
-                    percent: 0,
+                    failed: 0,
+                    passed: 0,
                     remaining_attempts: max_attempts.map(|x| x - attempts - 1),
                 })
                 .context("sending test results message")?;
@@ -506,6 +477,7 @@ impl WebSocketRecv<'_> {
                         question_index: problem_index,
                         score,
                         success,
+                        language: language.raw_name(),
                     },
                 )
                 .await
@@ -515,47 +487,15 @@ impl WebSocketRecv<'_> {
                     repositories::submissions::create_submission_test_history(
                         txn.acquire().await.unwrap(),
                         &history.id,
-                        match test {
-                            TestOutput::Pass => NewSubmissionTestHistory {
-                                test_index: i,
-                                result: TestResult::Pass,
-                                stdout: None,
-                                stderr: None,
-                                exit_status: 0,
-                            },
-                            TestOutput::Fail(TestFailReason::Timeout) => NewSubmissionTestHistory {
-                                test_index: i,
-                                result: TestResult::Timeout,
-                                stdout: None,
-                                stderr: None,
-                                exit_status: 1,
-                            },
-                            TestOutput::Fail(TestFailReason::IncorrectOutput(output)) => {
-                                NewSubmissionTestHistory {
-                                    test_index: i,
-                                    result: TestResult::IncorrectOutput,
-                                    stdout: output.stdout.str().map(String::from),
-                                    stderr: output.stderr.str().map(String::from),
-                                    exit_status: output.status.into(),
-                                }
-                            }
-                            TestOutput::Fail(TestFailReason::Crash(output)) => {
-                                NewSubmissionTestHistory {
-                                    test_index: i,
-                                    result: TestResult::Crash,
-                                    stdout: output.stdout.str().map(String::from),
-                                    stderr: output.stderr.str().map(String::from),
-                                    exit_status: output.status.into(),
-                                }
-                            }
-                        },
+                        i,
+                        test.into(),
                     )
                     .await
                     .context("creating submission test history")?;
                 }
 
                 trace!(?vec, "Raw test output");
-                let success = vec
+                let passed = vec
                     .iter()
                     .filter(|&r| matches!(r, TestOutput::Pass))
                     .count();
@@ -567,12 +507,12 @@ impl WebSocketRecv<'_> {
                     .map(|(r, t)| (r.into(), t.clone()))
                     .collect::<Vec<_>>();
 
-                let percent = success * 100 / problem.tests.len();
                 txn.commit().await.context("committing transaction")?;
                 ws.send(WebSocketSend::Submit {
                     id,
                     results: TestResults::Individual { tests: results },
-                    percent,
+                    failed: problem.tests.len() - passed,
+                    passed,
                     remaining_attempts: max_attempts.map(|x| x - attempts - 1),
                 })
                 .context("sending test results message")?;
@@ -582,18 +522,15 @@ impl WebSocketRecv<'_> {
         Ok(())
     }
 
-    #[tracing::instrument(skip(state))]
+    #[tracing::instrument(skip(state, who))]
     async fn handle(self, who: &ConnectionKind, state: Arc<AppState>) -> anyhow::Result<()> {
-        {
-            let ws = &state
-                .active_connections
-                .get(who)
-                .context("websocket not in active_connections")?
-                .send;
+        let ws = state
+            .websocket
+            .get_sender(who)
+            .context("websocket not in active_connections")?;
 
-            if !self.can_use(who) {
-                return self.error(ws, "Must be signed in to run tests");
-            }
+        if !self.can_use(who) {
+            return self.error(ws, "Must be signed in to run tests");
         }
 
         match self {
@@ -603,8 +540,13 @@ impl WebSocketRecv<'_> {
                 ref solution,
                 problem,
             } => {
-                self.run_test(id, language, solution, problem, state, who)
-                    .await?;
+                if let Err(err) = self
+                    .run_test(id, language, solution, problem, Arc::clone(&state), who)
+                    .await
+                {
+                    tracing::error!("Error while running tests: {:?}", err);
+                    self.error(ws, "An internal error occurred")?;
+                }
             }
             WebSocketRecv::Submit {
                 id,
@@ -612,8 +554,13 @@ impl WebSocketRecv<'_> {
                 ref solution,
                 problem,
             } => {
-                self.run_submission(id, language, solution, problem, state, who)
-                    .await?;
+                if let Err(err) = self
+                    .run_submission(id, language, solution, problem, Arc::clone(&state), who)
+                    .await
+                {
+                    tracing::error!("Error while running submission: {:?}", err);
+                    self.error(ws, "An internal error occurred")?;
+                }
             }
         }
         Ok(())
