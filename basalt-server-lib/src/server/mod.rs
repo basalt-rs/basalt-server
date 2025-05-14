@@ -79,7 +79,6 @@ macro_rules! define_router {
                                 "request",
                                 method = %request.method(),
                                 uri = %request.uri(),
-                                version = ?request.version(),
                                 id = %rand::thread_rng()
                                     .sample_iter(Alphanumeric)
                                     .take(10)

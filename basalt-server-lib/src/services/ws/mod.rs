@@ -27,6 +27,7 @@ pub mod connect;
 #[derive(Clone, Eq, PartialEq, Hash, derive_more::Debug)]
 pub enum ConnectionKind {
     User {
+        #[debug("{:?}", user.user.username.0)]
         user: AuthUser,
     },
     Leaderboard {
