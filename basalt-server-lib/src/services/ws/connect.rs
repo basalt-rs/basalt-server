@@ -30,20 +30,24 @@ pub async fn connect_websocket(
     State(state): State<Arc<AppState>>,
 ) -> Result<Response, AuthError> {
     let db = state.db.read().await;
-    trace!("getting user from session");
-    let user = if let Some(header) = headers.get("Sec-WebSocket-Protocol") {
-        let session_id = header.to_str().unwrap();
+    trace!("Attempting to connect to WS");
+    let protocol = headers
+        .get("Sec-WebSocket-Protocol")
+        .map(|s| s.to_str().unwrap().to_string());
+    let user = if let Some(session_id) = &protocol {
         let user = repositories::session::get_user_from_session(&db, session_id)
             .await
             .map_err(|_| {
                 trace!("token expired");
                 AuthError::ExpiredToken
             })?;
+        trace!(?user, "User authed");
         Some(AuthUser {
             user,
             session_id: session_id.to_string(),
         })
     } else {
+        trace!("user not authed");
         None
     };
     drop(db);
@@ -59,7 +63,12 @@ pub async fn connect_websocket(
         },
     };
 
-    trace!(?who, "Client connect");
+    trace!(?who, "WS client connect");
+    let ws = if let Some(protocol) = protocol {
+        ws.protocols([protocol])
+    } else {
+        ws
+    };
     Ok(ws.on_upgrade(move |ws| async move {
         // Using defer here so that if the thread panics, we still remove the connection.
         scopeguard::defer! {
@@ -104,10 +113,11 @@ async fn handle_socket(
             },
             msg = ws.recv() => match msg {
                 None => {
+                    // WS is closed
                     return Ok(());
                 },
                 Some(Err(error)) => {
-                    debug!(?error, "Error while waiting for websocket message");
+                    error!(?error, "Error while waiting for websocket message");
                     return Ok(());
                 },
                 Some(Ok(msg)) => {
