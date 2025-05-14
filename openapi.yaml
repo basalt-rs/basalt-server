@@ -393,6 +393,7 @@ components:
       - question_index
       - score
       - success
+      - language
       properties:
         code:
           type: string
@@ -400,6 +401,8 @@ components:
           type: boolean
         id:
           $ref: '#/components/schemas/SubmissionId'
+        language:
+          type: string
         question_index:
           type: integer
           format: int64
