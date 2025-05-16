@@ -33,8 +33,11 @@ needs to depend on the library.
 
 Running the server is no different from any other rust project.
 
-From the root of the repo:
+To start the server:
 
 ```sh
-cargo run
+cargo run -- run <path-to-config>
 ```
+
+You'll need to provide a configuration. We typically develop using one
+from the `samples` directory.
