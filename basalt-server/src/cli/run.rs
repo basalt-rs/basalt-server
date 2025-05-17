@@ -79,10 +79,11 @@ pub async fn handle(args: RunArgs) -> anyhow::Result<()> {
     info!(?addr, "Serving via HTTP");
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
+    let mut state = AppState::new(db, config, args.web_dir);
+    state.init().await?;
     axum::serve(
         listener,
-        server::router(Arc::new(AppState::new(db, config, args.web_dir)))
-            .into_make_service_with_connect_info::<SocketAddr>(),
+        server::router(Arc::new(state)).into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await?;
 

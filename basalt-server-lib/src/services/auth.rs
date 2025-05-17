@@ -56,21 +56,21 @@ async fn login(
     let token = repositories::session::create_session(&sql.db, &user)
         .await
         .unwrap();
-    let score = repositories::submissions::get_user_score(&sql.db, &user.username)
+    let score = repositories::submissions::get_user_score(&sql.db, &user.id)
         .await
         .unwrap();
     drop(sql);
 
-    state.team_manager.check_in(&user.username);
+    state.team_manager.check_in(&user.id);
 
-    state.team_manager.get_team(&user.username).map(|team| {
+    if let Some(team) = state.team_manager.get_team(&user.id) {
         state.websocket.broadcast(WebSocketSend::Broadcast {
             broadcast: Broadcast::TeamConnected(TeamWithScore {
                 score,
                 team_info: team,
             }),
-        })
-    });
+        });
+    }
 
     let role = user.role;
     debug!(%login.username, "log in");
@@ -97,26 +97,23 @@ async fn logout(State(state): State<Arc<AppState>>, user: AuthUser) -> Result<()
             .await
             .unwrap();
 
-        repositories::submissions::get_user_score(&sql.db, &user.user.username)
+        repositories::submissions::get_user_score(&sql.db, &user.user.id)
             .await
             .unwrap()
     };
 
-    state.team_manager.disconnect(&user.user.username);
+    state.team_manager.disconnect(&user.user.id);
 
-    state
-        .team_manager
-        .get_team(&user.user.username)
-        .map(|team| {
-            state
-                .websocket
-                .broadcast(crate::services::ws::WebSocketSend::Broadcast {
-                    broadcast: crate::services::ws::Broadcast::TeamDisconnected(TeamWithScore {
-                        score,
-                        team_info: team,
-                    }),
-                })
-        });
+    if let Some(team) = state.team_manager.get_team(&user.user.id) {
+        state
+            .websocket
+            .broadcast(crate::services::ws::WebSocketSend::Broadcast {
+                broadcast: crate::services::ws::Broadcast::TeamDisconnected(TeamWithScore {
+                    score,
+                    team_info: team,
+                }),
+            });
+    }
 
     Ok(())
 }

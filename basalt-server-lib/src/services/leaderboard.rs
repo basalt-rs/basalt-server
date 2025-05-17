@@ -1,13 +1,14 @@
 use crate::{
     repositories::{
         self,
-        users::{QuestionState, Username},
+        users::{QuestionState, Role, User, UserId},
     },
     server::AppState,
 };
 use axum::{extract::State, http::StatusCode, Json};
 use serde::Serialize;
 use std::sync::Arc;
+use tracing::error;
 use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
@@ -20,7 +21,7 @@ pub struct LeaderBoard {
 #[derive(Serialize, ToSchema, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct TeamProgression {
-    username: Username,
+    user_id: UserId,
     score: f64,
     submission_states: Vec<QuestionState>,
 }
@@ -38,25 +39,25 @@ pub struct TeamProgression {
 pub async fn get_leaderboard_info(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<TeamProgression>>, StatusCode> {
-    let competitors: Vec<Username> = state
-        .config
-        .accounts
-        .competitors
-        .iter()
-        .map(|user| (user.name.clone().into()))
-        .collect();
-
     let sql = state.db.read().await;
+
+    let competitors: Vec<User> =
+        repositories::users::get_users_with_role(&sql.db, Role::Competitor)
+            .await
+            .map_err(|e| {
+                error!("Error while getting competitors: {:?}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
 
     let mut leaderboard_info = Vec::with_capacity(competitors.len());
 
-    for username in &competitors {
+    for user in &competitors {
         // Get list size and sets values to not-attempted by default
         let mut submission_states =
             vec![QuestionState::NotAttempted; state.config.packet.problems.len()];
 
         let submissions =
-            match repositories::submissions::get_latest_submissions(&sql.db, username).await {
+            match repositories::submissions::get_latest_submissions(&sql.db, &user.id).await {
                 Ok(submissions) => submissions,
                 Err(err) => {
                     tracing::error!("Error while getting submissions: {}", err);
@@ -72,7 +73,7 @@ pub async fn get_leaderboard_info(
             };
         }
 
-        match repositories::submissions::count_tests(&sql.db, username).await {
+        match repositories::submissions::count_tests(&sql.db, &user.id).await {
             Ok(counts) => {
                 for c in counts {
                     if submission_states[c.question_index as usize] == QuestionState::NotAttempted {
@@ -90,7 +91,7 @@ pub async fn get_leaderboard_info(
             }
         }
 
-        let score = match repositories::submissions::get_user_score(&sql.db, username).await {
+        let score = match repositories::submissions::get_user_score(&sql.db, &user.id).await {
             Ok(score) => score,
             Err(err) => {
                 tracing::error!("Error while getting score: {}", err);
@@ -99,7 +100,7 @@ pub async fn get_leaderboard_info(
         };
 
         leaderboard_info.push(TeamProgression {
-            username: username.clone(),
+            user_id: user.id.clone(),
             score,
             submission_states,
         });

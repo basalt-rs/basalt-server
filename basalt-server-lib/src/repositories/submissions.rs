@@ -6,7 +6,7 @@ use std::fmt::Display;
 use time::OffsetDateTime;
 use utoipa::ToSchema;
 
-use super::users::Username;
+use super::users::{UserId, Username};
 
 #[derive(
     Debug, Serialize, Deserialize, derive_more::From, derive_more::Into, sqlx::Type, ToSchema,
@@ -29,7 +29,7 @@ impl SubmissionId {
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow, ToSchema)]
 pub struct SubmissionHistory {
     pub id: SubmissionId,
-    pub submitter: Username,
+    pub submitter: UserId,
     #[serde(with = "time::serde::rfc3339")]
     #[schema(value_type = String, format = Date)]
     pub time: OffsetDateTime,
@@ -215,10 +215,7 @@ pub async fn count_previous_submissions<'a>(
     Ok(attempts as _)
 }
 
-pub async fn get_user_score(
-    db: impl SqliteExecutor<'_>,
-    username: &Username,
-) -> anyhow::Result<f64> {
+pub async fn get_user_score(db: impl SqliteExecutor<'_>, user_id: &UserId) -> anyhow::Result<f64> {
     sqlx::query_scalar!(
         r#"
             SELECT SUM(h.score)
@@ -231,8 +228,8 @@ pub async fn get_user_score(
             ) t ON h.question_index = t.question_index AND h.time = t.latest
             WHERE h.submitter = ?;
         "#,
-        username,
-        username,
+        user_id,
+        user_id,
     )
     .fetch_one(db)
     .await
@@ -242,7 +239,7 @@ pub async fn get_user_score(
 
 pub async fn get_latest_submissions(
     db: impl SqliteExecutor<'_>,
-    username: &Username,
+    user_id: &UserId,
 ) -> anyhow::Result<Vec<SubmissionHistory>> {
     sqlx::query_as!(
         SubmissionHistory,
@@ -257,8 +254,8 @@ pub async fn get_latest_submissions(
             ) t ON h.question_index = t.question_index AND h.time = t.latest
             WHERE h.submitter = ?;
         "#,
-        username,
-        username,
+        user_id,
+        user_id,
     )
     .fetch_all(db)
     .await
@@ -273,7 +270,7 @@ pub struct Attempt {
 
 pub async fn get_attempts(
     db: impl SqliteExecutor<'_>,
-    username: &Username,
+    user_id: &UserId,
 ) -> anyhow::Result<Vec<Attempt>> {
     sqlx::query_as!(
         Attempt,
@@ -283,7 +280,7 @@ pub async fn get_attempts(
             WHERE submitter = ?
             GROUP BY question_index;
         "#,
-        username
+        user_id
     )
     .fetch_all(db)
     .await
@@ -292,18 +289,18 @@ pub async fn get_attempts(
 
 pub async fn add_test(
     db: impl SqliteExecutor<'_>,
-    username: &Username,
+    user_id: &UserId,
     question_index: usize,
 ) -> anyhow::Result<()> {
     let question_index = question_index as i64;
     let id = SubmissionId::new();
     sqlx::query!(
         r#"
-        INSERT INTO test_runs (id, username, question_index)
+        INSERT INTO test_runs (id, user_id, question_index)
         VALUES (?, ?, ?)
         "#,
         id,
-        username,
+        user_id,
         question_index,
     )
     .execute(db)
@@ -320,17 +317,17 @@ pub struct TestCount {
 
 pub async fn count_tests(
     db: impl SqliteExecutor<'_>,
-    username: &Username,
+    user_id: &UserId,
 ) -> anyhow::Result<Vec<TestCount>> {
     sqlx::query_as!(
         TestCount,
         r#"
             SELECT question_index, count(id) as count
             FROM test_runs
-            WHERE username = ?
+            WHERE user_id = ?
             GROUP BY question_index;
         "#,
-        username
+        user_id,
     )
     .fetch_all(db)
     .await
@@ -339,7 +336,7 @@ pub async fn count_tests(
 
 pub async fn get_submissions(
     db: impl SqliteExecutor<'_>,
-    username: &Username,
+    user_id: &UserId,
     question_index: usize,
 ) -> anyhow::Result<Vec<SubmissionHistory>> {
     let question_index = question_index as i64;
@@ -351,7 +348,7 @@ pub async fn get_submissions(
         WHERE submitter = ? AND question_index = ?
         ORDER BY time DESC;
         "#,
-        username,
+        user_id,
         question_index
     )
     .fetch_all(db)
@@ -389,7 +386,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(history.submitter, user.username);
+        assert_eq!(history.submitter, user.id);
         assert!(history.compile_fail);
         assert_eq!(history.code.as_str(), "this is some code");
         assert_eq!(history.question_index, 42);

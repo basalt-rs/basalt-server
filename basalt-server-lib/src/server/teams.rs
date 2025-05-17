@@ -1,9 +1,8 @@
-use bedrock::Config;
 use chrono::Utc;
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 
-use crate::repositories::users::Username;
+use crate::repositories::users::UserId;
 
 #[derive(Debug, PartialEq, Eq, Default, Copy, Clone, Deserialize, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -20,7 +19,7 @@ pub struct TeamInfo {
 #[serde(rename_all = "camelCase")]
 pub struct TeamFull {
     /// Username of team/player
-    pub team: Username,
+    pub team: UserId,
     /// Contains full information about team
     #[serde(flatten)]
     pub info: TeamInfo,
@@ -44,27 +43,28 @@ pub struct TeamWithScore {
     pub team_info: TeamFull,
 }
 
+#[derive(Default)]
 pub struct TeamManagement {
-    teams: DashMap<Username, TeamInfo>,
+    teams: DashMap<UserId, TeamInfo>,
 }
 
 impl TeamManagement {
-    pub fn from_config(cfg: &Config) -> Self {
-        let teams: DashMap<Username, TeamInfo> = DashMap::new();
-        for t in &cfg.accounts.competitors {
-            teams.insert(t.name.clone().into(), TeamInfo::default());
-        }
-        TeamManagement { teams }
+    pub fn insert(&self, id: UserId) {
+        self.teams.insert(id, TeamInfo::default());
     }
 
-    pub fn check_in(&self, name: &Username) {
-        if let Some(mut t) = self.teams.get_mut(name) {
+    pub fn insert_many(&self, ids: impl IntoIterator<Item = UserId>) {
+        ids.into_iter().for_each(|id| self.insert(id));
+    }
+
+    pub fn check_in(&self, id: &UserId) {
+        if let Some(mut t) = self.teams.get_mut(id) {
             t.check();
         }
     }
 
-    pub fn disconnect(&self, name: &Username) {
-        if let Some(mut t) = self.teams.get_mut(name) {
+    pub fn disconnect(&self, id: &UserId) {
+        if let Some(mut t) = self.teams.get_mut(id) {
             t.disconnect();
         }
     }
@@ -76,14 +76,14 @@ impl TeamManagement {
             .map(|(k, v)| TeamFull { team: k, info: v })
     }
 
-    pub fn get_team(&self, team: &Username) -> Option<TeamFull> {
-        self.teams.get(team).map(|t| TeamFull {
-            team: team.clone(),
+    pub fn get_team(&self, id: &UserId) -> Option<TeamFull> {
+        self.teams.get(id).map(|t| TeamFull {
+            team: id.clone(),
             info: *t,
         })
     }
 
-    pub fn get_all(&self) -> DashMap<Username, TeamInfo> {
+    pub fn get_all(&self) -> DashMap<UserId, TeamInfo> {
         self.teams.clone()
     }
 }

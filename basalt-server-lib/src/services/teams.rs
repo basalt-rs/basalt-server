@@ -73,6 +73,7 @@ struct NewTeam {
     request_body = NewTeam,
     responses(
         (status=OK, body=User, description="Team was created successfully"),
+        (status=CONFLICT, description="Team with provided username already exists"),
         (status=INTERNAL_SERVER_ERROR),
     )
 )]
@@ -82,7 +83,7 @@ async fn add_team(
     Json(new): Json<NewTeam>,
 ) -> Result<Json<User>, StatusCode> {
     let sql = state.db.read().await;
-    info!(%creator.username, %new.username, "Creating new user");
+    info!(creator = %creator.username, new = %new.username, "Creating new user");
     let user = repositories::users::create_user(
         &sql.db,
         new.username,
@@ -91,9 +92,15 @@ async fn add_team(
         repositories::users::Role::Competitor,
     )
     .await
-    .map_err(|e| {
-        error!("Error creating user: {:?}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+    .map_err(|e| match e {
+        repositories::users::CreateUserError::Confict => {
+            info!("User not created due to username conflict");
+            StatusCode::CONFLICT
+        }
+        repositories::users::CreateUserError::Other(_) => {
+            error!("Error creating user: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
     })?;
 
     Ok(Json(user))
@@ -149,7 +156,7 @@ mod tests {
         assert_eq!(
             teams
                 .into_iter()
-                .find(|t| t.team_info.team == user1.username)
+                .find(|t| t.team_info.team == user1.id)
                 .unwrap()
                 .score,
             expected_score

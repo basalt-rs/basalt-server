@@ -66,7 +66,7 @@ async fn extract(parts: &mut Parts, state: &Arc<AppState>) -> Result<Option<Auth
         })?;
     trace!(?user.username, "resolved user");
 
-    state.team_manager.check_in(&user.username);
+    state.team_manager.check_in(&user.id);
 
     Ok(Some(AuthUser {
         user,

@@ -1,6 +1,5 @@
 use std::fmt::Display;
 
-use anyhow::Context;
 use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
 use argon2::{PasswordHash, PasswordVerifier};
 use rand::rngs::OsRng;
@@ -153,6 +152,17 @@ pub async fn get_user_by_id(sql: &SqliteLayer, id: UserId) -> Result<User, GetUs
         })
 }
 
+// I so desperately want this to return a stream, but sqlx makes that a total pain...
+pub async fn get_users_with_role(
+    db: impl SqliteExecutor<'_>,
+    role: Role,
+) -> Result<Vec<User>, sqlx::Error> {
+    let role = i32::from(role);
+    sqlx::query_as!(User, "SELECT * from users WHERE role = $1", role)
+        .fetch_all(db)
+        .await
+}
+
 #[derive(Debug, FromRow, Deserialize)]
 pub struct UserLogin {
     pub username: Username,
@@ -192,6 +202,23 @@ pub async fn login_user(
     }
 }
 
+#[derive(Debug)]
+pub enum CreateUserError {
+    Confict,
+    Other(sqlx::Error),
+}
+
+impl Display for CreateUserError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CreateUserError::Confict => write!(f, "Conflict"),
+            CreateUserError::Other(e) => write!(f, "{}", e),
+        }
+    }
+}
+
+impl std::error::Error for CreateUserError {}
+
 /// Creates a user and inserts into database.
 ///
 /// Uses Argon2 to hash the password
@@ -201,7 +228,7 @@ pub async fn create_user(
     display_name: Option<&str>,
     password: impl AsRef<str>,
     role: Role,
-) -> anyhow::Result<User> {
+) -> Result<User, CreateUserError> {
     let salt = SaltString::generate(&mut OsRng);
     let id = UserId::new();
     let username: &str = username.as_ref();
@@ -221,7 +248,18 @@ pub async fn create_user(
     )
     .fetch_one(db)
     .await
-    .context("Failed to create user")
+    .map_err(|e| {
+        match e   {
+            sqlx::Error::Database(ref dbe) => {
+                if dbe.is_unique_violation() {
+                    CreateUserError::Confict
+                } else {
+                    CreateUserError::Other(e)
+                }
+            },
+            _ => CreateUserError::Other(e),
+        }
+    })
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize, ToSchema)]
