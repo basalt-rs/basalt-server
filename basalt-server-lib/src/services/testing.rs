@@ -1,9 +1,8 @@
 use crate::{
-    extractors::auth::AuthUser,
     repositories::{
         self,
         submissions::SubmissionHistory,
-        users::{QuestionState, Role, Username},
+        users::{QuestionState, Role, User, UserId},
     },
     server::AppState,
 };
@@ -27,7 +26,7 @@ pub struct QuestionSubmissionState {
 #[derive(Deserialize, ToSchema, Clone, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct SubmissionStateParams {
-    username: Option<Username>,
+    user_id: Option<UserId>,
 }
 
 #[axum::debug_handler]
@@ -41,18 +40,18 @@ pub struct SubmissionStateParams {
     ),
 )]
 pub async fn get_submissions_state(
-    AuthUser { user, .. }: AuthUser,
-    Query(SubmissionStateParams { username }): Query<SubmissionStateParams>,
+    user: User,
+    Query(SubmissionStateParams { user_id }): Query<SubmissionStateParams>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<QuestionSubmissionState>>, StatusCode> {
-    let username = if let Some(ref username) = username {
+    let user_id = if let Some(ref user_id) = user_id {
         if user.role == Role::Host {
-            username
+            user_id
         } else {
             return Err(StatusCode::FORBIDDEN);
         }
     } else {
-        &user.username
+        &user.id
     };
     let max_attempts = state.config.max_submissions.map(NonZero::get);
 
@@ -66,7 +65,7 @@ pub async fn get_submissions_state(
         state.config.packet.problems.len()
     ];
 
-    match repositories::submissions::get_latest_submissions(&sql.db, username).await {
+    match repositories::submissions::get_latest_submissions(&sql.db, user_id).await {
         Ok(submissions) => {
             for s in submissions {
                 states[s.question_index as usize].state = if s.success {
@@ -82,7 +81,7 @@ pub async fn get_submissions_state(
         }
     };
 
-    match repositories::submissions::count_tests(&sql.db, username).await {
+    match repositories::submissions::count_tests(&sql.db, user_id).await {
         Ok(counts) => {
             for c in counts {
                 if states[c.question_index as usize].state == QuestionState::NotAttempted {
@@ -100,7 +99,7 @@ pub async fn get_submissions_state(
         }
     }
 
-    match repositories::submissions::get_attempts(&sql.db, username).await {
+    match repositories::submissions::get_attempts(&sql.db, user_id).await {
         Ok(attempts) => {
             for a in attempts {
                 states[a.question_index as usize].remaining_attempts =
@@ -118,7 +117,7 @@ pub async fn get_submissions_state(
 
 #[derive(Deserialize, IntoParams)]
 pub struct SubmissionsParams {
-    username: Option<Username>,
+    user_id: Option<UserId>,
     question_index: usize,
 }
 
@@ -132,12 +131,12 @@ pub struct SubmissionsParams {
     )
 )]
 pub async fn get_submissions(
-    AuthUser { user, .. }: AuthUser,
+    user: User,
     params: Query<SubmissionsParams>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<SubmissionHistory>>, StatusCode> {
-    let username = params.username.as_ref().unwrap_or(&user.username);
-    if !(user.role == Role::Host || user.username == *username) {
+    let username = params.user_id.as_ref().unwrap_or(&user.id);
+    if !(user.role == Role::Host || user.id == *username) {
         return Err(StatusCode::FORBIDDEN);
     }
 

@@ -12,12 +12,11 @@ use tracing::{debug, trace};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
-    extractors::auth::AuthUser,
     repositories::{
         self,
         announcements::{Announcement, AnnouncementId},
         submissions::NewSubmissionHistory,
-        users::{QuestionState, Username},
+        users::{QuestionState, UserId},
     },
     server::{teams::TeamWithScore, websocket::ConnectionKind, AppState},
 };
@@ -41,7 +40,7 @@ pub enum Broadcast {
         time_left_in_seconds: u64,
     },
     TeamUpdate {
-        team: Username,
+        team: UserId,
         new_score: f64,
         new_states: Vec<QuestionState>,
     },
@@ -170,9 +169,9 @@ impl WebSocketRecv<'_> {
         .context("sending error message")
     }
 
-    async fn broadcast_team_update(state: &AppState, username: &Username) -> anyhow::Result<()> {
+    async fn broadcast_team_update(state: &AppState, user_id: &UserId) -> anyhow::Result<()> {
         let sql = state.db.read().await;
-        let submissions = repositories::submissions::get_latest_submissions(&sql.db, username)
+        let submissions = repositories::submissions::get_latest_submissions(&sql.db, user_id)
             .await
             .context("getting user submissions")?;
 
@@ -185,7 +184,7 @@ impl WebSocketRecv<'_> {
             }
         }
 
-        match repositories::submissions::count_tests(&sql.db, username).await {
+        match repositories::submissions::count_tests(&sql.db, user_id).await {
             Ok(counts) => {
                 for c in counts {
                     if states[c.question_index as usize] == QuestionState::NotAttempted
@@ -200,13 +199,13 @@ impl WebSocketRecv<'_> {
             }
         }
 
-        let new_score = repositories::submissions::get_user_score(&sql.db, username)
+        let new_score = repositories::submissions::get_user_score(&sql.db, user_id)
             .await
             .context("getting user score")?;
 
         state.websocket.broadcast(WebSocketSend::Broadcast {
             broadcast: Broadcast::TeamUpdate {
-                team: username.clone(),
+                team: user_id.clone(),
                 new_score,
                 new_states: states,
             },
@@ -237,7 +236,7 @@ impl WebSocketRecv<'_> {
             return self.error(ws, "Tests are already running");
         };
 
-        let AuthUser { user, .. } = who.user().unwrap();
+        let user = who.user().unwrap();
 
         scopeguard::defer! {
             state.active_tests.remove(&key);
@@ -267,10 +266,10 @@ impl WebSocketRecv<'_> {
         let results = runner.run().await?;
 
         let sql = state.db.read().await;
-        repositories::submissions::add_test(&sql.db, &user.username, problem_index)
+        repositories::submissions::add_test(&sql.db, &user.id, problem_index)
             .await
             .context("adding user test")?;
-        Self::broadcast_team_update(&state, &user.username).await?;
+        Self::broadcast_team_update(&state, &user.id).await?;
 
         match results {
             RunOutput::CompileSpawnFail(s) => {
@@ -333,20 +332,17 @@ impl WebSocketRecv<'_> {
             .get_sender(who)
             .context("websocket not in active_connections")?;
 
-        let AuthUser { user, .. } = who.user().unwrap();
+        let user = who.user().unwrap();
 
         let Some(language) = state.config.languages.get_by_str(language) else {
             return self.error(ws, format!("Unknown language '{}'", language));
         };
 
         let sql = state.db.read().await;
-        let attempts = repositories::submissions::count_previous_submissions(
-            &sql.db,
-            &user.username,
-            problem_index,
-        )
-        .await
-        .context("getting previous submissions")?;
+        let attempts =
+            repositories::submissions::count_previous_submissions(&sql.db, &user.id, problem_index)
+                .await
+                .context("getting previous submissions")?;
         drop(sql); // ensure we don't hold the lock while doing time-consuming things
 
         let max_attempts: Option<u32> = state.config.max_submissions.map(NonZero::get);
@@ -395,7 +391,7 @@ impl WebSocketRecv<'_> {
                 repositories::submissions::create_submission_history(
                     &sql.db,
                     NewSubmissionHistory {
-                        submitter: &user.username,
+                        submitter: &user.id,
                         compile_fail: true,
                         code: solution,
                         question_index: problem_index,
@@ -416,14 +412,14 @@ impl WebSocketRecv<'_> {
                 })
                 .context("sending submission results message")?;
 
-                Self::broadcast_team_update(&state, &user.username).await?;
+                Self::broadcast_team_update(&state, &user.id).await?;
             }
             RunOutput::CompileFail(simple_output) => {
                 let sql = state.db.read().await;
                 repositories::submissions::create_submission_history(
                     &sql.db,
                     NewSubmissionHistory {
-                        submitter: &user.username,
+                        submitter: &user.id,
                         compile_fail: true,
                         code: solution,
                         question_index: problem_index,
@@ -444,7 +440,7 @@ impl WebSocketRecv<'_> {
                 })
                 .context("sending test results message")?;
 
-                Self::broadcast_team_update(&state, &user.username).await?;
+                Self::broadcast_team_update(&state, &user.id).await?;
             }
             RunOutput::RunSuccess(vec) => {
                 let sql = state.db.read().await;
@@ -454,6 +450,10 @@ impl WebSocketRecv<'_> {
                         .context("getting other submissions")?;
                 let mut txn = sql.db.begin().await.unwrap();
                 let success = vec.iter().all(|x| matches!(x, TestOutput::Pass));
+                let passed = vec
+                    .iter()
+                    .filter(|&r| matches!(r, TestOutput::Pass))
+                    .count();
                 let score = if success {
                     state
                         .config
@@ -462,6 +462,9 @@ impl WebSocketRecv<'_> {
                             bedrock::scoring::EvaluationContext {
                                 num_completions: other_completions,
                                 num_attempts: attempts,
+                                passed_tests: passed as u32,
+                                failed_tests: (problem.tests.len() - passed) as u32,
+                                number_tests: (problem.tests.len()) as u32,
                             },
                         )
                         .context("calculating score")?
@@ -471,7 +474,7 @@ impl WebSocketRecv<'_> {
                 let history = repositories::submissions::create_submission_history(
                     txn.acquire().await.unwrap(),
                     NewSubmissionHistory {
-                        submitter: &user.username,
+                        submitter: &user.id,
                         compile_fail: false,
                         code: solution,
                         question_index: problem_index,
@@ -495,10 +498,6 @@ impl WebSocketRecv<'_> {
                 }
 
                 trace!(?vec, "Raw test output");
-                let passed = vec
-                    .iter()
-                    .filter(|&r| matches!(r, TestOutput::Pass))
-                    .count();
 
                 let results = vec
                     .into_iter()
@@ -516,7 +515,7 @@ impl WebSocketRecv<'_> {
                     remaining_attempts: max_attempts.map(|x| x - attempts - 1),
                 })
                 .context("sending test results message")?;
-                Self::broadcast_team_update(&state, &user.username).await?;
+                Self::broadcast_team_update(&state, &user.id).await?;
             }
         }
         Ok(())
