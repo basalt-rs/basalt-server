@@ -97,7 +97,9 @@ impl Username {
 pub struct UserId(pub String);
 
 impl UserId {
-    fn new() -> Self {
+    // Default feels wrong here as each call to this function generates a different value.
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
         use rand::{distributions::Alphanumeric, Rng};
         let id = rand::thread_rng()
             .sample_iter(Alphanumeric)
@@ -105,6 +107,12 @@ impl UserId {
             .map(char::from)
             .collect::<String>();
         Self(id)
+    }
+}
+
+impl Display for UserId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -141,9 +149,9 @@ pub async fn get_user_by_username(sql: &SqliteLayer, name: Username) -> Result<U
         })
 }
 
-pub async fn get_user_by_id(sql: &SqliteLayer, id: UserId) -> Result<User, GetUserError> {
-    sqlx::query_as!(User, "SELECT * from users WHERE username = $1", id)
-        .fetch_optional(&sql.db)
+pub async fn get_user_by_id(db: impl SqliteExecutor<'_>, id: UserId) -> Result<User, GetUserError> {
+    sqlx::query_as!(User, "SELECT * from users WHERE id = $1", id)
+        .fetch_optional(db)
         .await
         .map_err(|e| GetUserError::QueryError(e.to_string()))?
         .ok_or(GetUserError::UserNotFound {
@@ -262,6 +270,45 @@ pub async fn create_user(
     })
 }
 
+pub async fn update_user(
+    db: impl SqliteExecutor<'_>,
+    update: User,
+) -> Result<User, CreateUserError> {
+    let role_int: i32 = update.role.into();
+    let password_hash = update.password_hash.expose_secret();
+    sqlx::query_as!(
+        User,
+        r#"
+        UPDATE users SET
+            username = ?,
+            display_name = ?,
+            password_hash = ?,
+            role = ?
+        WHERE
+            id = ?
+        RETURNING
+            id, username, display_name, password_hash, role
+        "#,
+        update.username,
+        update.display_name,
+        password_hash,
+        role_int,
+        update.id,
+    )
+    .fetch_one(db)
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::Database(ref dbe) => {
+            if dbe.is_unique_violation() {
+                CreateUserError::Confict
+            } else {
+                CreateUserError::Other(e)
+            }
+        }
+        _ => CreateUserError::Other(e),
+    })
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum QuestionState {
@@ -279,7 +326,7 @@ mod tests {
     #[tokio::test]
     async fn get_nonexistent_user() {
         let (f, sql) = mock_db().await;
-        let response = get_user_by_id(&sql, UserId("0".to_string())).await;
+        let response = get_user_by_id(&sql.db, UserId::new()).await;
         assert!(response.is_err());
         drop(f)
     }
@@ -313,7 +360,7 @@ mod tests {
         )
         .await
         .unwrap();
-        let user = get_user_by_id(&sql, dummy_user.id)
+        let user = get_user_by_id(&sql.db, dummy_user.id)
             .await
             .expect("Failed to find user");
         assert_eq!(user.username, dummy_user.username);

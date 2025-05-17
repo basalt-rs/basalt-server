@@ -91,18 +91,12 @@ impl TeamManagement {
 #[cfg(test)]
 mod tests {
     use super::*;
-    const TEST_TEAM_1: &str = "team1";
-    const TEST_TEAM_2: &str = "team2";
-
-    fn userify(value: &str) -> Username {
-        value.to_owned().into()
-    }
-
     #[test]
     fn check_works() {
+        let team1 = UserId::new();
         let teams = DashMap::new();
         teams.insert(
-            TEST_TEAM_1.to_owned().into(),
+            team1.clone(),
             TeamInfo {
                 last_seen: None,
                 checked_in: false,
@@ -111,16 +105,16 @@ mod tests {
         );
 
         let manager = TeamManagement { teams };
-        let team = manager.get_team(&userify(TEST_TEAM_1)).unwrap();
+        let team = manager.get_team(&team1).unwrap();
         assert!(!team.info.checked_in);
         assert_eq!(team.info.disconnected, false);
         assert!(team.info.last_seen.is_none());
 
-        manager.check_in(&userify(TEST_TEAM_1));
+        manager.check_in(&team1);
 
-        let team = manager.get_team(&userify(TEST_TEAM_1)).unwrap();
+        let team = manager.get_team(&team1).unwrap();
         let team_name: String = team.team.clone().into();
-        assert_eq!(TEST_TEAM_1.to_owned(), team_name);
+        assert_eq!(team1, team_name);
         assert!(team.info.checked_in);
         assert_eq!(team.info.disconnected, false);
         assert!(team.info.last_seen.is_some());
@@ -128,9 +122,10 @@ mod tests {
 
     #[test]
     fn disconnect_works() {
+        let team1 = UserId::new();
         let teams = DashMap::new();
         teams.insert(
-            userify(TEST_TEAM_1),
+            team1.clone(),
             TeamInfo {
                 last_seen: None,
                 checked_in: false,
@@ -139,16 +134,16 @@ mod tests {
         );
 
         let manager = TeamManagement { teams };
-        let team = manager.get_team(&userify(TEST_TEAM_1)).unwrap();
+        let team = manager.get_team(&team1).unwrap();
         assert!(!team.info.checked_in);
         assert!(!team.info.disconnected);
         assert!(team.info.last_seen.is_none());
 
-        manager.disconnect(&userify(TEST_TEAM_1));
+        manager.disconnect(&team1);
 
-        let team = manager.get_team(&userify(TEST_TEAM_1)).unwrap();
+        let team = manager.get_team(&team1).unwrap();
         let team_name: String = team.team.clone().into();
-        assert_eq!(TEST_TEAM_1.to_owned(), team_name);
+        assert_eq!(team1, team_name);
         assert!(!team.info.checked_in);
         assert!(team.info.disconnected);
         assert!(team.info.last_seen.is_none());
@@ -156,9 +151,11 @@ mod tests {
 
     #[test]
     fn get_team_works() {
+        let team1 = UserId::new();
+        let team2 = UserId::new();
         let teams = DashMap::new();
         teams.insert(
-            userify(TEST_TEAM_1),
+            team1.clone(),
             TeamInfo {
                 last_seen: None,
                 checked_in: false,
@@ -166,7 +163,7 @@ mod tests {
             },
         );
         teams.insert(
-            userify(TEST_TEAM_2),
+            team2.clone(),
             TeamInfo {
                 last_seen: None,
                 checked_in: true,
@@ -175,9 +172,9 @@ mod tests {
         );
 
         let manager = TeamManagement { teams };
-        let team1 = manager.get_team(&userify(TEST_TEAM_1)).unwrap();
-        let team2 = manager.get_team(&userify(TEST_TEAM_2)).unwrap();
-        let team3 = manager.get_team(&userify("nuhuh"));
+        let team1 = manager.get_team(&team1).unwrap();
+        let team2 = manager.get_team(&team2).unwrap();
+        let team3 = manager.get_team(&UserId::new());
         assert!(team3.is_none());
         assert!(!team1.info.checked_in);
         assert!(!team1.info.disconnected);

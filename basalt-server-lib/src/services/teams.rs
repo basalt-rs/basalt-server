@@ -1,6 +1,12 @@
 use std::sync::Arc;
 
-use axum::{extract::State, http::StatusCode, Json};
+use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    Json,
+};
+use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinSet;
 use tracing::{error, info, trace};
@@ -9,7 +15,11 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
     extractors::auth::HostUser,
-    repositories::{self, submissions::get_user_score, users::User},
+    repositories::{
+        self,
+        submissions::get_user_score,
+        users::{GetUserError, User, UserId, Username},
+    },
     server::{teams::TeamWithScore, AppState},
 };
 
@@ -106,10 +116,89 @@ async fn add_team(
     Ok(Json(user))
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum DisplayNamePatch {
+    Remove,      // "remove"
+    Set(String), // { "set": "New Name" }
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+struct PatchTeam {
+    username: Option<Username>,
+    display_name: Option<DisplayNamePatch>,
+    password: Option<String>,
+}
+
+#[axum::debug_handler]
+#[utoipa::path(
+    patch,
+    path="/{id}", tag="teams",
+    request_body = PatchTeam,
+    responses(
+        (status=OK, body=User, description="Team was succesfully updated"),
+        (status=NOT_FOUND, description="User with ID not found"),
+        (status=CONFLICT, description="Team with provided username already exists"),
+        (status=INTERNAL_SERVER_ERROR),
+    )
+)]
+async fn patch_team(
+    State(state): State<Arc<AppState>>,
+    HostUser(host): HostUser,
+    Path(user_id): Path<UserId>,
+    Json(patch): Json<PatchTeam>,
+) -> Result<Json<User>, StatusCode> {
+    let sql = state.db.read().await;
+    info!(host = %host.username, %user_id, ?patch, "Patching user");
+    let mut user = repositories::users::get_user_by_id(&sql.db, user_id)
+        .await
+        .map_err(|e| match e {
+            GetUserError::QueryError(_) => {
+                error!("Error creating user: {:?}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
+            GetUserError::UserNotFound { .. } => {
+                info!("User not found");
+                StatusCode::NOT_FOUND
+            }
+        })?;
+
+    if let Some(username) = patch.username {
+        user.username = username;
+    }
+
+    if let Some(display_name) = patch.display_name {
+        match display_name {
+            DisplayNamePatch::Remove => user.display_name = None,
+            DisplayNamePatch::Set(name) => user.display_name = Some(name),
+        }
+    }
+
+    if let Some(password) = patch.password {
+        let salt = SaltString::generate(&mut OsRng);
+        let password_hash = Argon2::default()
+            .hash_password(password.as_bytes(), &salt)
+            .expect("Failed to hash password")
+            .to_string();
+        user.password_hash = password_hash.into();
+    }
+
+    let new = repositories::users::update_user(&sql.db, user)
+        .await
+        .map_err(|e| {
+            error!("Error updating user: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(new))
+}
+
 pub fn router() -> OpenApiRouter<Arc<AppState>> {
     OpenApiRouter::new()
         .routes(routes!(get_teams))
         .routes(routes!(add_team))
+        .routes(routes!(patch_team))
 }
 
 pub fn service() -> axum::Router<Arc<AppState>> {
