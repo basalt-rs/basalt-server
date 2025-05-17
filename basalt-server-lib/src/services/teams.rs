@@ -1,16 +1,19 @@
 use std::sync::Arc;
 
 use axum::{extract::State, http::StatusCode, Json};
+use serde::{Deserialize, Serialize};
 use tokio::task::JoinSet;
-use tracing::{error, trace};
+use tracing::{error, info, trace};
+use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
-    repositories::submissions::get_user_score,
+    extractors::auth::{AuthUser, HostUser},
+    repositories::{self, submissions::get_user_score, users::User},
     server::{teams::TeamWithScore, AppState},
 };
 
-#[derive(Debug, serde::Serialize, utoipa::ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
 struct TeamsListResponse(Vec<TeamWithScore>);
 
@@ -55,8 +58,51 @@ async fn get_teams(
         .map(Ok)?
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+struct NewTeam {
+    username: String,
+    display_name: Option<String>,
+    password: String,
+}
+
+#[axum::debug_handler]
+#[utoipa::path(
+    post,
+    path="/", tag="teams",
+    request_body = NewTeam,
+    responses(
+        (status=OK, body=User, description="Team was created successfully"),
+        (status=INTERNAL_SERVER_ERROR),
+    )
+)]
+async fn add_team(
+    State(state): State<Arc<AppState>>,
+    HostUser(AuthUser { user: creator, .. }): HostUser,
+    Json(new): Json<NewTeam>,
+) -> Result<Json<User>, StatusCode> {
+    let sql = state.db.read().await;
+    info!(%creator.username, %new.username, "Creating new user");
+    let user = repositories::users::create_user(
+        &sql.db,
+        new.username,
+        new.display_name.as_deref(),
+        new.password,
+        repositories::users::Role::Competitor,
+    )
+    .await
+    .map_err(|e| {
+        error!("Error creating user: {:?}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    Ok(Json(user))
+}
+
 pub fn router() -> OpenApiRouter<Arc<AppState>> {
-    OpenApiRouter::new().routes(routes!(get_teams))
+    OpenApiRouter::new()
+        .routes(routes!(get_teams))
+        .routes(routes!(add_team))
 }
 
 pub fn service() -> axum::Router<Arc<AppState>> {

@@ -8,7 +8,8 @@ use crate::{
     extractors::auth::AuthUser,
     repositories::{
         self,
-        users::{Role, User, UserLogin},
+        session::SessionId,
+        users::{Role, User, UserLogin, Username},
     },
     server::{teams::TeamWithScore, AppState},
     services::ws::{Broadcast, WebSocketSend},
@@ -16,13 +17,13 @@ use crate::{
 
 #[derive(serde::Deserialize, utoipa::ToSchema)]
 struct LoginRequest {
-    username: String,
+    username: Username,
     password: String,
 }
 
 #[derive(serde::Serialize, utoipa::ToSchema)]
 struct LoginResponse {
-    token: String,
+    token: SessionId,
     role: Role,
 }
 
@@ -39,7 +40,7 @@ async fn login(
     State(state): State<Arc<AppState>>,
     Json(login): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, StatusCode> {
-    trace!(login.username, "attempt to login to user");
+    trace!(%login.username, "attempt to login to user");
     let sql = state.db.read().await;
 
     let login = UserLogin {
@@ -48,7 +49,7 @@ async fn login(
     };
 
     let Ok(user) = repositories::users::login_user(&sql.db, &login).await else {
-        debug!(login.username, "failed login attempt");
+        debug!(%login.username, "failed login attempt");
         return Err(StatusCode::UNAUTHORIZED);
     };
 
@@ -72,7 +73,7 @@ async fn login(
     });
 
     let role = user.role;
-    debug!(login.username, "log in");
+    debug!(%login.username, "log in");
 
     Ok(Json(LoginResponse { token, role }))
 }

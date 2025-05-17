@@ -454,6 +454,10 @@ impl WebSocketRecv<'_> {
                         .context("getting other submissions")?;
                 let mut txn = sql.db.begin().await.unwrap();
                 let success = vec.iter().all(|x| matches!(x, TestOutput::Pass));
+                let passed = vec
+                    .iter()
+                    .filter(|&r| matches!(r, TestOutput::Pass))
+                    .count();
                 let score = if success {
                     state
                         .config
@@ -462,6 +466,9 @@ impl WebSocketRecv<'_> {
                             bedrock::scoring::EvaluationContext {
                                 num_completions: other_completions,
                                 num_attempts: attempts,
+                                passed_tests: passed as u32,
+                                failed_tests: (problem.tests.len() - passed) as u32,
+                                number_tests: (problem.tests.len()) as u32,
                             },
                         )
                         .context("calculating score")?
@@ -495,10 +502,6 @@ impl WebSocketRecv<'_> {
                 }
 
                 trace!(?vec, "Raw test output");
-                let passed = vec
-                    .iter()
-                    .filter(|&r| matches!(r, TestOutput::Pass))
-                    .count();
 
                 let results = vec
                     .into_iter()

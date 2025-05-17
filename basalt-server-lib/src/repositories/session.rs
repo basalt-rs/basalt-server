@@ -1,20 +1,49 @@
 use std::time::{Duration, SystemTime};
 
-use rand::{distributions::Alphanumeric, Rng};
-use redact::{expose_secret, Secret};
+use redact::Secret;
 use serde::{Deserialize, Serialize};
 use sqlx::{prelude::FromRow, SqliteExecutor};
+use utoipa::ToSchema;
 
-use crate::{repositories::users::Role, storage::SqliteLayer};
+use crate::{
+    repositories::users::{Role, UserId},
+    storage::SqliteLayer,
+};
 
 use super::users::{User, Username};
 
+#[derive(
+    Debug,
+    Clone,
+    Hash,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    ToSchema,
+    derive_more::From,
+    derive_more::Into,
+    sqlx::Type,
+)]
+#[sqlx(transparent)]
+pub struct SessionId(pub String);
+
+impl SessionId {
+    fn new() -> Self {
+        use rand::{distributions::Alphanumeric, Rng};
+        let id = rand::thread_rng()
+            .sample_iter(Alphanumeric)
+            .take(20)
+            .map(char::from)
+            .collect::<String>();
+        Self(id)
+    }
+}
+
 #[derive(Debug, FromRow, Serialize, Deserialize)]
 pub struct Session {
-    pub username: Username,
-    #[serde(serialize_with = "expose_secret")]
-    pub password_hash: Secret<String>,
-    pub role: i64,
+    pub user_id: UserId,
+    pub session_id: SessionId,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -26,12 +55,8 @@ pub enum CreateSessionError {
 pub async fn create_session(
     db: impl SqliteExecutor<'_>,
     user: &User,
-) -> Result<String, CreateSessionError> {
-    let session_id = rand::thread_rng()
-        .sample_iter(Alphanumeric)
-        .take(40)
-        .map(char::from)
-        .collect::<String>();
+) -> Result<SessionId, CreateSessionError> {
+    let session_id = SessionId::new();
 
     let expire: u32 = (SystemTime::now() + Duration::from_secs(60 * 60 * 24 * 30))
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -42,9 +67,9 @@ pub async fn create_session(
 
     sqlx::query_as!(
         Session,
-        "INSERT INTO sessions (session_id, username, expires_at) VALUES ($1, $2, $3)",
+        "INSERT INTO sessions (session_id, user_id, expires_at) VALUES ($1, $2, $3)",
         session_id,
-        user.username,
+        user.id,
         expire,
     )
     .execute(db)
@@ -69,16 +94,14 @@ pub async fn get_user_from_session(
     #[derive(sqlx::FromRow)]
     struct SessionUser {
         expires_at: i64,
-        // This does not seem to be working here, but would be ideal: ```
-        // #[sqlx(flatten)]
-        // user: User
-        // ```
+        id: UserId,
         username: Username,
+        display_name: Option<String>,
         password_hash: Secret<String>,
         role: Role,
     }
 
-    let session = sqlx::query_as!(SessionUser, "SELECT users.*, expires_at FROM users JOIN sessions ON users.username = sessions.username WHERE session_id = $1", session_id)
+    let session = sqlx::query_as!(SessionUser, "SELECT users.*, expires_at FROM users JOIN sessions ON users.id = sessions.user_id WHERE session_id = $1", session_id)
         .fetch_optional(&sql.db)
         .await
         .map_err(|e| GetSessionError::QueryError(e.to_string()))?
@@ -87,14 +110,10 @@ pub async fn get_user_from_session(
         })?;
 
     if SystemTime::UNIX_EPOCH + Duration::from_secs(session.expires_at as u64) < SystemTime::now() {
-        sqlx::query_as!(
-            SessionUser,
-            "DELETE FROM sessions WHERE session_id = $1",
-            session_id
-        )
-        .execute(&sql.db)
-        .await
-        .map_err(|e| GetSessionError::QueryError(e.to_string()))?;
+        sqlx::query!("DELETE FROM sessions WHERE session_id = $1", session_id)
+            .execute(&sql.db)
+            .await
+            .map_err(|e| GetSessionError::QueryError(e.to_string()))?;
 
         return Err(GetSessionError::SessionNotFound {
             session_id: session_id.to_string(),
@@ -102,7 +121,9 @@ pub async fn get_user_from_session(
     }
 
     Ok(User {
+        id: session.id,
         username: session.username,
+        display_name: session.display_name,
         password_hash: session.password_hash,
         role: session.role,
     })
@@ -118,13 +139,9 @@ pub async fn close_session(
     db: impl SqliteExecutor<'_>,
     session_id: &str,
 ) -> Result<(), CloseSessionError> {
-    sqlx::query_as!(
-        Session,
-        "delete from sessions where session_id = $1",
-        session_id,
-    )
-    .execute(db)
-    .await?;
+    sqlx::query!("delete from sessions where session_id = $1", session_id)
+        .execute(db)
+        .await?;
 
     Ok(())
 }

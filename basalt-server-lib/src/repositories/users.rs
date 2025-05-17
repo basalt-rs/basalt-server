@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use anyhow::Context;
 use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
 use argon2::{PasswordHash, PasswordVerifier};
@@ -61,15 +63,58 @@ impl From<Role> for i32 {
 #[sqlx(transparent)]
 pub struct Username(pub String);
 
+impl From<&str> for Username {
+    fn from(value: &str) -> Self {
+        Self(value.into())
+    }
+}
+
+impl Display for Username {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 impl Username {
     pub fn as_str(&self) -> &str {
         &self.0
     }
 }
 
+#[derive(
+    Debug,
+    Clone,
+    Hash,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    ToSchema,
+    derive_more::From,
+    derive_more::Into,
+    sqlx::Type,
+)]
+#[sqlx(transparent)]
+pub struct UserId(pub String);
+
+impl UserId {
+    fn new() -> Self {
+        use rand::{distributions::Alphanumeric, Rng};
+        let id = rand::thread_rng()
+            .sample_iter(Alphanumeric)
+            .take(20)
+            .map(char::from)
+            .collect::<String>();
+        Self(id)
+    }
+}
+
 #[derive(Debug, Clone, Hash, Eq, PartialEq, FromRow, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct User {
+    pub id: UserId,
     pub username: Username,
+    pub display_name: Option<String>,
     #[serde(skip)]
     pub password_hash: Secret<String>,
     pub role: Role,
@@ -86,24 +131,31 @@ pub enum GetUserError {
     },
 }
 
-#[allow(dead_code)]
-pub async fn get_user_by_username(
-    sql: &SqliteLayer,
-    username: String,
-) -> Result<User, GetUserError> {
-    sqlx::query_as!(User, "SELECT * from users WHERE username = $1", username)
+pub async fn get_user_by_username(sql: &SqliteLayer, name: Username) -> Result<User, GetUserError> {
+    sqlx::query_as!(User, "SELECT * from users WHERE username = $1", name)
         .fetch_optional(&sql.db)
         .await
         .map_err(|e| GetUserError::QueryError(e.to_string()))?
         .ok_or(GetUserError::UserNotFound {
             property: "username",
-            value: username,
+            value: name.0,
+        })
+}
+
+pub async fn get_user_by_id(sql: &SqliteLayer, id: UserId) -> Result<User, GetUserError> {
+    sqlx::query_as!(User, "SELECT * from users WHERE username = $1", id)
+        .fetch_optional(&sql.db)
+        .await
+        .map_err(|e| GetUserError::QueryError(e.to_string()))?
+        .ok_or(GetUserError::UserNotFound {
+            property: "id",
+            value: id.0,
         })
 }
 
 #[derive(Debug, FromRow, Deserialize)]
 pub struct UserLogin {
-    pub username: String,
+    pub username: Username,
     pub password: Secret<String>,
 }
 
@@ -146,10 +198,12 @@ pub async fn login_user(
 pub async fn create_user(
     db: impl SqliteExecutor<'_>,
     username: impl AsRef<str>,
+    display_name: Option<&str>,
     password: impl AsRef<str>,
     role: Role,
 ) -> anyhow::Result<User> {
     let salt = SaltString::generate(&mut OsRng);
+    let id = UserId::new();
     let username: &str = username.as_ref();
     let password: &str = password.as_ref();
     let password_hash = Argon2::default()
@@ -158,11 +212,16 @@ pub async fn create_user(
         .to_string();
     let role_int: i32 = role.into();
     sqlx::query_as!(User,
-            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?) RETURNING username, password_hash, role",
-            username,
-            password_hash,
-            role_int
-        ).fetch_one(db).await.context("Failed to create user")
+        "INSERT INTO users (id, username, display_name, password_hash, role) VALUES (?, ?, ?, ?, ?) RETURNING id, username, display_name, password_hash, role",
+        id,
+        username,
+        display_name,
+        password_hash,
+        role_int
+    )
+    .fetch_one(db)
+    .await
+    .context("Failed to create user")
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize, ToSchema)]
@@ -182,13 +241,13 @@ mod tests {
     #[tokio::test]
     async fn get_nonexistent_user() {
         let (f, sql) = mock_db().await;
-        let response = get_user_by_username(&sql, "superuser".into()).await;
+        let response = get_user_by_id(&sql, UserId("0".to_string())).await;
         assert!(response.is_err());
         drop(f)
     }
 
     #[tokio::test]
-    async fn get_existing_user() {
+    async fn get_existing_user_by_username() {
         let (f, sql) = mock_db().await;
         let dummy_user = crate::testing::users_repositories::dummy_user(
             &sql.db,
@@ -203,6 +262,26 @@ mod tests {
         assert_eq!(user.username, dummy_user.username);
         drop(f)
     }
+
+    #[tokio::test]
+    async fn get_existing_user_by_id() {
+        let (f, sql) = mock_db().await;
+        let dummy_user = create_user(
+            &sql.db,
+            "awesome_user".to_string(),
+            Some("Awesome User"),
+            "awesome-password".to_string(),
+            Role::Competitor,
+        )
+        .await
+        .unwrap();
+        let user = get_user_by_id(&sql, dummy_user.id)
+            .await
+            .expect("Failed to find user");
+        assert_eq!(user.username, dummy_user.username);
+        drop(f)
+    }
+
     #[tokio::test]
     async fn get_correct_user() {
         let (f, sql) = mock_db().await;
