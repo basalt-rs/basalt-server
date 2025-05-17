@@ -12,7 +12,6 @@ use tracing::{debug, trace};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
-    extractors::auth::AuthUser,
     repositories::{
         self,
         announcements::{Announcement, AnnouncementId},
@@ -237,7 +236,7 @@ impl WebSocketRecv<'_> {
             return self.error(ws, "Tests are already running");
         };
 
-        let AuthUser { user, .. } = who.user().unwrap();
+        let user = who.user().unwrap();
 
         scopeguard::defer! {
             state.active_tests.remove(&key);
@@ -333,7 +332,7 @@ impl WebSocketRecv<'_> {
             .get_sender(who)
             .context("websocket not in active_connections")?;
 
-        let AuthUser { user, .. } = who.user().unwrap();
+        let user = who.user().unwrap();
 
         let Some(language) = state.config.languages.get_by_str(language) else {
             return self.error(ws, format!("Unknown language '{}'", language));

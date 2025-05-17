@@ -1,9 +1,8 @@
 use crate::{
-    extractors::auth::AuthUser,
     repositories::{
         self,
         submissions::SubmissionHistory,
-        users::{QuestionState, Role, UserId},
+        users::{QuestionState, Role, User, UserId},
     },
     server::AppState,
 };
@@ -41,7 +40,7 @@ pub struct SubmissionStateParams {
     ),
 )]
 pub async fn get_submissions_state(
-    AuthUser { user, .. }: AuthUser,
+    user: User,
     Query(SubmissionStateParams { user_id }): Query<SubmissionStateParams>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<QuestionSubmissionState>>, StatusCode> {
@@ -132,7 +131,7 @@ pub struct SubmissionsParams {
     )
 )]
 pub async fn get_submissions(
-    AuthUser { user, .. }: AuthUser,
+    user: User,
     params: Query<SubmissionsParams>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<SubmissionHistory>>, StatusCode> {

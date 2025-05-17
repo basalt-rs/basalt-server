@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::{
     repositories::{
         self,
+        session::SessionId,
         users::{Role, User},
     },
     server::AppState,
@@ -39,13 +40,10 @@ impl IntoResponse for AuthError {
     }
 }
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Deserialize, Serialize)]
-pub struct AuthUser {
-    pub session_id: String,
-    pub user: User,
-}
-
-async fn extract(parts: &mut Parts, state: &Arc<AppState>) -> Result<Option<AuthUser>, AuthError> {
+async fn extract(
+    parts: &mut Parts,
+    state: &Arc<AppState>,
+) -> Result<Option<UserWithSession>, AuthError> {
     // Extract the token from the authorization header
     let Ok(TypedHeader(Authorization(bearer))) =
         parts.extract::<TypedHeader<Authorization<Bearer>>>().await
@@ -68,18 +66,15 @@ async fn extract(parts: &mut Parts, state: &Arc<AppState>) -> Result<Option<Auth
 
     state.team_manager.check_in(&user.id);
 
-    Ok(Some(AuthUser {
-        user,
-        session_id: session_id.into(),
-    }))
+    Ok(Some(UserWithSession(user, session_id.to_string().into())))
 }
 
-impl FromRequestParts<Arc<AppState>> for AuthUser {
-    /// If the extractor fails it'll use this "rejection" type. A rejection is a kind of error that
-    /// can be converted into a response.
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Deserialize, Serialize)]
+pub struct UserWithSession(pub User, pub SessionId);
+
+impl FromRequestParts<Arc<AppState>> for UserWithSession {
     type Rejection = AuthError;
 
-    /// Perform the extraction.
     async fn from_request_parts(
         parts: &mut Parts,
         state: &Arc<AppState>,
@@ -88,27 +83,46 @@ impl FromRequestParts<Arc<AppState>> for AuthUser {
     }
 }
 
-#[derive(Debug, derive_more::From, derive_more::Deref)]
-#[repr(transparent)]
-pub struct OptionalAuthUser(pub Option<AuthUser>);
+impl From<UserWithSession> for User {
+    fn from(value: UserWithSession) -> Self {
+        value.0
+    }
+}
 
-impl FromRequestParts<Arc<AppState>> for OptionalAuthUser {
-    /// If the extractor fails it'll use this "rejection" type. A rejection is a kind of error that
-    /// can be converted into a response.
+impl FromRequestParts<Arc<AppState>> for User {
     type Rejection = AuthError;
 
-    /// Perform the extraction.
     async fn from_request_parts(
         parts: &mut Parts,
         state: &Arc<AppState>,
     ) -> Result<Self, Self::Rejection> {
-        extract(parts, state).await.map(Into::into)
+        extract(parts, state)
+            .await?
+            .map(|UserWithSession(user, _)| user)
+            .ok_or(AuthError::Forbidden)
     }
 }
 
 #[derive(Debug, derive_more::From, derive_more::Deref)]
 #[repr(transparent)]
-pub struct HostUser(pub AuthUser);
+pub struct OptionalUser(pub Option<User>);
+
+impl FromRequestParts<Arc<AppState>> for OptionalUser {
+    type Rejection = AuthError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<AppState>,
+    ) -> Result<Self, Self::Rejection> {
+        extract(parts, state)
+            .await
+            .map(|x| x.map(Into::into).into())
+    }
+}
+
+#[derive(Debug, derive_more::From, derive_more::Deref)]
+#[repr(transparent)]
+pub struct HostUser(pub User);
 
 impl FromRequestParts<Arc<AppState>> for HostUser {
     /// If the extractor fails it'll use this "rejection" type. A rejection is a kind of error that
@@ -120,8 +134,8 @@ impl FromRequestParts<Arc<AppState>> for HostUser {
         parts: &mut Parts,
         state: &Arc<AppState>,
     ) -> Result<Self, Self::Rejection> {
-        let auth_user = AuthUser::from_request_parts(parts, state).await?;
-        if auth_user.user.role == Role::Host {
+        let auth_user = User::from_request_parts(parts, state).await?;
+        if auth_user.role == Role::Host {
             Ok(auth_user.into())
         } else {
             Err(AuthError::Forbidden)

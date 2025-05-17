@@ -5,7 +5,7 @@ use tracing::{debug, trace};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
-    extractors::auth::AuthUser,
+    extractors::auth::UserWithSession,
     repositories::{
         self,
         session::SessionId,
@@ -87,24 +87,27 @@ async fn login(
         (status=401, description="User was not logged in"),
     )
 )]
-async fn logout(State(state): State<Arc<AppState>>, user: AuthUser) -> Result<(), StatusCode> {
-    debug!(?user.user.username, "logout");
+async fn logout(
+    State(state): State<Arc<AppState>>,
+    UserWithSession(user, session_id): UserWithSession,
+) -> Result<(), StatusCode> {
+    debug!(?user.username, "logout");
 
     let score = {
         let sql = state.db.read().await;
 
-        repositories::session::close_session(&sql.db, &user.session_id)
+        repositories::session::close_session(&sql.db, &session_id)
             .await
             .unwrap();
 
-        repositories::submissions::get_user_score(&sql.db, &user.user.id)
+        repositories::submissions::get_user_score(&sql.db, &user.id)
             .await
             .unwrap()
     };
 
-    state.team_manager.disconnect(&user.user.id);
+    state.team_manager.disconnect(&user.id);
 
-    if let Some(team) = state.team_manager.get_team(&user.user.id) {
+    if let Some(team) = state.team_manager.get_team(&user.id) {
         state
             .websocket
             .broadcast(crate::services::ws::WebSocketSend::Broadcast {
@@ -128,8 +131,8 @@ async fn logout(State(state): State<Arc<AppState>>, user: AuthUser) -> Result<()
         (status=401, description="Auth token is expired"),
     )
 )]
-async fn me(State(_state): State<Arc<AppState>>, user: AuthUser) -> Result<Json<User>, StatusCode> {
-    Ok(Json(user.user))
+async fn me(State(_state): State<Arc<AppState>>, user: User) -> Result<Json<User>, StatusCode> {
+    Ok(Json(user))
 }
 
 pub fn router() -> OpenApiRouter<Arc<AppState>> {

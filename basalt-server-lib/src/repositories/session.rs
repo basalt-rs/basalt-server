@@ -137,7 +137,7 @@ pub enum CloseSessionError {
 
 pub async fn close_session(
     db: impl SqliteExecutor<'_>,
-    session_id: &str,
+    session_id: &SessionId,
 ) -> Result<(), CloseSessionError> {
     sqlx::query!("delete from sessions where session_id = $1", session_id)
         .execute(db)

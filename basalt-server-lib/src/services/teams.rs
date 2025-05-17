@@ -8,7 +8,7 @@ use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
-    extractors::auth::{AuthUser, HostUser},
+    extractors::auth::HostUser,
     repositories::{self, submissions::get_user_score, users::User},
     server::{teams::TeamWithScore, AppState},
 };
@@ -79,7 +79,7 @@ struct NewTeam {
 )]
 async fn add_team(
     State(state): State<Arc<AppState>>,
-    HostUser(AuthUser { user: creator, .. }): HostUser,
+    HostUser(creator): HostUser,
     Json(new): Json<NewTeam>,
 ) -> Result<Json<User>, StatusCode> {
     let sql = state.db.read().await;

@@ -1,4 +1,4 @@
-use crate::{extractors::auth::OptionalAuthUser, repositories::users::Role, server::AppState};
+use crate::{extractors::auth::OptionalUser, repositories::users::Role, server::AppState};
 use axum::{extract::State, Json};
 use bedrock::{
     language::{Language, LanguageSet, Syntax},
@@ -82,10 +82,10 @@ impl QuestionResponse {
 #[axum::debug_handler]
 #[utoipa::path(get, tag = "questions", path = "/", responses((status = OK, body = Vec<QuestionResponse>, content_type = "application/json")))]
 pub async fn get_all(
-    OptionalAuthUser(user): OptionalAuthUser,
+    OptionalUser(user): OptionalUser,
     State(state): State<Arc<AppState>>,
 ) -> Json<Vec<QuestionResponse>> {
-    let show_hidden = user.is_some_and(|u| matches!(u.user.role, Role::Host));
+    let show_hidden = user.is_some_and(|u| matches!(u.role, Role::Host));
     let questions = state
         .config
         .packet
@@ -118,7 +118,7 @@ pub async fn get_all(
 )]
 pub async fn get_specific_question(
     State(state): State<Arc<AppState>>,
-    OptionalAuthUser(user): OptionalAuthUser,
+    OptionalUser(user): OptionalUser,
     axum::extract::Path(question): axum::extract::Path<usize>,
 ) -> Result<Json<QuestionResponse>, axum::http::StatusCode> {
     state
@@ -134,7 +134,7 @@ pub async fn get_specific_question(
                     bedrock::Game::Points(x) => Some(x.question_point_value),
                     bedrock::Game::Race(_) => None,
                 },
-                user.is_some_and(|u| matches!(u.user.role, Role::Host)),
+                user.is_some_and(|u| matches!(u.role, Role::Host)),
             ))
         })
         .ok_or(axum::http::StatusCode::NOT_FOUND)

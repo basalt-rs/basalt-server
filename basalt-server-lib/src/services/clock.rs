@@ -6,7 +6,7 @@ use tracing::trace;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
-    extractors::auth::{AuthUser, OptionalAuthUser},
+    extractors::auth::{HostUser, OptionalUser},
     server::AppState,
     services::ws::{Broadcast, WebSocketSend},
 };
@@ -36,7 +36,7 @@ struct ClockStatusResponse {
 )]
 async fn patch_clock(
     State(state): State<Arc<AppState>>,
-    _: AuthUser,
+    _: HostUser,
     Json(update): Json<UpdateClockRequest>,
 ) -> Result<Json<ClockStatusResponse>, StatusCode> {
     let time_limit = match &state.config.game {
@@ -102,7 +102,7 @@ async fn patch_clock(
     )
 )]
 async fn get_clock(
-    OptionalAuthUser(_): OptionalAuthUser,
+    OptionalUser(_): OptionalUser,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ClockStatusResponse>, StatusCode> {
     trace!("user getting clock");

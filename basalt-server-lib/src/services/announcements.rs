@@ -1,5 +1,5 @@
 use crate::{
-    extractors::auth::{AuthUser, HostUser},
+    extractors::auth::HostUser,
     repositories::{
         self,
         announcements::{Announcement, AnnouncementId},
@@ -54,7 +54,7 @@ pub struct NewAnnouncement {
 )]
 pub async fn new(
     State(state): State<Arc<AppState>>,
-    HostUser(AuthUser { user, .. }): HostUser,
+    HostUser(user): HostUser,
     Json(NewAnnouncement { message }): Json<NewAnnouncement>,
 ) -> Result<Json<Announcement>, StatusCode> {
     let sql = state.db.read().await;
