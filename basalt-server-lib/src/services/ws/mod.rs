@@ -339,13 +339,10 @@ impl WebSocketRecv<'_> {
         };
 
         let sql = state.db.read().await;
-        let attempts = repositories::submissions::count_previous_submissions(
-            &sql.db,
-            &user.username,
-            problem_index,
-        )
-        .await
-        .context("getting previous submissions")?;
+        let attempts =
+            repositories::submissions::count_previous_submissions(&sql.db, &user.id, problem_index)
+                .await
+                .context("getting previous submissions")?;
         drop(sql); // ensure we don't hold the lock while doing time-consuming things
 
         let max_attempts: Option<u32> = state.config.max_submissions.map(NonZero::get);
@@ -394,7 +391,7 @@ impl WebSocketRecv<'_> {
                 repositories::submissions::create_submission_history(
                     &sql.db,
                     NewSubmissionHistory {
-                        submitter: &user.username,
+                        submitter: &user.id,
                         compile_fail: true,
                         code: solution,
                         question_index: problem_index,
@@ -422,7 +419,7 @@ impl WebSocketRecv<'_> {
                 repositories::submissions::create_submission_history(
                     &sql.db,
                     NewSubmissionHistory {
-                        submitter: &user.username,
+                        submitter: &user.id,
                         compile_fail: true,
                         code: solution,
                         question_index: problem_index,
@@ -477,7 +474,7 @@ impl WebSocketRecv<'_> {
                 let history = repositories::submissions::create_submission_history(
                     txn.acquire().await.unwrap(),
                     NewSubmissionHistory {
-                        submitter: &user.username,
+                        submitter: &user.id,
                         compile_fail: false,
                         code: solution,
                         question_index: problem_index,

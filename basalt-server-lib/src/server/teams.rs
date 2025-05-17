@@ -113,7 +113,7 @@ mod tests {
         manager.check_in(&team1);
 
         let team = manager.get_team(&team1).unwrap();
-        let team_name: String = team.team.clone().into();
+        let team_name = team.team.clone();
         assert_eq!(team1, team_name);
         assert!(team.info.checked_in);
         assert_eq!(team.info.disconnected, false);
@@ -142,7 +142,7 @@ mod tests {
         manager.disconnect(&team1);
 
         let team = manager.get_team(&team1).unwrap();
-        let team_name: String = team.team.clone().into();
+        let team_name = team.team.clone();
         assert_eq!(team1, team_name);
         assert!(!team.info.checked_in);
         assert!(team.info.disconnected);

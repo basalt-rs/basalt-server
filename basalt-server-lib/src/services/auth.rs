@@ -9,7 +9,7 @@ use crate::{
     repositories::{
         self,
         session::SessionId,
-        users::{Role, User, UserLogin, Username},
+        users::{Role, User, UserLogin},
     },
     server::{teams::TeamWithScore, AppState},
     services::ws::{Broadcast, WebSocketSend},
@@ -17,7 +17,7 @@ use crate::{
 
 #[derive(serde::Deserialize, utoipa::ToSchema)]
 struct LoginRequest {
-    username: Username,
+    username: String,
     password: String,
 }
 

@@ -10,7 +10,7 @@ use crate::{
     storage::SqliteLayer,
 };
 
-use super::users::{User, Username};
+use super::users::User;
 
 #[derive(
     Debug,
@@ -95,7 +95,7 @@ pub async fn get_user_from_session(
     struct SessionUser {
         expires_at: i64,
         id: UserId,
-        username: Username,
+        username: String,
         display_name: Option<String>,
         password_hash: Secret<String>,
         role: Role,

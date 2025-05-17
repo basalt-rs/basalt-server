@@ -18,7 +18,7 @@ use crate::{
     repositories::{
         self,
         submissions::get_user_score,
-        users::{GetUserError, User, UserId, Username},
+        users::{GetUserError, User, UserId},
     },
     server::{teams::TeamWithScore, AppState},
 };
@@ -126,7 +126,7 @@ pub enum DisplayNamePatch {
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 struct PatchTeam {
-    username: Option<Username>,
+    username: Option<String>,
     display_name: Option<DisplayNamePatch>,
     password: Option<String>,
 }
@@ -224,7 +224,7 @@ mod tests {
         let cfg = Config::from_str(SAMPLE_1, "Single.toml".into()).unwrap();
         sql.ingest(&cfg).await.unwrap();
 
-        let user1 = get_user_by_username(&sql, "team1".into()).await.unwrap();
+        let user1 = get_user_by_username(&sql, "team1").await.unwrap();
 
         crate::testing::submissions_repositories::dummy_submission(
             &sql.db,
@@ -239,9 +239,10 @@ mod tests {
         )
         .await;
 
-        let appstate = AppState::new(sql, cfg, None);
+        let mut appstate = AppState::new(sql, cfg, None);
+        appstate.init().await.unwrap();
 
-        let teams = get_teams(State(Arc::new(appstate))).await.unwrap().0 .0;
+        let Json(TeamsListResponse(teams)) = get_teams(State(Arc::new(appstate))).await.unwrap();
         assert_eq!(
             teams
                 .into_iter()

@@ -60,40 +60,6 @@ impl From<Role> for i32 {
     sqlx::Type,
 )]
 #[sqlx(transparent)]
-pub struct Username(pub String);
-
-impl From<&str> for Username {
-    fn from(value: &str) -> Self {
-        Self(value.into())
-    }
-}
-
-impl Display for Username {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl Username {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-#[derive(
-    Debug,
-    Clone,
-    Hash,
-    Eq,
-    PartialEq,
-    Serialize,
-    Deserialize,
-    ToSchema,
-    derive_more::From,
-    derive_more::Into,
-    sqlx::Type,
-)]
-#[sqlx(transparent)]
 pub struct UserId(pub String);
 
 impl UserId {
@@ -120,7 +86,7 @@ impl Display for UserId {
 #[serde(rename_all = "camelCase")]
 pub struct User {
     pub id: UserId,
-    pub username: Username,
+    pub username: String,
     pub display_name: Option<String>,
     #[serde(skip)]
     pub password_hash: Secret<String>,
@@ -138,14 +104,18 @@ pub enum GetUserError {
     },
 }
 
-pub async fn get_user_by_username(sql: &SqliteLayer, name: Username) -> Result<User, GetUserError> {
+pub async fn get_user_by_username(
+    sql: &SqliteLayer,
+    name: impl AsRef<str>,
+) -> Result<User, GetUserError> {
+    let name = name.as_ref();
     sqlx::query_as!(User, "SELECT * from users WHERE username = $1", name)
         .fetch_optional(&sql.db)
         .await
         .map_err(|e| GetUserError::QueryError(e.to_string()))?
         .ok_or(GetUserError::UserNotFound {
             property: "username",
-            value: name.0,
+            value: name.to_string(),
         })
 }
 
@@ -173,7 +143,7 @@ pub async fn get_users_with_role(
 
 #[derive(Debug, FromRow, Deserialize)]
 pub struct UserLogin {
-    pub username: Username,
+    pub username: String,
     pub password: Secret<String>,
 }
 
@@ -341,7 +311,7 @@ mod tests {
             Role::Competitor,
         )
         .await;
-        let user = get_user_by_username(&sql, "awesome_user".into())
+        let user = get_user_by_username(&sql, "awesome_user")
             .await
             .expect("Failed to find user");
         assert_eq!(user.username, dummy_user.username);
@@ -384,7 +354,7 @@ mod tests {
             Role::Competitor,
         )
         .await;
-        let user = get_user_by_username(&sql, "awesome_user".into())
+        let user = get_user_by_username(&sql, "awesome_user")
             .await
             .expect("Failed to find user");
         assert_eq!(user.username, dummy_user.username);

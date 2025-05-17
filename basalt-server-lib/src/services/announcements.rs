@@ -59,8 +59,7 @@ pub async fn new(
 ) -> Result<Json<Announcement>, StatusCode> {
     let sql = state.db.read().await;
 
-    let new =
-        repositories::announcements::create_announcement(&sql.db, &user.username, &message).await;
+    let new = repositories::announcements::create_announcement(&sql.db, &user.id, &message).await;
     drop(sql);
     match new {
         Ok(new) => {

@@ -8,7 +8,7 @@ use crate::{repositories::users::User, services::ws::WebSocketSend};
 #[derive(Clone, Eq, PartialEq, Hash, derive_more::Debug)]
 pub enum ConnectionKind {
     User {
-        #[debug("{:?}", user.username.0)]
+        #[debug("{:?}", user.username)]
         user: User,
     },
     Leaderboard {

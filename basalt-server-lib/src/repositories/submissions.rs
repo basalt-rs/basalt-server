@@ -6,7 +6,7 @@ use std::fmt::Display;
 use time::OffsetDateTime;
 use utoipa::ToSchema;
 
-use super::users::{UserId, Username};
+use super::users::UserId;
 
 #[derive(
     Debug, Serialize, Deserialize, derive_more::From, derive_more::Into, sqlx::Type, ToSchema,
@@ -42,7 +42,7 @@ pub struct SubmissionHistory {
 }
 
 pub struct NewSubmissionHistory<'a> {
-    pub submitter: &'a Username,
+    pub submitter: &'a UserId,
     pub compile_fail: bool,
     pub code: &'a str,
     pub question_index: usize,
@@ -199,7 +199,7 @@ pub async fn count_other_submissions<'a>(
 
 pub async fn count_previous_submissions<'a>(
     db: impl Executor<'_, Database = Sqlite>,
-    submitter: &Username,
+    submitter: &UserId,
     question_index: usize,
 ) -> anyhow::Result<u32> {
     let question_index = question_index as i64;
@@ -374,7 +374,7 @@ mod tests {
         let history = create_submission_history(
             &sql.db,
             NewSubmissionHistory {
-                submitter: &user.username,
+                submitter: &user.id,
                 compile_fail: true,
                 code: "this is some code",
                 question_index: 42,
@@ -402,7 +402,7 @@ mod tests {
         let history = create_submission_history(
             &sql.db,
             NewSubmissionHistory {
-                submitter: &user.username,
+                submitter: &user.id,
                 compile_fail: true,
                 code: "this is some code",
                 question_index: 42,
@@ -451,7 +451,7 @@ mod tests {
             let history = create_submission_history(
                 &sql.db,
                 NewSubmissionHistory {
-                    submitter: &user.username,
+                    submitter: &user.id,
                     compile_fail: false,
                     code: "",
                     question_index: 1,
@@ -497,7 +497,7 @@ mod tests {
             create_submission_history(
                 &sql.db,
                 NewSubmissionHistory {
-                    submitter: &user.username,
+                    submitter: &user.id,
                     compile_fail: true,
                     code: "",
                     question_index: 1,
@@ -512,7 +512,7 @@ mod tests {
 
         tokio::time::sleep(Duration::from_secs(1)).await;
 
-        let n = count_previous_submissions(&sql.db, &user.username, 1)
+        let n = count_previous_submissions(&sql.db, &user.id, 1)
             .await
             .unwrap();
         assert_eq!(n, 5);
@@ -529,7 +529,7 @@ mod tests {
             create_submission_history(
                 &sql.db,
                 NewSubmissionHistory {
-                    submitter: &user.username,
+                    submitter: &user.id,
                     compile_fail: false,
                     code: "",
                     question_index: i,
@@ -542,7 +542,7 @@ mod tests {
             .unwrap();
         }
 
-        let n = get_user_score(&sql.db, &user.username).await.unwrap();
+        let n = get_user_score(&sql.db, &user.id).await.unwrap();
         assert_eq!(n, 42. * 5.);
 
         drop(f)
@@ -557,7 +557,7 @@ mod tests {
             create_submission_history(
                 &sql.db,
                 NewSubmissionHistory {
-                    submitter: &user.username,
+                    submitter: &user.id,
                     compile_fail: false,
                     code: "not-latest",
                     question_index: i,
@@ -576,7 +576,7 @@ mod tests {
             create_submission_history(
                 &sql.db,
                 NewSubmissionHistory {
-                    submitter: &user.username,
+                    submitter: &user.id,
                     compile_fail: false,
                     code: "latest",
                     question_index: i,
@@ -589,9 +589,7 @@ mod tests {
             .unwrap();
         }
 
-        let submissions = get_latest_submissions(&sql.db, &user.username)
-            .await
-            .unwrap();
+        let submissions = get_latest_submissions(&sql.db, &user.id).await.unwrap();
 
         for s in submissions {
             assert_eq!(s.code, "latest");
