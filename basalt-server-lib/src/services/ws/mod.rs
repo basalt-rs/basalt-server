@@ -16,7 +16,7 @@ use crate::{
         self,
         announcements::{Announcement, AnnouncementId},
         submissions::NewSubmissionHistory,
-        users::{QuestionState, UserId},
+        users::{QuestionState, User, UserId},
     },
     server::{teams::TeamWithScore, websocket::ConnectionKind, AppState},
 };
@@ -39,8 +39,15 @@ pub enum Broadcast {
     GameUnpaused {
         time_left_in_seconds: u64,
     },
+    TeamRename {
+        id: UserId,
+        name: String,
+        display_name: Option<String>,
+    },
     TeamUpdate {
-        team: UserId,
+        id: UserId,
+        name: String,
+        display_name: Option<String>,
         new_score: f64,
         new_states: Vec<QuestionState>,
     },
@@ -169,9 +176,9 @@ impl WebSocketRecv<'_> {
         .context("sending error message")
     }
 
-    async fn broadcast_team_update(state: &AppState, user_id: &UserId) -> anyhow::Result<()> {
+    async fn broadcast_team_update(state: &AppState, user: &User) -> anyhow::Result<()> {
         let sql = state.db.read().await;
-        let submissions = repositories::submissions::get_latest_submissions(&sql.db, user_id)
+        let submissions = repositories::submissions::get_latest_submissions(&sql.db, &user.id)
             .await
             .context("getting user submissions")?;
 
@@ -184,7 +191,7 @@ impl WebSocketRecv<'_> {
             }
         }
 
-        match repositories::submissions::count_tests(&sql.db, user_id).await {
+        match repositories::submissions::count_tests(&sql.db, &user.id).await {
             Ok(counts) => {
                 for c in counts {
                     if states[c.question_index as usize] == QuestionState::NotAttempted
@@ -199,13 +206,15 @@ impl WebSocketRecv<'_> {
             }
         }
 
-        let new_score = repositories::submissions::get_user_score(&sql.db, user_id)
+        let new_score = repositories::submissions::get_user_score(&sql.db, &user.id)
             .await
             .context("getting user score")?;
 
         state.websocket.broadcast(WebSocketSend::Broadcast {
             broadcast: Broadcast::TeamUpdate {
-                team: user_id.clone(),
+                id: user.id.clone(),
+                name: user.username.clone(),
+                display_name: user.display_name.clone(),
                 new_score,
                 new_states: states,
             },
@@ -269,7 +278,7 @@ impl WebSocketRecv<'_> {
         repositories::submissions::add_test(&sql.db, &user.id, problem_index)
             .await
             .context("adding user test")?;
-        Self::broadcast_team_update(&state, &user.id).await?;
+        Self::broadcast_team_update(&state, user).await?;
 
         match results {
             RunOutput::CompileSpawnFail(s) => {
@@ -412,7 +421,7 @@ impl WebSocketRecv<'_> {
                 })
                 .context("sending submission results message")?;
 
-                Self::broadcast_team_update(&state, &user.id).await?;
+                Self::broadcast_team_update(&state, user).await?;
             }
             RunOutput::CompileFail(simple_output) => {
                 let sql = state.db.read().await;
@@ -440,7 +449,7 @@ impl WebSocketRecv<'_> {
                 })
                 .context("sending test results message")?;
 
-                Self::broadcast_team_update(&state, &user.id).await?;
+                Self::broadcast_team_update(&state, user).await?;
             }
             RunOutput::RunSuccess(vec) => {
                 let sql = state.db.read().await;
@@ -515,7 +524,7 @@ impl WebSocketRecv<'_> {
                     remaining_attempts: max_attempts.map(|x| x - attempts - 1),
                 })
                 .context("sending test results message")?;
-                Self::broadcast_team_update(&state, &user.id).await?;
+                Self::broadcast_team_update(&state, user).await?;
             }
         }
         Ok(())

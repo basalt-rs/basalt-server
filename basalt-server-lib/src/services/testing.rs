@@ -13,10 +13,11 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::{num::NonZero, sync::Arc};
+use tracing::error;
 use utoipa::{IntoParams, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
-#[derive(Serialize, ToSchema, Copy, Clone)]
+#[derive(Debug, Serialize, ToSchema, Copy, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct QuestionSubmissionState {
     state: QuestionState,
@@ -24,7 +25,6 @@ pub struct QuestionSubmissionState {
 }
 
 #[derive(Deserialize, ToSchema, Clone, IntoParams)]
-#[serde(rename_all = "camelCase")]
 pub struct SubmissionStateParams {
     user_id: Option<UserId>,
 }
@@ -44,8 +44,19 @@ pub async fn get_submissions_state(
     Query(SubmissionStateParams { user_id }): Query<SubmissionStateParams>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<QuestionSubmissionState>>, StatusCode> {
+    let sql = state.db.read().await;
+
     let user_id = if let Some(ref user_id) = user_id {
         if user.role == Role::Host {
+            repositories::users::get_user_by_id(&sql.db, user_id)
+                .await
+                .map_err(|e| match e {
+                    repositories::users::GetUserError::QueryError(e) => {
+                        error!("Error getting user: {:?}", e);
+                        StatusCode::INTERNAL_SERVER_ERROR
+                    }
+                    repositories::users::GetUserError::UserNotFound { .. } => StatusCode::NOT_FOUND,
+                })?;
             user_id
         } else {
             return Err(StatusCode::FORBIDDEN);
@@ -54,8 +65,6 @@ pub async fn get_submissions_state(
         &user.id
     };
     let max_attempts = state.config.max_submissions.map(NonZero::get);
-
-    let sql = state.db.read().await;
 
     let mut states = vec![
         QuestionSubmissionState {
@@ -81,7 +90,7 @@ pub async fn get_submissions_state(
         }
     };
 
-    match repositories::submissions::count_tests(&sql.db, user_id).await {
+    match dbg!(repositories::submissions::count_tests(&sql.db, dbg!(user_id)).await) {
         Ok(counts) => {
             for c in counts {
                 if states[c.question_index as usize].state == QuestionState::NotAttempted {
@@ -94,7 +103,7 @@ pub async fn get_submissions_state(
             }
         }
         Err(err) => {
-            tracing::error!("Error while getting attempts: {}", err);
+            tracing::error!("Error while counting tests: {:?}", err);
             return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
     }
@@ -107,7 +116,7 @@ pub async fn get_submissions_state(
             }
         }
         Err(err) => {
-            tracing::error!("Error while getting attempts: {}", err);
+            tracing::error!("Error while getting attempts: {:?}", err);
             return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
     }
@@ -135,14 +144,14 @@ pub async fn get_submissions(
     params: Query<SubmissionsParams>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<SubmissionHistory>>, StatusCode> {
-    let username = params.user_id.as_ref().unwrap_or(&user.id);
-    if !(user.role == Role::Host || user.id == *username) {
+    let user_id = params.user_id.as_ref().unwrap_or(&user.id);
+    if !(user.role == Role::Host || user.id == *user_id) {
         return Err(StatusCode::FORBIDDEN);
     }
 
     let sql = state.db.read().await;
     let subs =
-        match repositories::submissions::get_submissions(&sql.db, username, params.question_index)
+        match repositories::submissions::get_submissions(&sql.db, user_id, params.question_index)
             .await
         {
             Ok(subs) => subs,

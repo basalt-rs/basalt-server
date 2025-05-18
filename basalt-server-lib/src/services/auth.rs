@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::{extract::State, http::StatusCode, Json};
-use tracing::{debug, trace};
+use tracing::{debug, error, trace};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
@@ -64,9 +64,19 @@ async fn login(
     state.team_manager.check_in(&user.id);
 
     if let Some(team) = state.team_manager.get_team(&user.id) {
+        let sql = state.db.read().await;
+        let name = repositories::users::get_user_by_id(&sql.db, &user.id)
+            .await
+            .map_err(|e| {
+                error!("Error getting username: {:?}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
+            .username;
+
         state.websocket.broadcast(WebSocketSend::Broadcast {
             broadcast: Broadcast::TeamConnected(TeamWithScore {
                 score,
+                name,
                 team_info: team,
             }),
         });
@@ -108,11 +118,21 @@ async fn logout(
     state.team_manager.disconnect(&user.id);
 
     if let Some(team) = state.team_manager.get_team(&user.id) {
+        let sql = state.db.read().await;
+        let name = repositories::users::get_user_by_id(&sql.db, &user.id)
+            .await
+            .map_err(|e| {
+                error!("Error getting username: {:?}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
+            .username;
+
         state
             .websocket
             .broadcast(crate::services::ws::WebSocketSend::Broadcast {
                 broadcast: crate::services::ws::Broadcast::TeamDisconnected(TeamWithScore {
                     score,
+                    name,
                     team_info: team,
                 }),
             });

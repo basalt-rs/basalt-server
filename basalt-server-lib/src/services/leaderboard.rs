@@ -1,7 +1,7 @@
 use crate::{
     repositories::{
         self,
-        users::{QuestionState, Role, User, UserId},
+        users::{QuestionState, Role, User},
     },
     server::AppState,
 };
@@ -21,7 +21,7 @@ pub struct LeaderBoard {
 #[derive(Serialize, ToSchema, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct TeamProgression {
-    user_id: UserId,
+    user: User,
     score: f64,
     submission_states: Vec<QuestionState>,
 }
@@ -100,7 +100,7 @@ pub async fn get_leaderboard_info(
         };
 
         leaderboard_info.push(TeamProgression {
-            user_id: user.id.clone(),
+            user: user.clone(),
             score,
             submission_states,
         });

@@ -19,7 +19,7 @@ pub struct TeamInfo {
 #[serde(rename_all = "camelCase")]
 pub struct TeamFull {
     /// Username of team/player
-    pub team: UserId,
+    pub id: UserId,
     /// Contains full information about team
     #[serde(flatten)]
     pub info: TeamInfo,
@@ -39,6 +39,7 @@ impl TeamInfo {
 #[derive(Clone, Debug, PartialEq, Deserialize, serde::Serialize, utoipa::ToSchema)]
 pub struct TeamWithScore {
     pub score: f64,
+    pub name: String,
     #[serde(flatten)]
     pub team_info: TeamFull,
 }
@@ -73,12 +74,12 @@ impl TeamManagement {
         self.teams
             .clone()
             .into_iter()
-            .map(|(k, v)| TeamFull { team: k, info: v })
+            .map(|(k, v)| TeamFull { id: k, info: v })
     }
 
     pub fn get_team(&self, id: &UserId) -> Option<TeamFull> {
         self.teams.get(id).map(|t| TeamFull {
-            team: id.clone(),
+            id: id.clone(),
             info: *t,
         })
     }
@@ -107,16 +108,16 @@ mod tests {
         let manager = TeamManagement { teams };
         let team = manager.get_team(&team1).unwrap();
         assert!(!team.info.checked_in);
-        assert_eq!(team.info.disconnected, false);
+        assert!(!team.info.disconnected);
         assert!(team.info.last_seen.is_none());
 
         manager.check_in(&team1);
 
         let team = manager.get_team(&team1).unwrap();
-        let team_name = team.team.clone();
+        let team_name = team.id.clone();
         assert_eq!(team1, team_name);
         assert!(team.info.checked_in);
-        assert_eq!(team.info.disconnected, false);
+        assert!(!team.info.disconnected);
         assert!(team.info.last_seen.is_some());
     }
 
@@ -142,7 +143,7 @@ mod tests {
         manager.disconnect(&team1);
 
         let team = manager.get_team(&team1).unwrap();
-        let team_name = team.team.clone();
+        let team_name = team.id.clone();
         assert_eq!(team1, team_name);
         assert!(!team.info.checked_in);
         assert!(team.info.disconnected);
@@ -182,6 +183,6 @@ mod tests {
         assert!(team2.info.checked_in);
         assert!(team2.info.disconnected);
         assert!(team2.info.last_seen.is_none());
-        assert_ne!(team1.team, team2.team);
+        assert_ne!(team1.id, team2.id);
     }
 }

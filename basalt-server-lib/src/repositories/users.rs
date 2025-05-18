@@ -119,14 +119,17 @@ pub async fn get_user_by_username(
         })
 }
 
-pub async fn get_user_by_id(db: impl SqliteExecutor<'_>, id: UserId) -> Result<User, GetUserError> {
+pub async fn get_user_by_id(
+    db: impl SqliteExecutor<'_>,
+    id: &UserId,
+) -> Result<User, GetUserError> {
     sqlx::query_as!(User, "SELECT * from users WHERE id = $1", id)
         .fetch_optional(db)
         .await
         .map_err(|e| GetUserError::QueryError(e.to_string()))?
         .ok_or(GetUserError::UserNotFound {
             property: "id",
-            value: id.0,
+            value: id.0.clone(),
         })
 }
 
@@ -296,7 +299,7 @@ mod tests {
     #[tokio::test]
     async fn get_nonexistent_user() {
         let (f, sql) = mock_db().await;
-        let response = get_user_by_id(&sql.db, UserId::new()).await;
+        let response = get_user_by_id(&sql.db, &UserId::new()).await;
         assert!(response.is_err());
         drop(f)
     }
@@ -330,7 +333,7 @@ mod tests {
         )
         .await
         .unwrap();
-        let user = get_user_by_id(&sql.db, dummy_user.id)
+        let user = get_user_by_id(&sql.db, &dummy_user.id)
             .await
             .expect("Failed to find user");
         assert_eq!(user.username, dummy_user.username);

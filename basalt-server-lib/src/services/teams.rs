@@ -18,9 +18,13 @@ use crate::{
     repositories::{
         self,
         submissions::get_user_score,
-        users::{GetUserError, User, UserId},
+        users::{get_user_by_id, GetUserError, QuestionState, User, UserId},
     },
-    server::{teams::TeamWithScore, AppState},
+    server::{
+        teams::{TeamFull, TeamWithScore},
+        AppState,
+    },
+    services::ws::{Broadcast, WebSocketSend},
 };
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -44,15 +48,17 @@ async fn get_teams(
     let mut joinset = JoinSet::new();
     for t in teams {
         let state = Arc::clone(&state);
-        joinset.spawn(async move {
+        async fn fut(t: TeamFull, state: Arc<AppState>) -> anyhow::Result<TeamWithScore> {
             let sql = state.db.read().await;
-            get_user_score(&sql.db, &t.team)
-                .await
-                .map(|score| TeamWithScore {
-                    team_info: t,
-                    score,
-                })
-        });
+            let User { username: name, .. } = get_user_by_id(&sql.db, &t.id).await?;
+            let score = get_user_score(&sql.db, &t.id).await?;
+            Ok(TeamWithScore {
+                team_info: t,
+                name,
+                score,
+            })
+        }
+        joinset.spawn(fut(t, state));
     }
     joinset
         .join_all()
@@ -113,6 +119,16 @@ async fn add_team(
         }
     })?;
 
+    state.websocket.broadcast(WebSocketSend::Broadcast {
+        broadcast: Broadcast::TeamUpdate {
+            id: user.id.clone(),
+            name: user.username.clone(),
+            display_name: user.display_name.clone(),
+            new_score: 0.,
+            new_states: vec![QuestionState::NotAttempted; state.config.packet.problems.len()],
+        },
+    });
+
     Ok(Json(user))
 }
 
@@ -151,7 +167,7 @@ async fn patch_team(
 ) -> Result<Json<User>, StatusCode> {
     let sql = state.db.read().await;
     info!(host = %host.username, %user_id, ?patch, "Patching user");
-    let mut user = repositories::users::get_user_by_id(&sql.db, user_id)
+    let mut user = repositories::users::get_user_by_id(&sql.db, &user_id)
         .await
         .map_err(|e| match e {
             GetUserError::QueryError(_) => {
@@ -190,6 +206,15 @@ async fn patch_team(
             error!("Error updating user: {:?}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
+
+    state.team_manager.insert(new.id.clone());
+    state.websocket.broadcast(WebSocketSend::Broadcast {
+        broadcast: Broadcast::TeamRename {
+            id: new.id.clone(),
+            name: new.username.clone(),
+            display_name: new.display_name.clone(),
+        },
+    });
 
     Ok(Json(new))
 }
@@ -246,7 +271,7 @@ mod tests {
         assert_eq!(
             teams
                 .into_iter()
-                .find(|t| t.team_info.team == user1.id)
+                .find(|t| t.team_info.id == user1.id)
                 .unwrap()
                 .score,
             expected_score

@@ -309,7 +309,7 @@ pub async fn add_test(
     Ok(())
 }
 
-#[derive(Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct TestCount {
     pub question_index: i64,
     pub count: i64,
