@@ -11,7 +11,7 @@ use crate::{
         self,
         users::{Role, User, UserLogin},
     },
-    server::{hooks::ServerEvent, teams::TeamWithScore, AppState},
+    server::{hooks::events::ServerEvent, teams::TeamWithScore, AppState},
     services::ws::{Broadcast, WebSocketSend},
 };
 

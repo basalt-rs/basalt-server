@@ -69,7 +69,7 @@ mod tests {
 
     use crate::{
         repositories::users::get_user_by_username,
-        server::hooks::EventHookHandler,
+        server::hooks::events::EventHookHandler,
         testing::{mock_db, SAMPLE_1},
     };
 

@@ -2,16 +2,11 @@ use anyhow::{bail, Context};
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tracing::error;
-
-use axum::Router;
-
-use tower::{Layer, ServiceBuilder};
-use tracing::debug;
+use tracing::{debug, error};
 
 use crate::repositories::users::Username;
 
-use super::AppState;
+use crate::server::AppState;
 
 pub enum ServerEvent {
     CheckIn { name: Username, time: DateTime<Utc> },
@@ -19,7 +14,7 @@ pub enum ServerEvent {
 
 impl ServerEvent {
     pub async fn handle(self, _: Arc<AppState>) -> anyhow::Result<()> {
-        todo!()
+        bail!("unimplemented");
     }
 }
 
@@ -35,6 +30,10 @@ impl EventHookHandler {
         (Self { rx }, EventDispatcherService::new(tx))
     }
 
+    /// Begin handling events sent over the channel
+    ///
+    /// Each event is handled in a separate thread. Panics
+    /// are recovered from gracefully.
     pub async fn start(&mut self, state: Arc<AppState>) {
         loop {
             if let Some(event) = self.rx.recv().await {

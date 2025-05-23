@@ -5,7 +5,7 @@ use tokio::fs;
 use utoipa::OpenApi;
 
 use basalt_server_lib::{
-    server::{hooks::EventHookHandler, AppState},
+    server::{hooks::events::EventHookHandler, AppState},
     storage::SqliteLayer,
 };
 
