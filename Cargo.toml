@@ -13,7 +13,7 @@ argon2 = { version = "0.5.3", features = ["password-hash"] }
 async-tempfile = "0.6.0"
 axum-extra = { version = "0.10.0", features = ["typed-header"] }
 axum = { version = "0.8.1", features = ["macros", "ws"] }
-bedrock = { git = "https://github.com/basalt-rs/bedrock.git", rev = "6e1d3aa", features = [
+bedrock = { git = "https://github.com/basalt-rs/bedrock.git", rev = "78db2af", features = [
   "tokio",
 ] }
 clap = { version = "4.5.23", features = ["derive"] }

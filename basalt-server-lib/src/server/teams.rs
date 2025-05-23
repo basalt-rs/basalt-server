@@ -57,10 +57,13 @@ impl TeamManagement {
         TeamManagement { teams }
     }
 
-    pub fn check_in(&self, name: &Username) {
+    pub fn check_in(&self, name: &Username) -> bool {
+        let mut effective = false;
         if let Some(mut t) = self.teams.get_mut(name) {
+            effective = !t.checked_in;
             t.check();
         }
+        effective
     }
 
     pub fn disconnect(&self, name: &Username) {
@@ -116,7 +119,8 @@ mod tests {
         assert_eq!(team.info.disconnected, false);
         assert!(team.info.last_seen.is_none());
 
-        manager.check_in(&userify(TEST_TEAM_1));
+        let result = manager.check_in(&userify(TEST_TEAM_1));
+        assert!(result);
 
         let team = manager.get_team(&userify(TEST_TEAM_1)).unwrap();
         let team_name: String = team.team.clone().into();
@@ -124,6 +128,9 @@ mod tests {
         assert!(team.info.checked_in);
         assert_eq!(team.info.disconnected, false);
         assert!(team.info.last_seen.is_some());
+
+        let result = manager.check_in(&userify(TEST_TEAM_1));
+        assert!(!result);
     }
 
     #[test]
