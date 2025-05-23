@@ -338,6 +338,7 @@ dependencies = [
  "thiserror 2.0.11",
  "time",
  "tokio",
+ "tower",
  "tower-http",
  "tracing",
  "utoipa",
@@ -365,7 +366,7 @@ checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
 [[package]]
 name = "bedrock"
 version = "0.1.0"
-source = "git+https://github.com/basalt-rs/bedrock.git?rev=6e1d3aa#6e1d3aae8508dfd6a6fb936c05569356fb2297b9"
+source = "git+https://github.com/basalt-rs/bedrock.git?rev=78db2af#78db2afa9c29f1eb934f4906ec85c49349389fb9"
 dependencies = [
  "comemo",
  "ecow",
