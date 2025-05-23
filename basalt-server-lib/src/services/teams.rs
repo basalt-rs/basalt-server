@@ -1,16 +1,33 @@
 use std::sync::Arc;
 
-use axum::{extract::State, http::StatusCode, Json};
+use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    Json,
+};
+use rand::rngs::OsRng;
+use serde::{Deserialize, Serialize};
 use tokio::task::JoinSet;
-use tracing::{error, trace};
+use tracing::{error, info, trace};
+use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
-    repositories::submissions::get_user_score,
-    server::{teams::TeamWithScore, AppState},
+    extractors::auth::HostUser,
+    repositories::{
+        self,
+        submissions::get_user_score,
+        users::{get_user_by_id, GetUserError, QuestionState, User, UserId},
+    },
+    server::{
+        teams::{TeamFull, TeamWithScore},
+        AppState,
+    },
+    services::ws::{Broadcast, WebSocketSend},
 };
 
-#[derive(Debug, serde::Serialize, utoipa::ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
 struct TeamsListResponse(Vec<TeamWithScore>);
 
@@ -31,15 +48,17 @@ async fn get_teams(
     let mut joinset = JoinSet::new();
     for t in teams {
         let state = Arc::clone(&state);
-        joinset.spawn(async move {
+        async fn fut(t: TeamFull, state: Arc<AppState>) -> anyhow::Result<TeamWithScore> {
             let sql = state.db.read().await;
-            get_user_score(&sql.db, &t.team)
-                .await
-                .map(|score| TeamWithScore {
-                    team_info: t,
-                    score,
-                })
-        });
+            let User { username: name, .. } = get_user_by_id(&sql.db, &t.id).await?;
+            let score = get_user_score(&sql.db, &t.id).await?;
+            Ok(TeamWithScore {
+                team_info: t,
+                name,
+                score,
+            })
+        }
+        joinset.spawn(fut(t, state));
     }
     joinset
         .join_all()
@@ -55,8 +74,156 @@ async fn get_teams(
         .map(Ok)?
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+struct NewTeam {
+    username: String,
+    display_name: Option<String>,
+    password: String,
+}
+
+#[axum::debug_handler]
+#[utoipa::path(
+    post,
+    path="/", tag="teams",
+    request_body = NewTeam,
+    responses(
+        (status=OK, body=User, description="Team was created successfully"),
+        (status=CONFLICT, description="Team with provided username already exists"),
+        (status=INTERNAL_SERVER_ERROR),
+    )
+)]
+async fn add_team(
+    State(state): State<Arc<AppState>>,
+    HostUser(creator): HostUser,
+    Json(new): Json<NewTeam>,
+) -> Result<Json<User>, StatusCode> {
+    let sql = state.db.read().await;
+    info!(creator = %creator.username, new = %new.username, "Creating new user");
+    let user = repositories::users::create_user(
+        &sql.db,
+        new.username,
+        new.display_name.as_deref(),
+        new.password,
+        repositories::users::Role::Competitor,
+    )
+    .await
+    .map_err(|e| match e {
+        repositories::users::CreateUserError::Confict => {
+            info!("User not created due to username conflict");
+            StatusCode::CONFLICT
+        }
+        repositories::users::CreateUserError::Other(_) => {
+            error!("Error creating user: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+    })?;
+
+    state.websocket.broadcast(WebSocketSend::Broadcast {
+        broadcast: Broadcast::TeamUpdate {
+            id: user.id.clone(),
+            name: user.username.clone(),
+            display_name: user.display_name.clone(),
+            new_score: 0.,
+            new_states: vec![QuestionState::NotAttempted; state.config.packet.problems.len()],
+        },
+    });
+
+    Ok(Json(user))
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum DisplayNamePatch {
+    Remove,      // "remove"
+    Set(String), // { "set": "New Name" }
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+struct PatchTeam {
+    username: Option<String>,
+    display_name: Option<DisplayNamePatch>,
+    password: Option<String>,
+}
+
+#[axum::debug_handler]
+#[utoipa::path(
+    patch,
+    path="/{id}", tag="teams",
+    request_body = PatchTeam,
+    responses(
+        (status=OK, body=User, description="Team was succesfully updated"),
+        (status=NOT_FOUND, description="User with ID not found"),
+        (status=CONFLICT, description="Team with provided username already exists"),
+        (status=INTERNAL_SERVER_ERROR),
+    )
+)]
+async fn patch_team(
+    State(state): State<Arc<AppState>>,
+    HostUser(host): HostUser,
+    Path(user_id): Path<UserId>,
+    Json(patch): Json<PatchTeam>,
+) -> Result<Json<User>, StatusCode> {
+    let sql = state.db.read().await;
+    info!(host = %host.username, %user_id, ?patch, "Patching user");
+    let mut user = repositories::users::get_user_by_id(&sql.db, &user_id)
+        .await
+        .map_err(|e| match e {
+            GetUserError::QueryError(_) => {
+                error!("Error creating user: {:?}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
+            GetUserError::UserNotFound { .. } => {
+                info!("User not found");
+                StatusCode::NOT_FOUND
+            }
+        })?;
+
+    if let Some(username) = patch.username {
+        user.username = username;
+    }
+
+    if let Some(display_name) = patch.display_name {
+        match display_name {
+            DisplayNamePatch::Remove => user.display_name = None,
+            DisplayNamePatch::Set(name) => user.display_name = Some(name),
+        }
+    }
+
+    if let Some(password) = patch.password {
+        let salt = SaltString::generate(&mut OsRng);
+        let password_hash = Argon2::default()
+            .hash_password(password.as_bytes(), &salt)
+            .expect("Failed to hash password")
+            .to_string();
+        user.password_hash = password_hash.into();
+    }
+
+    let new = repositories::users::update_user(&sql.db, user)
+        .await
+        .map_err(|e| {
+            error!("Error updating user: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    state.team_manager.insert(new.id.clone());
+    state.websocket.broadcast(WebSocketSend::Broadcast {
+        broadcast: Broadcast::TeamRename {
+            id: new.id.clone(),
+            name: new.username.clone(),
+            display_name: new.display_name.clone(),
+        },
+    });
+
+    Ok(Json(new))
+}
+
 pub fn router() -> OpenApiRouter<Arc<AppState>> {
-    OpenApiRouter::new().routes(routes!(get_teams))
+    OpenApiRouter::new()
+        .routes(routes!(get_teams))
+        .routes(routes!(add_team))
+        .routes(routes!(patch_team))
 }
 
 pub fn service() -> axum::Router<Arc<AppState>> {
@@ -82,7 +249,7 @@ mod tests {
         let cfg = Config::from_str(SAMPLE_1, "Single.toml".into()).unwrap();
         sql.ingest(&cfg).await.unwrap();
 
-        let user1 = get_user_by_username(&sql, "team1".into()).await.unwrap();
+        let user1 = get_user_by_username(&sql, "team1").await.unwrap();
 
         crate::testing::submissions_repositories::dummy_submission(
             &sql.db,
@@ -97,13 +264,14 @@ mod tests {
         )
         .await;
 
-        let appstate = AppState::new(sql, cfg, None);
+        let mut appstate = AppState::new(sql, cfg, None);
+        appstate.init().await.unwrap();
 
-        let teams = get_teams(State(Arc::new(appstate))).await.unwrap().0 .0;
+        let Json(TeamsListResponse(teams)) = get_teams(State(Arc::new(appstate))).await.unwrap();
         assert_eq!(
             teams
                 .into_iter()
-                .find(|t| t.team_info.team == user1.username)
+                .find(|t| t.team_info.id == user1.id)
                 .unwrap()
                 .score,
             expected_score

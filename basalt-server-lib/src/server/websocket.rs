@@ -3,13 +3,13 @@ use std::net::SocketAddr;
 use dashmap::DashMap;
 use tokio::sync::mpsc::{self, UnboundedSender};
 
-use crate::{extractors::auth::AuthUser, services::ws::WebSocketSend};
+use crate::{repositories::users::User, services::ws::WebSocketSend};
 
 #[derive(Clone, Eq, PartialEq, Hash, derive_more::Debug)]
 pub enum ConnectionKind {
     User {
-        #[debug("{:?}", user.user.username.0)]
-        user: AuthUser,
+        #[debug("{:?}", user.username)]
+        user: User,
     },
     Leaderboard {
         id: String,
@@ -26,7 +26,7 @@ impl ConnectionKind {
         }
     }
 
-    pub fn user(&self) -> Option<&AuthUser> {
+    pub fn user(&self) -> Option<&User> {
         match self {
             ConnectionKind::User { user } => Some(user),
             ConnectionKind::Leaderboard { .. } => None,

@@ -79,15 +79,27 @@ impl SqliteLayer {
     pub async fn ingest(&self, cfg: &Config) -> anyhow::Result<()> {
         let mut tx = self.db.begin().await.unwrap();
         for user in &cfg.accounts.competitors {
-            create_user(&mut *tx, &user.name, &user.password, Role::Competitor)
-                .await
-                .context("Failed to create user")?;
+            create_user(
+                &mut *tx,
+                &user.name,
+                user.display_name.as_deref(),
+                &user.password,
+                Role::Competitor,
+            )
+            .await
+            .context("Failed to create user")?;
         }
 
         for host in &cfg.accounts.hosts {
-            create_user(&mut *tx, &host.name, &host.password, Role::Host)
-                .await
-                .context("Failed to create host user")?;
+            create_user(
+                &mut *tx,
+                &host.name,
+                host.display_name.as_deref(),
+                &host.password,
+                Role::Host,
+            )
+            .await
+            .context("Failed to create host user")?;
         }
 
         tx.commit()
