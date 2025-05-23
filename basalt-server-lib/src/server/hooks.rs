@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{bail, Context};
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -35,17 +35,19 @@ impl EventHookHandler {
         (Self { rx }, EventDispatcherService::new(tx))
     }
 
-    pub async fn handle(&mut self, state: Arc<AppState>) {
+    pub async fn start(&mut self, state: Arc<AppState>) {
         loop {
-            tokio::select! {
-                Some(event) = self.rx.recv() => {
-                    debug!("received event");
-                    println!("RECEIVED EVENT");
-                    if let Err(err) = event.handle(state.clone()).await {
-                        error!("error handling event: {}", err);
-                    };
-                }
-            }
+            if let Some(event) = self.rx.recv().await {
+                debug!("received event");
+                tokio::spawn({
+                    let state = state.clone();
+                    async move {
+                        if let Err(err) = event.handle(state.clone()).await {
+                            error!("error handling event: {}", err);
+                        };
+                    }
+                });
+            };
         }
     }
 }

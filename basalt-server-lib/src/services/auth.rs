@@ -63,7 +63,6 @@ async fn login(
 
     if state.team_manager.check_in(&user.username) {
         trace!("checking in user: {}", &user.username.0);
-        println!("checking in user: {}", &user.username.0);
         if let Err(err) = state.evh.dispatch(ServerEvent::CheckIn {
             name: user.username.clone(),
             time: Local::now().to_utc(),
