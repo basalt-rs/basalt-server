@@ -40,7 +40,7 @@ name = "team2"
 password = "pwd1"
 
 [[events.on_check_in]]
-file = "./nonexistent.ts"
+file = "./samples/on-check-in.js"
 
 # Specify information about the packet itself
 [packet]

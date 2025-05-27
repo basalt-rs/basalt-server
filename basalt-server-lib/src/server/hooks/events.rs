@@ -1,6 +1,10 @@
 use anyhow::{bail, Context};
 use chrono::{DateTime, Utc};
+use paste::paste;
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::sync::Arc;
+use std::thread::JoinHandle;
 use tokio::sync::mpsc;
 use tracing::{debug, error};
 
@@ -8,13 +12,103 @@ use crate::repositories::users::Username;
 
 use crate::server::AppState;
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "kind")]
 pub enum ServerEvent {
-    CheckIn { name: Username, time: DateTime<Utc> },
+    OnComplete {
+        name: Username,
+        time: DateTime<Utc>,
+    },
+    OnPause {
+        paused_by: Username,
+        time: DateTime<Utc>,
+    },
+    OnUnpause {
+        unpaused_by: Username,
+        time: DateTime<Utc>,
+    },
+    OnTestEvaluation {
+        name: Username,
+        question_idx: u32,
+        question_text: String,
+        passed: u16,
+        failed: u16,
+        points: f32,
+        time: DateTime<Utc>,
+    },
+    OnSubmissionEvaluation {
+        name: Username,
+        question_idx: u32,
+        question_text: String,
+        passed: u16,
+        failed: u16,
+        points: f32,
+        time: DateTime<Utc>,
+    },
+    OnTeamKick {
+        team_kicked: Username,
+        kicked_by: Username,
+        time: DateTime<Utc>,
+    },
+    OnTeamBan {
+        team_banned: Username,
+        banned_by: Username,
+        time: DateTime<Utc>,
+    },
+    OnAnnouncement {
+        announcer: Username,
+        announcement: String,
+        time: DateTime<Utc>,
+    },
+    OnCheckIn {
+        name: Username,
+        time: DateTime<Utc>,
+    },
 }
 
 impl ServerEvent {
-    pub async fn handle(self, _: Arc<AppState>) -> anyhow::Result<()> {
-        bail!("unimplemented");
+    pub async fn handle(self, state: Arc<AppState>) -> anyhow::Result<()> {
+        macro_rules! match_path {
+            ($($ident: ident),+$(,)?) => {
+                paste! {
+                    match self {
+                        $(ServerEvent::$ident { .. } => state
+                            .config
+                            .events
+                            .[< $ident:snake >]
+                            .0.iter().map(|e| e.file.clone()).collect::<Vec<PathBuf>>(),)+
+                    }
+                }
+            }
+        }
+        let paths = match_path!(
+            OnComplete,
+            OnPause,
+            OnUnpause,
+            OnTestEvaluation,
+            OnSubmissionEvaluation,
+            OnTeamKick,
+            OnTeamBan,
+            OnAnnouncement,
+            OnCheckIn,
+        );
+        let event = self.clone();
+        let handles = paths
+            .into_iter()
+            .map(|p| {
+                let event = event.clone();
+                std::thread::spawn(move || super::deno::run(event, p))
+            })
+            .collect::<Vec<JoinHandle<anyhow::Result<()>>>>();
+
+        for h in handles.into_iter() {
+            if let Ok(result) = h.join() {
+                result.context("Failed to execute script")?;
+            } else {
+                bail!("Failed to join thread");
+            }
+        }
+        Ok(())
     }
 }
 
@@ -42,7 +136,7 @@ impl EventHookHandler {
                     let state = state.clone();
                     async move {
                         if let Err(err) = event.handle(state.clone()).await {
-                            error!("error handling event: {}", err);
+                            error!("error handling event: {:?}", err);
                         };
                     }
                 });
