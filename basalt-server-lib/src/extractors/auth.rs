@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use crate::{
-    repositories::{self, users::User},
+    repositories::{
+        self,
+        users::{Role, User},
+    },
     server::AppState,
 };
 use axum::{
@@ -100,5 +103,28 @@ impl FromRequestParts<Arc<AppState>> for OptionalAuthUser {
         state: &Arc<AppState>,
     ) -> Result<Self, Self::Rejection> {
         extract(parts, state).await.map(Into::into)
+    }
+}
+
+#[derive(Debug, derive_more::From, derive_more::Deref)]
+#[repr(transparent)]
+pub struct HostUser(pub AuthUser);
+
+impl FromRequestParts<Arc<AppState>> for HostUser {
+    /// If the extractor fails it'll use this "rejection" type. A rejection is a kind of error that
+    /// can be converted into a response.
+    type Rejection = AuthError;
+
+    /// Perform the extraction.
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<AppState>,
+    ) -> Result<Self, Self::Rejection> {
+        let auth_user = AuthUser::from_request_parts(parts, state).await?;
+        if auth_user.user.role == Role::Host {
+            Ok(auth_user.into())
+        } else {
+            Err(AuthError::Forbidden)
+        }
     }
 }

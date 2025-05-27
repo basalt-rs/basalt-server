@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS submission_history (
   code TEXT NOT NULL,
   question_index INTEGER NOT NULL,
   score FLOAT NOT NULL,
-  success BOOLEAN NOT NULL
+  success BOOLEAN NOT NULL,
+  language TEXT NOT NULL
 );
 
 -- History of tests that have been run on submissions
@@ -30,6 +31,13 @@ CREATE TABLE IF NOT EXISTS submission_test_history (
   stdout TEXT,
   stderr TEXT,
   exit_status INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS announcements (
+    id VARCHAR(32) NOT NULL PRIMARY KEY,
+    sender VARCHAR(32) NOT NULL REFERENCES users(username),
+    time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    message TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS test_runs (

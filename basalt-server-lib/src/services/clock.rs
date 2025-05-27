@@ -86,8 +86,8 @@ async fn patch_clock(
 
     if let Some(broadcast) = broadcast {
         state
-            .broadcast(WebSocketSend::Broadcast { broadcast })
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            .websocket
+            .broadcast(WebSocketSend::Broadcast { broadcast });
     }
 
     Ok(Json(response))
