@@ -8,6 +8,7 @@ use axum::{
 };
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
+use sqlx::Acquire;
 use tokio::task::JoinSet;
 use tracing::{error, info, trace};
 use utoipa::ToSchema;
@@ -24,7 +25,7 @@ use crate::{
         teams::{TeamFull, TeamWithScore},
         AppState,
     },
-    services::ws::{Broadcast, WebSocketSend},
+    services::ws::{Broadcast, TeamUpdate, WebSocketSend},
 };
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -82,54 +83,121 @@ struct NewTeam {
     password: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[serde(untagged)]
+pub enum OneOrMany<T> {
+    One(T),
+    Many(Vec<T>),
+}
+
+impl<T> OneOrMany<T> {
+    pub fn to_vec(self) -> Vec<T> {
+        match self {
+            OneOrMany::One(one) => vec![one],
+            OneOrMany::Many(many) => many,
+        }
+    }
+
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self) -> usize {
+        match self {
+            OneOrMany::One(_) => 1,
+            OneOrMany::Many(items) => items.len(),
+        }
+    }
+}
+
+impl<T> From<Vec<T>> for OneOrMany<T> {
+    fn from(mut value: Vec<T>) -> Self {
+        match value.len() {
+            1 => OneOrMany::One(value.pop().unwrap()),
+            _ => OneOrMany::Many(value),
+        }
+    }
+}
+
 #[axum::debug_handler]
 #[utoipa::path(
     post,
     path="/", tag="teams",
-    request_body = NewTeam,
+    request_body = OneOrMany<NewTeam>,
     responses(
-        (status=OK, body=User, description="Team was created successfully"),
-        (status=CONFLICT, description="Team with provided username already exists"),
+        (status=OK, body=OneOrMany<User>, description="Team(s) were created successfully"),
+        (status=CONFLICT, body=Vec<String>, description="Team(s) with returned usernames already exist"),
         (status=INTERNAL_SERVER_ERROR),
     )
 )]
 async fn add_team(
     State(state): State<Arc<AppState>>,
     HostUser(creator): HostUser,
-    Json(new): Json<NewTeam>,
-) -> Result<Json<User>, StatusCode> {
-    let sql = state.db.read().await;
-    info!(creator = %creator.username, new = %new.username, "Creating new user");
-    let user = repositories::users::create_user(
-        &sql.db,
-        new.username,
-        new.display_name.as_deref(),
-        new.password,
-        repositories::users::Role::Competitor,
-    )
-    .await
-    .map_err(|e| match e {
-        repositories::users::CreateUserError::Confict => {
-            info!("User not created due to username conflict");
-            StatusCode::CONFLICT
-        }
-        repositories::users::CreateUserError::Other(_) => {
-            error!("Error creating user: {:?}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        }
+    Json(new): Json<OneOrMany<NewTeam>>,
+) -> Result<Json<OneOrMany<User>>, (StatusCode, Json<Option<Vec<String>>>)> {
+    let mut txn = state.db.read().await.db.begin().await.map_err(|e| {
+        error!("Error starting transaction: {:?}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(None))
     })?;
 
-    state.websocket.broadcast(WebSocketSend::Broadcast {
-        broadcast: Broadcast::TeamUpdate {
-            id: user.id.clone(),
-            name: user.username.clone(),
-            display_name: user.display_name.clone(),
-            new_score: 0.,
-            new_states: vec![QuestionState::NotAttempted; state.config.packet.problems.len()],
-        },
-    });
+    let mut users = Vec::with_capacity(new.len());
+    let mut conflicts = Vec::new();
+    for new in new.to_vec() {
+        info!(creator = %creator.username, new = %new.username, "Creating new user");
+        let user = repositories::users::create_user(
+            txn.acquire().await.map_err(|e| {
+                error!("Error acquiring transaction: {:?}", e);
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(None))
+            })?,
+            &new.username,
+            new.display_name.as_deref(),
+            new.password,
+            repositories::users::Role::Competitor,
+        )
+        .await;
 
-    Ok(Json(user))
+        let user = match user {
+            Ok(user) => user,
+            Err(e) => match e {
+                repositories::users::CreateUserError::Confict => {
+                    info!("User not created due to username conflict");
+                    conflicts.push(new.username);
+                    continue;
+                }
+                repositories::users::CreateUserError::Other(_) => {
+                    error!("Error creating user: {:?}", e);
+                    return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(None)));
+                }
+            },
+        };
+
+        users.push(user);
+    }
+
+    if !conflicts.is_empty() {
+        drop(txn);
+        return Err((StatusCode::CONFLICT, Json(Some(conflicts))));
+    }
+
+    txn.commit().await.map_err(|e| {
+        error!("Error while committing users: {:?}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(None))
+    })?;
+
+    state
+        .team_manager
+        .insert_many(users.iter().map(|u| u.id.clone()));
+
+    for user in &users {
+        state.websocket.broadcast(WebSocketSend::Broadcast {
+            broadcast: Broadcast::TeamUpdate(vec![TeamUpdate {
+                id: user.id.clone(),
+                name: user.username.clone(),
+                display_name: user.display_name.clone(),
+                new_score: 0.,
+                new_states: vec![QuestionState::NotAttempted; state.config.packet.problems.len()],
+            }]),
+        });
+    }
+
+    Ok(Json(users.into()))
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -207,7 +275,6 @@ async fn patch_team(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    state.team_manager.insert(new.id.clone());
     state.websocket.broadcast(WebSocketSend::Broadcast {
         broadcast: Broadcast::TeamRename {
             id: new.id.clone(),

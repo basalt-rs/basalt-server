@@ -24,6 +24,16 @@ use crate::{
 pub mod connect;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub struct TeamUpdate {
+    pub id: UserId,
+    pub name: String,
+    pub display_name: Option<String>,
+    pub new_score: f64,
+    pub new_states: Vec<QuestionState>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum Broadcast {
     NewAnnouncement(Announcement),
@@ -44,13 +54,7 @@ pub enum Broadcast {
         name: String,
         display_name: Option<String>,
     },
-    TeamUpdate {
-        id: UserId,
-        name: String,
-        display_name: Option<String>,
-        new_score: f64,
-        new_states: Vec<QuestionState>,
-    },
+    TeamUpdate(Vec<TeamUpdate>),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -211,13 +215,13 @@ impl WebSocketRecv<'_> {
             .context("getting user score")?;
 
         state.websocket.broadcast(WebSocketSend::Broadcast {
-            broadcast: Broadcast::TeamUpdate {
+            broadcast: Broadcast::TeamUpdate(vec![TeamUpdate {
                 id: user.id.clone(),
                 name: user.username.clone(),
                 display_name: user.display_name.clone(),
                 new_score,
                 new_states: states,
-            },
+            }]),
         });
         Ok(())
     }
