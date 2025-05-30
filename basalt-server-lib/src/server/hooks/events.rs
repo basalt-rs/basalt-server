@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use tokio::sync::mpsc;
+use tokio::task::JoinSet;
 use tracing::{debug, error};
 
 use crate::repositories::users::Username;
@@ -93,21 +94,16 @@ impl ServerEvent {
             OnCheckIn,
         );
         let event = self.clone();
-        let handles = paths
+        let jset = paths
             .into_iter()
             .map(|p| {
                 let event = event.clone();
-                std::thread::spawn(move || super::deno::run(event, p))
+                async move { super::deno::evaluate(event, p).await }
             })
-            .collect::<Vec<JoinHandle<anyhow::Result<()>>>>();
+            .collect::<JoinSet<anyhow::Result<()>>>();
+        let results = jset.join_all().await;
+        results.into_iter().collect::<anyhow::Result<Vec<()>>>()?;
 
-        for h in handles.into_iter() {
-            if let Ok(result) = h.join() {
-                result.context("Failed to execute script")?;
-            } else {
-                bail!("Failed to join thread");
-            }
-        }
         Ok(())
     }
 }
