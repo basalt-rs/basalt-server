@@ -1,12 +1,10 @@
-use anyhow::{bail, Context};
+use anyhow::Context;
 use chrono::{DateTime, Utc};
 use paste::paste;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::thread::JoinHandle;
 use tokio::sync::mpsc;
-use tokio::task::JoinSet;
 use tracing::{debug, error};
 
 use crate::repositories::users::Username;
@@ -94,15 +92,10 @@ impl ServerEvent {
             OnCheckIn,
         );
         let event = self.clone();
-        let jset = paths
+        paths
             .into_iter()
-            .map(|p| {
-                let event = event.clone();
-                async move { super::deno::evaluate(event, p).await }
-            })
-            .collect::<JoinSet<anyhow::Result<()>>>();
-        let results = jset.join_all().await;
-        results.into_iter().collect::<anyhow::Result<Vec<()>>>()?;
+            .map(|p| tokio::task::block_in_place(|| super::deno::evaluate(event.clone(), p)))
+            .collect::<anyhow::Result<Vec<()>>>()?;
 
         Ok(())
     }
