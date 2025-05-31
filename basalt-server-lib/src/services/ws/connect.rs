@@ -15,7 +15,7 @@ use tracing::{debug, error, trace, warn};
 
 use super::WebSocketRecv;
 use crate::{
-    extractors::auth::{AuthError, AuthUser},
+    extractors::auth::AuthError,
     repositories,
     server::{websocket::ConnectedClient, AppState},
     services::ws::ConnectionKind,
@@ -42,10 +42,7 @@ pub async fn connect_websocket(
                 AuthError::ExpiredToken
             })?;
         trace!(?user, "User authed");
-        Some(AuthUser {
-            user,
-            session_id: session_id.to_string(),
-        })
+        Some(user)
     } else {
         trace!("user not authed");
         None
