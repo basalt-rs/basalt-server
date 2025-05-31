@@ -37,9 +37,12 @@ impl TeamInfo {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, serde::Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct TeamWithScore {
     pub score: f64,
+    pub id: UserId,
     pub name: String,
+    pub display_name: Option<String>,
     #[serde(flatten)]
     pub team_info: TeamFull,
 }

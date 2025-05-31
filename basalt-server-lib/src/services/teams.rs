@@ -51,11 +51,13 @@ async fn get_teams(
         let state = Arc::clone(&state);
         async fn fut(t: TeamFull, state: Arc<AppState>) -> anyhow::Result<TeamWithScore> {
             let sql = state.db.read().await;
-            let User { username: name, .. } = get_user_by_id(&sql.db, &t.id).await?;
+            let user = get_user_by_id(&sql.db, &t.id).await?;
             let score = get_user_score(&sql.db, &t.id).await?;
             Ok(TeamWithScore {
                 team_info: t,
-                name,
+                id: user.id,
+                name: user.username,
+                display_name: user.display_name,
                 score,
             })
         }

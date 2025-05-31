@@ -65,18 +65,19 @@ async fn login(
 
     if let Some(team) = state.team_manager.get_team(&user.id) {
         let sql = state.db.read().await;
-        let name = repositories::users::get_user_by_id(&sql.db, &user.id)
+        let user = repositories::users::get_user_by_id(&sql.db, &user.id)
             .await
             .map_err(|e| {
                 error!("Error getting username: {:?}", e);
                 StatusCode::INTERNAL_SERVER_ERROR
-            })?
-            .username;
+            })?;
 
         state.websocket.broadcast(WebSocketSend::Broadcast {
             broadcast: Broadcast::TeamConnected(TeamWithScore {
                 score,
-                name,
+                id: user.id,
+                name: user.username,
+                display_name: user.display_name,
                 team_info: team,
             }),
         });
@@ -119,20 +120,21 @@ async fn logout(
 
     if let Some(team) = state.team_manager.get_team(&user.id) {
         let sql = state.db.read().await;
-        let name = repositories::users::get_user_by_id(&sql.db, &user.id)
+        let user = repositories::users::get_user_by_id(&sql.db, &user.id)
             .await
             .map_err(|e| {
                 error!("Error getting username: {:?}", e);
                 StatusCode::INTERNAL_SERVER_ERROR
-            })?
-            .username;
+            })?;
 
         state
             .websocket
             .broadcast(crate::services::ws::WebSocketSend::Broadcast {
                 broadcast: crate::services::ws::Broadcast::TeamDisconnected(TeamWithScore {
                     score,
-                    name,
+                    id: user.id,
+                    name: user.username,
+                    display_name: user.display_name,
                     team_info: team,
                 }),
             });
