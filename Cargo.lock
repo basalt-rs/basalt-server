@@ -533,7 +533,6 @@ dependencies = [
  "erudite",
  "lazy_static",
  "leucite",
- "paste",
  "rand 0.8.5",
  "redact",
  "rustyscript",

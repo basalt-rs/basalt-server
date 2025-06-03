@@ -34,14 +34,12 @@ tracing.workspace = true
 utoipa-axum.workspace = true
 utoipa.workspace = true
 chrono = { version = "0.4.40", features = ["serde"] }
-paste = "1.0.15"
 rustyscript = { git = "https://github.com/rscarson/rustyscript.git", branch = "master", features = [
   "http",
 ] }
 
 [dev-dependencies]
 async-tempfile = "0.6.0"
-paste = "1.0.15"
 
 [build-dependencies]
 tokio = { version = "1.43.0", features = ["full"] }
