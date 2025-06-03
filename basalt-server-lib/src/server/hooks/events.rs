@@ -113,13 +113,11 @@ impl EventHookHandler {
         loop {
             if let Some(event) = self.rx.recv().await {
                 debug!("received event");
-                tokio::spawn({
-                    let state = state.clone();
-                    async move {
-                        if let Err(err) = event.handle(state.clone()).await {
-                            error!("error handling event: {:?}", err);
-                        };
-                    }
+                let state = state.clone();
+                tokio::spawn(async move {
+                    if let Err(err) = event.handle(state).await {
+                        error!("error handling event: {:?}", err);
+                    };
                 });
             };
         }
