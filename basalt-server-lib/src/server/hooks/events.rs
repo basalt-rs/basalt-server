@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tracing::{debug, error};
+use tracing::{error, trace};
 
 use crate::repositories::users::Username;
 use crate::server::AppState;
@@ -112,7 +112,7 @@ impl EventHookHandler {
     pub async fn start(&mut self, state: Arc<AppState>) {
         loop {
             if let Some(event) = self.rx.recv().await {
-                debug!("received event");
+                trace!("received event");
                 let state = state.clone();
                 tokio::spawn(async move {
                     if let Err(err) = event.handle(state).await {
