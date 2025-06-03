@@ -1,103 +1,95 @@
 use anyhow::Context;
 use chrono::{DateTime, Utc};
-use paste::paste;
-use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use serde::Serialize;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{debug, error};
 
 use crate::repositories::users::Username;
-
 use crate::server::AppState;
+use crate::services::ws::TestResults;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(tag = "kind")]
 pub enum ServerEvent {
-    OnComplete {
-        name: Username,
-        time: DateTime<Utc>,
-    },
+    // Unused
+    #[serde(rename_all = "camelCase")]
+    OnComplete { name: Username, time: DateTime<Utc> },
+    #[serde(rename_all = "camelCase")]
     OnPause {
         paused_by: Username,
         time: DateTime<Utc>,
     },
+    #[serde(rename_all = "camelCase")]
     OnUnpause {
         unpaused_by: Username,
         time: DateTime<Utc>,
     },
+    #[serde(rename_all = "camelCase")]
     OnTestEvaluation {
         name: Username,
         question_idx: u32,
         question_text: String,
-        passed: u16,
-        failed: u16,
-        points: f32,
+        test_results: TestResults,
         time: DateTime<Utc>,
     },
+    #[serde(rename_all = "camelCase")]
     OnSubmissionEvaluation {
         name: Username,
         question_idx: u32,
         question_text: String,
-        passed: u16,
-        failed: u16,
-        points: f32,
+        test_results: TestResults,
         time: DateTime<Utc>,
     },
+    #[serde(rename_all = "camelCase")]
+    // Unused
     OnTeamKick {
         team_kicked: Username,
         kicked_by: Username,
         time: DateTime<Utc>,
     },
+    #[serde(rename_all = "camelCase")]
+    // Unused
     OnTeamBan {
         team_banned: Username,
         banned_by: Username,
         time: DateTime<Utc>,
     },
+    #[serde(rename_all = "camelCase")]
     OnAnnouncement {
         announcer: Username,
         announcement: String,
         time: DateTime<Utc>,
     },
-    OnCheckIn {
-        name: Username,
-        time: DateTime<Utc>,
-    },
+    #[serde(rename_all = "camelCase")]
+    OnCheckIn { name: Username, time: DateTime<Utc> },
 }
 
 impl ServerEvent {
     pub async fn handle(self, state: Arc<AppState>) -> anyhow::Result<()> {
-        macro_rules! match_path {
-            ($($ident: ident),+$(,)?) => {
-                paste! {
-                    match self {
-                        $(ServerEvent::$ident { .. } => state
-                            .config
-                            .events
-                            .[< $ident:snake >]
-                            .0.iter().map(|e| e.file.clone()).collect::<Vec<PathBuf>>(),)+
-                    }
-                }
-            }
-        }
-        let paths = match_path!(
-            OnComplete,
-            OnPause,
-            OnUnpause,
-            OnTestEvaluation,
-            OnSubmissionEvaluation,
-            OnTeamKick,
-            OnTeamBan,
-            OnAnnouncement,
-            OnCheckIn,
-        );
-        let event = self.clone();
-        paths
-            .into_iter()
-            .map(|p| tokio::task::block_in_place(|| super::deno::evaluate(event.clone(), p)))
+        state
+            .config
+            .integrations
+            .events
+            .iter()
+            .map(|p| tokio::task::block_in_place(|| super::deno::evaluate(self.clone(), p)))
             .collect::<anyhow::Result<Vec<()>>>()?;
 
         Ok(())
+    }
+
+    pub fn get_fn_name(&self) -> &'static str {
+        match self {
+            ServerEvent::OnComplete { .. } => "onComplete",
+            ServerEvent::OnPause { .. } => "onPause",
+            ServerEvent::OnUnpause { .. } => "onUnpause",
+            ServerEvent::OnTestEvaluation { .. } => "onTestEvaluation",
+            ServerEvent::OnSubmissionEvaluation { .. } => "onSubmissionEvaluation",
+            ServerEvent::OnTeamKick { .. } => "onTeamKick",
+            ServerEvent::OnTeamBan { .. } => "onTeamBan",
+            ServerEvent::OnAnnouncement { .. } => "onAnnouncement",
+            ServerEvent::OnCheckIn { .. } => "onCheckIn",
+        }
     }
 }
 

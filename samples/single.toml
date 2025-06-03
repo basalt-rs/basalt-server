@@ -39,8 +39,8 @@ password = "pwd1"
 name = "team2"
 password = "pwd1"
 
-[[events.on_check_in]]
-file = "./samples/on-check-in.js"
+[integrations]
+events = ["./samples/event-handlers.js"]
 
 # Specify information about the packet itself
 [packet]

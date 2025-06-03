@@ -4,7 +4,8 @@ use crate::{
         self,
         announcements::{Announcement, AnnouncementId},
     },
-    server::AppState,
+    server::{hooks::events::ServerEvent, AppState},
+    utils,
 };
 use axum::{
     extract::{Path, State},
@@ -69,6 +70,13 @@ pub async fn new(
                 .broadcast(super::ws::WebSocketSend::Broadcast {
                     broadcast: super::ws::Broadcast::NewAnnouncement(new.clone()),
                 });
+            if let Err(err) = state.evh.dispatch(ServerEvent::OnAnnouncement {
+                announcer: user.username.clone(),
+                announcement: message,
+                time: utils::utc_now(),
+            }) {
+                tracing::error!("Error dispatching announcement event: {:?}", err);
+            }
             Ok(Json(new))
         }
         Err(err) => {

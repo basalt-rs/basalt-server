@@ -602,7 +602,7 @@ checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
 [[package]]
 name = "bedrock"
 version = "0.1.0"
-source = "git+https://github.com/basalt-rs/bedrock.git?rev=200bb96#200bb967b25fb89dc2575bd3ec81c22aeb9e7341"
+source = "git+https://github.com/basalt-rs/bedrock.git?rev=6cb509b#6cb509b8e00fdce91d1edac97fdc6a7bcc7762e9"
 dependencies = [
  "comemo",
  "ecow",
