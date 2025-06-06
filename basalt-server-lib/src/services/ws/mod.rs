@@ -19,7 +19,10 @@ use crate::{
         submissions::NewSubmissionHistory,
         users::{QuestionState, Username},
     },
-    server::{teams::TeamWithScore, websocket::ConnectionKind, AppState},
+    server::{
+        hooks::events::ServerEvent, teams::TeamWithScore, websocket::ConnectionKind, AppState,
+    },
+    utils,
 };
 
 pub mod connect;
@@ -245,15 +248,15 @@ impl WebSocketRecv<'_> {
 
         let mut runner = erudite::Runner::new();
         let problem = &*state.config.packet.problems[problem_index];
+        let tests = problem
+            .tests
+            .iter()
+            .filter(|t| t.visible)
+            .map(|t| TestCase::new(&t.input, &t.output))
+            .collect::<Vec<_>>();
         runner
             .create_file(language.source_file(), solution)
-            .tests(
-                problem
-                    .tests
-                    .iter()
-                    .filter(|t| t.visible)
-                    .map(|t| TestCase::new(&t.input, &t.output)),
-            )
+            .tests(tests)
             .timeout(state.config.test_runner.timeout)
             .trim_output(state.config.test_runner.trim_output)
             .compile_rules(BUILD_RULES.clone()) // TODO: Remove these clones
@@ -288,7 +291,7 @@ impl WebSocketRecv<'_> {
                 ws.send(WebSocketSend::TestResults {
                     id,
                     results: TestResults::CompileFail(simple_output),
-                    failed: 1,
+                    failed: 0,
                     passed: 0,
                 })
                 .context("sending test results message")?;
@@ -389,7 +392,7 @@ impl WebSocketRecv<'_> {
 
         let results = runner.run().await?;
 
-        match results {
+        let test_results = match results {
             RunOutput::CompileSpawnFail(s) => {
                 let sql = state.db.read().await;
                 repositories::submissions::create_submission_history(
@@ -417,6 +420,7 @@ impl WebSocketRecv<'_> {
                 .context("sending submission results message")?;
 
                 Self::broadcast_team_update(&state, &user.username).await?;
+                TestResults::InternalError
             }
             RunOutput::CompileFail(simple_output) => {
                 let sql = state.db.read().await;
@@ -435,9 +439,10 @@ impl WebSocketRecv<'_> {
                 .await
                 .context("creating submission history")?;
                 debug!(?simple_output, "Failed to build");
+                let results = TestResults::CompileFail(simple_output);
                 ws.send(WebSocketSend::Submit {
                     id,
-                    results: TestResults::CompileFail(simple_output),
+                    results: results.clone(),
                     failed: 0,
                     passed: 0,
                     remaining_attempts: max_attempts.map(|x| x - attempts - 1),
@@ -445,6 +450,7 @@ impl WebSocketRecv<'_> {
                 .context("sending test results message")?;
 
                 Self::broadcast_team_update(&state, &user.username).await?;
+                results
             }
             RunOutput::RunSuccess(vec) => {
                 let sql = state.db.read().await;
@@ -454,6 +460,10 @@ impl WebSocketRecv<'_> {
                         .context("getting other submissions")?;
                 let mut txn = sql.db.begin().await.unwrap();
                 let success = vec.iter().all(|x| matches!(x, TestOutput::Pass));
+                let passed = vec
+                    .iter()
+                    .filter(|&r| matches!(r, TestOutput::Pass))
+                    .count();
                 let score = if success {
                     state
                         .config
@@ -462,6 +472,9 @@ impl WebSocketRecv<'_> {
                             bedrock::scoring::EvaluationContext {
                                 num_completions: other_completions,
                                 num_attempts: attempts,
+                                passed_tests: passed as u32,
+                                failed_tests: (problem.tests.len() - passed) as u32,
+                                number_tests: (problem.tests.len()) as u32,
                             },
                         )
                         .context("calculating score")?
@@ -495,29 +508,40 @@ impl WebSocketRecv<'_> {
                 }
 
                 trace!(?vec, "Raw test output");
-                let passed = vec
-                    .iter()
-                    .filter(|&r| matches!(r, TestOutput::Pass))
-                    .count();
 
-                let results = vec
+                let test_results = vec
                     .into_iter()
                     .zip(problem.tests.iter())
                     .filter(|(_, t)| t.visible)
                     .map(|(r, t)| (r.into(), t.clone()))
                     .collect::<Vec<_>>();
 
+                let results = TestResults::Individual {
+                    tests: test_results,
+                };
+
                 txn.commit().await.context("committing transaction")?;
                 ws.send(WebSocketSend::Submit {
                     id,
-                    results: TestResults::Individual { tests: results },
+                    results: results.clone(),
                     failed: problem.tests.len() - passed,
                     passed,
                     remaining_attempts: max_attempts.map(|x| x - attempts - 1),
                 })
                 .context("sending test results message")?;
                 Self::broadcast_team_update(&state, &user.username).await?;
+                results
             }
+        };
+
+        if let Err(err) = state.evh.dispatch(ServerEvent::OnSubmissionEvaluation {
+            name: user.username.clone(),
+            question_idx: problem_index as u32,
+            question_text: problem.title.clone(),
+            test_results,
+            time: utils::utc_now(),
+        }) {
+            tracing::error!("error dispatching submission event: {:?}", err);
         }
         Ok(())
     }

@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use axum::{extract::State, http::StatusCode, Json};
-use tracing::{debug, trace};
+use chrono::Local;
+use tracing::{debug, error, trace};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
@@ -10,7 +11,7 @@ use crate::{
         self,
         users::{Role, User, UserLogin},
     },
-    server::{teams::TeamWithScore, AppState},
+    server::{hooks::events::ServerEvent, teams::TeamWithScore, AppState},
     services::ws::{Broadcast, WebSocketSend},
 };
 
@@ -60,16 +61,24 @@ async fn login(
         .unwrap();
     drop(sql);
 
-    state.team_manager.check_in(&user.username);
+    if state.team_manager.check_in(&user.username) {
+        trace!("checking in user: {}", &user.username.0);
+        if let Err(err) = state.evh.dispatch(ServerEvent::OnCheckIn {
+            name: user.username.clone(),
+            time: Local::now().to_utc(),
+        }) {
+            error!("error occurred dispatching event hook: {}", err.to_string());
+        }
+    }
 
-    state.team_manager.get_team(&user.username).map(|team| {
+    if let Some(team) = state.team_manager.get_team(&user.username) {
         state.websocket.broadcast(WebSocketSend::Broadcast {
             broadcast: Broadcast::TeamConnected(TeamWithScore {
                 score,
                 team_info: team,
             }),
         })
-    });
+    };
 
     let role = user.role;
     debug!(login.username, "log in");
@@ -103,19 +112,16 @@ async fn logout(State(state): State<Arc<AppState>>, user: AuthUser) -> Result<()
 
     state.team_manager.disconnect(&user.user.username);
 
-    state
-        .team_manager
-        .get_team(&user.user.username)
-        .map(|team| {
-            state
-                .websocket
-                .broadcast(crate::services::ws::WebSocketSend::Broadcast {
-                    broadcast: crate::services::ws::Broadcast::TeamDisconnected(TeamWithScore {
-                        score,
-                        team_info: team,
-                    }),
-                })
-        });
+    if let Some(team) = state.team_manager.get_team(&user.user.username) {
+        state
+            .websocket
+            .broadcast(crate::services::ws::WebSocketSend::Broadcast {
+                broadcast: crate::services::ws::Broadcast::TeamDisconnected(TeamWithScore {
+                    score,
+                    team_info: team,
+                }),
+            })
+    }
 
     Ok(())
 }

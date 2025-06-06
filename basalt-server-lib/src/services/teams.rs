@@ -69,6 +69,7 @@ mod tests {
 
     use crate::{
         repositories::users::get_user_by_username,
+        server::hooks::handler::EventHookHandler,
         testing::{mock_db, SAMPLE_1},
     };
 
@@ -97,9 +98,10 @@ mod tests {
         )
         .await;
 
-        let appstate = AppState::new(sql, cfg, None);
+        let (_, hook_dispatcher) = EventHookHandler::create();
+        let appstate = Arc::new(AppState::new(sql, cfg, hook_dispatcher, None));
 
-        let teams = get_teams(State(Arc::new(appstate))).await.unwrap().0 .0;
+        let teams = get_teams(State(appstate)).await.unwrap().0 .0;
         assert_eq!(
             teams
                 .into_iter()

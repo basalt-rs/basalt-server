@@ -6,7 +6,7 @@ use rand::distributions::Distribution;
 use tracing::info;
 
 use basalt_server_lib::{
-    server::{self, AppState},
+    server::{self, hooks::handler::EventHookHandler, AppState},
     storage::SqliteLayer,
 };
 
@@ -79,12 +79,18 @@ pub async fn handle(args: RunArgs) -> anyhow::Result<()> {
     info!(?addr, "Serving via HTTP");
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
+    let (mut hook_handler, hook_dispatcher) = EventHookHandler::create();
+    let app_state = Arc::new(AppState::new(db, config, hook_dispatcher, args.web_dir));
+    let hook_task = tokio::spawn({
+        let app_state = app_state.clone();
+        async move { hook_handler.start(app_state).await }
+    });
     axum::serve(
         listener,
-        server::router(Arc::new(AppState::new(db, config, args.web_dir)))
-            .into_make_service_with_connect_info::<SocketAddr>(),
+        server::router(app_state).into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await?;
+    hook_task.await.context("Failed to execute hook handler")?;
 
     Ok(())
 }

@@ -2,6 +2,7 @@ use axum::Router;
 use bedrock::Config;
 use clock::ClockInfo;
 use dashmap::DashSet;
+use hooks::handler::EventDispatcherService;
 use rand::{distributions::Alphanumeric, Rng};
 use std::{path::PathBuf, sync::Arc};
 use teams::TeamManagement;
@@ -9,6 +10,7 @@ use tokio::sync::RwLock;
 use websocket::WebSocketManager;
 
 pub mod clock;
+pub mod hooks;
 pub mod teams;
 pub mod websocket;
 
@@ -23,10 +25,16 @@ pub struct AppState {
     pub active_submissions: DashSet<(websocket::ConnectionKind, usize)>,
     pub config: Config,
     pub clock: RwLock<ClockInfo>,
+    pub evh: EventDispatcherService,
 }
 
 impl AppState {
-    pub fn new(db: SqliteLayer, config: Config, web_dir: Option<PathBuf>) -> Self {
+    pub fn new(
+        db: SqliteLayer,
+        config: Config,
+        evh: EventDispatcherService,
+        web_dir: Option<PathBuf>,
+    ) -> Self {
         Self {
             db: RwLock::new(db),
             web_dir,
@@ -34,6 +42,7 @@ impl AppState {
             team_manager: TeamManagement::from_config(&config),
             active_tests: Default::default(),
             active_submissions: Default::default(),
+            evh,
             config,
             clock: Default::default(),
         }
