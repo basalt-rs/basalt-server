@@ -1,7 +1,10 @@
+use crate::server::AppState;
+
 use super::events::ServerEvent;
 use anyhow::Context;
 use rustyscript::{json_args, Module, Runtime, RuntimeOptions};
-use std::{path::PathBuf, time::Duration};
+use std::{path::PathBuf, sync::Arc, time::Duration};
+use tokio::sync::oneshot;
 use tracing::debug;
 
 pub fn evaluate(event: ServerEvent, path: &PathBuf) -> anyhow::Result<()> {
@@ -29,4 +32,39 @@ pub fn evaluate(event: ServerEvent, path: &PathBuf) -> anyhow::Result<()> {
         .block_on_event_loop(Default::default(), Default::default())
         .context("Failed to block on event loop")?;
     Ok(())
+}
+
+pub fn create_evaluation_context() -> (JSEvaluator, oneshot::Receiver<anyhow::Result<Vec<()>>>) {
+    let (tx, rx) = oneshot::channel();
+    let evaluator = JSEvaluator::create(tx);
+    (evaluator, rx)
+}
+
+pub struct JSEvaluator {
+    // result transmitter
+    tx: oneshot::Sender<anyhow::Result<Vec<()>>>,
+}
+
+impl JSEvaluator {
+    pub fn create(tx: oneshot::Sender<anyhow::Result<Vec<()>>>) -> Self {
+        Self { tx }
+    }
+
+    pub fn start(self, event: ServerEvent, state: Arc<AppState>) {
+        std::thread::spawn(move || {
+            let results = state
+                .config
+                .integrations
+                .events
+                .iter()
+                .map(|p| {
+                    let event = event.clone();
+                    evaluate(event, p)
+                })
+                .collect::<anyhow::Result<Vec<()>>>();
+            if let Err(e) = self.tx.send(results) {
+                tracing::error!("Failed to send evaluation results: {:?}", e);
+            }
+        });
+    }
 }

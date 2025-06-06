@@ -2,7 +2,7 @@ use axum::Router;
 use bedrock::Config;
 use clock::ClockInfo;
 use dashmap::DashSet;
-use hooks::events::EventDispatcherService;
+use hooks::handler::EventDispatcherService;
 use rand::{distributions::Alphanumeric, Rng};
 use std::{path::PathBuf, sync::Arc};
 use teams::TeamManagement;

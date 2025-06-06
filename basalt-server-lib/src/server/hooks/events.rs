@@ -1,12 +1,7 @@
-use anyhow::Context;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use std::sync::Arc;
-use tokio::sync::mpsc;
-use tracing::{error, trace};
 
 use crate::repositories::users::Username;
-use crate::server::AppState;
 use crate::services::ws::TestResults;
 
 #[derive(Clone, Debug, Serialize)]
@@ -66,18 +61,6 @@ pub enum ServerEvent {
 }
 
 impl ServerEvent {
-    pub async fn handle(self, state: Arc<AppState>) -> anyhow::Result<()> {
-        state
-            .config
-            .integrations
-            .events
-            .iter()
-            .map(|p| tokio::task::block_in_place(|| super::deno::evaluate(self.clone(), p)))
-            .collect::<anyhow::Result<Vec<()>>>()?;
-
-        Ok(())
-    }
-
     pub fn get_fn_name(&self) -> &'static str {
         match self {
             ServerEvent::OnComplete { .. } => "onComplete",
@@ -90,51 +73,5 @@ impl ServerEvent {
             ServerEvent::OnAnnouncement { .. } => "onAnnouncement",
             ServerEvent::OnCheckIn { .. } => "onCheckIn",
         }
-    }
-}
-
-pub struct EventHookHandler {
-    rx: mpsc::UnboundedReceiver<ServerEvent>,
-}
-
-impl EventHookHandler {
-    pub fn create() -> (Self, EventDispatcherService) {
-        // create message queue
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<ServerEvent>();
-
-        (Self { rx }, EventDispatcherService::new(tx))
-    }
-
-    /// Begin handling events sent over the channel
-    ///
-    /// Each event is handled in a separate thread. Panics
-    /// are recovered from gracefully.
-    pub async fn start(&mut self, state: Arc<AppState>) {
-        loop {
-            if let Some(event) = self.rx.recv().await {
-                trace!("received event");
-                let state = state.clone();
-                tokio::spawn(async move {
-                    if let Err(err) = event.handle(state).await {
-                        error!("error handling event: {:?}", err);
-                    };
-                });
-            };
-        }
-    }
-}
-
-pub struct EventDispatcherService {
-    tx: mpsc::UnboundedSender<ServerEvent>,
-}
-
-impl EventDispatcherService {
-    pub fn new(tx: mpsc::UnboundedSender<ServerEvent>) -> Self {
-        Self { tx }
-    }
-
-    pub fn dispatch(&self, event: ServerEvent) -> anyhow::Result<()> {
-        self.tx.send(event).context("Failed to transmit event")?;
-        Ok(())
     }
 }

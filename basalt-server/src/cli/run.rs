@@ -6,7 +6,7 @@ use rand::distributions::Distribution;
 use tracing::info;
 
 use basalt_server_lib::{
-    server::{self, hooks::events::EventHookHandler, AppState},
+    server::{self, hooks::handler::EventHookHandler, AppState},
     storage::SqliteLayer,
 };
 
