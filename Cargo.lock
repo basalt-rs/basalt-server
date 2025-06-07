@@ -601,7 +601,7 @@ checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
 [[package]]
 name = "bedrock"
 version = "0.1.0"
-source = "git+https://github.com/basalt-rs/bedrock.git?rev=6b9aae2#6b9aae2f2b0b6e7ea96df03d287bcadff2e2185d"
+source = "git+https://github.com/basalt-rs/bedrock.git?rev=058783c#058783c0713d056ad020b534f614d0496c9495cc"
 dependencies = [
  "comemo",
  "ecow",
@@ -624,6 +624,7 @@ dependencies = [
  "typst-kit",
  "typst-pdf",
  "typst-svg",
+ "url",
 ]
 
 [[package]]
