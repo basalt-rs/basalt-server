@@ -1,6 +1,6 @@
 use anyhow::Context;
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, task::JoinSet};
 use tracing::{error, trace};
 
 use super::events::ServerEvent;
@@ -11,11 +11,11 @@ pub struct EventHookHandler {
 }
 
 impl EventHookHandler {
-    pub fn create() -> (Self, EventDispatcherService) {
+    pub fn create() -> (Self, mpsc::UnboundedSender<ServerEvent>) {
         // create message queue
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<ServerEvent>();
 
-        (Self { rx }, EventDispatcherService::new(tx))
+        (Self { rx }, tx)
     }
 
     /// Begin handling events sent over the channel
@@ -47,17 +47,76 @@ impl EventHookHandler {
     }
 }
 
+pub struct EventWebhookHandler {
+    rx: mpsc::UnboundedReceiver<ServerEvent>,
+}
+
+impl EventWebhookHandler {
+    pub fn create() -> (Self, mpsc::UnboundedSender<ServerEvent>) {
+        // create message queue
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<ServerEvent>();
+
+        (Self { rx }, tx)
+    }
+
+    /// Begin handling events sent over the channel
+    ///
+    /// Each event is handled in a separate thread. Panics
+    /// are recovered from gracefully.
+    pub async fn start(&mut self, state: Arc<AppState>) {
+        loop {
+            if let Some(event) = self.rx.recv().await {
+                let webhooks = state.config.integrations.webhooks.clone();
+                webhooks
+                    .into_iter()
+                    .map(|webhook_url| {
+                        let client = reqwest::Client::new();
+                        let event = event.clone();
+                        async move {
+                            match client.post(webhook_url.clone()).json(&event).send().await {
+                                Ok(r) => trace!(
+                                    "Published event to {} with status {}",
+                                    webhook_url,
+                                    r.status()
+                                ),
+                                Err(e) => {
+                                    error!("Error publishing event to {}, {:?}", webhook_url, e)
+                                }
+                            }
+                        }
+                    })
+                    .collect::<JoinSet<()>>()
+                    .join_all()
+                    .await;
+            };
+        }
+    }
+}
+
+/// Responsible for dispatching WebHook events
 pub struct EventDispatcherService {
-    tx: mpsc::UnboundedSender<ServerEvent>,
+    hooks_tx: mpsc::UnboundedSender<ServerEvent>,
+    webhooks_tx: mpsc::UnboundedSender<ServerEvent>,
 }
 
 impl EventDispatcherService {
-    pub fn new(tx: mpsc::UnboundedSender<ServerEvent>) -> Self {
-        Self { tx }
+    pub fn new(
+        hooks_tx: mpsc::UnboundedSender<ServerEvent>,
+        webhooks_tx: mpsc::UnboundedSender<ServerEvent>,
+    ) -> Self {
+        Self {
+            hooks_tx,
+            webhooks_tx,
+        }
     }
 
     pub fn dispatch(&self, event: ServerEvent) -> anyhow::Result<()> {
-        self.tx.send(event).context("Failed to transmit event")?;
+        self.hooks_tx
+            .send(event.clone())
+            .context("Failed to transmit hook event")?;
+        self.webhooks_tx
+            .send(event)
+            .context("Failed to transmit webhook event")?;
         Ok(())
     }
 }
