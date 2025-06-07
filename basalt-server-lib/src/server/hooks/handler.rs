@@ -83,7 +83,6 @@ impl EventWebhookHandler {
                                     error!("Error publishing event to {}, {:?}", webhook_url, e)
                                 }
                             }
-                            ()
                         }
                     })
                     .collect::<JoinSet<()>>()
