@@ -40,7 +40,8 @@ name = "team2"
 password = "pwd1"
 
 [integrations]
-events = ["./samples/event-handlers.js"]
+event_handlers = "./samples/event-handlers.js"
+webhooks = "http://localhost:8081/events"
 
 # Specify information about the packet itself
 [packet]

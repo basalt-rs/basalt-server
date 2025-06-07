@@ -1,6 +1,6 @@
 use anyhow::Context;
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, task::JoinSet};
 use tracing::{error, trace};
 
 use super::events::ServerEvent;
@@ -25,6 +25,30 @@ impl EventHookHandler {
     pub async fn start(&mut self, state: Arc<AppState>) {
         loop {
             if let Some(event) = self.rx.recv().await {
+                let webhooks = state.config.integrations.webhooks.clone();
+                let hook_event = event.clone();
+                webhooks
+                    .into_iter()
+                    .map(|webhook_url| {
+                        let client = reqwest::Client::new();
+                        let event = hook_event.clone();
+                        async move {
+                            match client.post(webhook_url.clone()).json(&event).send().await {
+                                Ok(r) => trace!(
+                                    "Published event to {} with status {}",
+                                    webhook_url,
+                                    r.status()
+                                ),
+                                Err(e) => {
+                                    error!("Error publishing event to {}, {:?}", webhook_url, e)
+                                }
+                            }
+                            ()
+                        }
+                    })
+                    .collect::<JoinSet<()>>()
+                    .join_all()
+                    .await;
                 trace!("received event");
                 let state = state.clone();
                 tokio::spawn(async move {
