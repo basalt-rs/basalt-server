@@ -37,6 +37,7 @@ chrono = { version = "0.4.40", features = ["serde"] }
 rustyscript = { git = "https://github.com/rscarson/rustyscript.git", branch = "master", features = [
   "http",
 ] }
+reqwest = { version = "0.11.0", features = ["json"] }
 
 [dev-dependencies]
 async-tempfile = "0.6.0"

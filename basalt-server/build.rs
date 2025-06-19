@@ -5,7 +5,10 @@ use tokio::fs;
 use utoipa::OpenApi;
 
 use basalt_server_lib::{
-    server::{hooks::handler::EventHookHandler, AppState},
+    server::{
+        hooks::handler::{EventDispatcherService, EventHookHandler, EventWebhookHandler},
+        AppState,
+    },
     storage::SqliteLayer,
 };
 
@@ -63,7 +66,9 @@ pub async fn main() -> anyhow::Result<()> {
         .await
         .context("Failed to create sqlite layer")?;
 
-    let (_, hook_dispatcher) = EventHookHandler::create();
+    let (_, hooks_tx) = EventHookHandler::create();
+    let (_, webhooks_tx) = EventWebhookHandler::create();
+    let hook_dispatcher = EventDispatcherService::new(hooks_tx, webhooks_tx);
     let dummy_state = Arc::new(AppState::new(
         sqlite_layer,
         bedrock::Config::default(),
