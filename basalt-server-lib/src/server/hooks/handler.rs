@@ -66,30 +66,33 @@ impl EventWebhookHandler {
     /// Each event is handled in a separate thread. Panics
     /// are recovered from gracefully.
     pub async fn start(&mut self, state: Arc<AppState>) {
+        // Create a single client instance to reuse across events
+        let client = reqwest::Client::new();
+
         loop {
             if let Some(event) = self.rx.recv().await {
-                let webhooks = state.config.integrations.webhooks.clone();
-                webhooks
-                    .into_iter()
-                    .map(|webhook_url| {
-                        let client = reqwest::Client::new();
-                        let event = event.clone();
-                        async move {
-                            match client.post(webhook_url.clone()).json(&event).send().await {
-                                Ok(r) => trace!(
-                                    "Published event to {} with status {}",
-                                    webhook_url,
-                                    r.status()
-                                ),
-                                Err(e) => {
-                                    error!("Error publishing event to {}, {:?}", webhook_url, e)
-                                }
+                let webhooks = &state.config.integrations.webhooks;
+                let mut join_set = JoinSet::new();
+
+                for webhook_url in webhooks {
+                    let client = client.clone();
+                    let event = event.clone();
+                    let url = webhook_url.clone();
+                    let url_str = url.to_string();
+
+                    join_set.spawn(async move {
+                        match client.post(url).json(&event).send().await {
+                            Ok(r) => {
+                                trace!("Published event to {} with status {}", url_str, r.status())
+                            }
+                            Err(e) => {
+                                error!("Error publishing event to {}, {:?}", url_str, e)
                             }
                         }
-                    })
-                    .collect::<JoinSet<()>>()
-                    .join_all()
-                    .await;
+                    });
+                }
+
+                join_set.join_all().await;
             };
         }
     }
