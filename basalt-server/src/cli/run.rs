@@ -6,11 +6,8 @@ use rand::distributions::Distribution;
 use tracing::info;
 
 use basalt_server_lib::{
-    server::{
-        self,
-        hooks::handler::{EventDispatcherService, EventHookHandler, EventWebhookHandler},
-        AppState,
-    },
+    init_state_with_hooks,
+    server::{self, hooks::handler::EventDispatcherService, AppState},
     storage::SqliteLayer,
 };
 
@@ -83,27 +80,15 @@ pub async fn handle(args: RunArgs) -> anyhow::Result<()> {
     info!(?addr, "Serving via HTTP");
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    let (mut hook_handler, hooks_tx) = EventHookHandler::create();
-    let (mut webhook_handler, webhooks_tx) = EventWebhookHandler::create();
-    let hook_dispatcher = EventDispatcherService::new(hooks_tx, webhooks_tx);
-    let app_state = Arc::new(AppState::new(db, config, hook_dispatcher, args.web_dir));
-    let hook_task = tokio::spawn({
-        let app_state = app_state.clone();
-        async move { hook_handler.start(app_state).await }
-    });
-    let webhook_task = tokio::spawn({
-        let app_state = app_state.clone();
-        async move { webhook_handler.start(app_state).await }
-    });
+    // expands to create hooks if needed and provide to app_state's dispatcher service
+    let (app_state, jset) = init_state_with_hooks!(db, config, args.web_dir);
     axum::serve(
         listener,
         server::router(app_state).into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await?;
-    hook_task.await.context("Failed to execute hook handler")?;
-    webhook_task
-        .await
-        .context("Failed to execute webhook handler")?;
+    // wait for any dispatcher tasks to complete
+    jset.join_all().await;
 
     Ok(())
 }

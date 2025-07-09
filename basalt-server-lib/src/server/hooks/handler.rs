@@ -1,10 +1,11 @@
 use anyhow::Context;
 use std::sync::Arc;
 use tokio::{sync::mpsc, task::JoinSet};
-use tracing::{error, trace};
+use tracing::{error, info, trace};
 
 use super::events::ServerEvent;
-use crate::server::{hooks::evaluator::create_evaluation_context, AppState};
+use crate::server::hooks::evaluator::create_evaluation_context;
+use crate::server::AppState;
 
 pub struct EventHookHandler {
     rx: mpsc::UnboundedReceiver<ServerEvent>,
@@ -95,25 +96,33 @@ impl EventWebhookHandler {
 
 /// Responsible for dispatching WebHook events
 pub struct EventDispatcherService {
+    #[cfg(feature = "scripting")]
     hooks_tx: mpsc::UnboundedSender<ServerEvent>,
+    #[cfg(feature = "webhooks")]
     webhooks_tx: mpsc::UnboundedSender<ServerEvent>,
 }
 
+#[allow(clippy::new_without_default)]
 impl EventDispatcherService {
     pub fn new(
-        hooks_tx: mpsc::UnboundedSender<ServerEvent>,
-        webhooks_tx: mpsc::UnboundedSender<ServerEvent>,
+        #[cfg(feature = "scripting")] hooks_tx: mpsc::UnboundedSender<ServerEvent>,
+        #[cfg(feature = "webhooks")] webhooks_tx: mpsc::UnboundedSender<ServerEvent>,
     ) -> Self {
         Self {
+            #[cfg(feature = "scripting")]
             hooks_tx,
+            #[cfg(feature = "webhooks")]
             webhooks_tx,
         }
     }
 
     pub fn dispatch(&self, event: ServerEvent) -> anyhow::Result<()> {
+        info!("Event dispatched: {:?}", event);
+        #[cfg(feature = "scripting")]
         self.hooks_tx
             .send(event.clone())
             .context("Failed to transmit hook event")?;
+        #[cfg(feature = "webhooks")]
         self.webhooks_tx
             .send(event)
             .context("Failed to transmit webhook event")?;

@@ -6,6 +6,9 @@ rust-version.workspace = true
 
 [features]
 doc-gen = []
+webhooks = []
+scripting = []
+all = ["webhooks", "scripting"]
 
 [dependencies]
 anyhow.workspace = true
@@ -35,7 +38,7 @@ utoipa-axum.workspace = true
 utoipa.workspace = true
 chrono = { version = "0.4.40", features = ["serde"] }
 rustyscript = { git = "https://github.com/rscarson/rustyscript.git", branch = "master", features = [
-  "http",
+    "http",
 ] }
 reqwest = { version = "0.11.0", features = ["json"] }
 

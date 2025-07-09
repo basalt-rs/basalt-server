@@ -7,6 +7,9 @@ rust-version.workspace = true
 [features]
 default = ["doc-gen"]
 doc-gen = []
+webhooks = ["basalt-server-lib/webhooks"]
+scripting = ["basalt-server-lib/scripting"]
+all = ["webhooks", "scripting"]
 
 [dependencies]
 basalt-server-lib = { path = "../basalt-server-lib" }
