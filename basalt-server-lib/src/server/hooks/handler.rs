@@ -1,21 +1,23 @@
+#[cfg(feature = "scripting")]
 use anyhow::Context;
 use std::sync::Arc;
-use tokio::sync::mpsc;
-use tracing::{error, trace};
+use tokio::{sync::mpsc, task::JoinSet};
+use tracing::{error, info, trace};
 
 use super::events::ServerEvent;
-use crate::server::{hooks::evaluator::create_evaluation_context, AppState};
+use crate::server::hooks::evaluator::create_evaluation_context;
+use crate::server::AppState;
 
 pub struct EventHookHandler {
     rx: mpsc::UnboundedReceiver<ServerEvent>,
 }
 
 impl EventHookHandler {
-    pub fn create() -> (Self, EventDispatcherService) {
+    pub fn create() -> (Self, mpsc::UnboundedSender<ServerEvent>) {
         // create message queue
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<ServerEvent>();
 
-        (Self { rx }, EventDispatcherService::new(tx))
+        (Self { rx }, tx)
     }
 
     /// Begin handling events sent over the channel
@@ -47,17 +49,87 @@ impl EventHookHandler {
     }
 }
 
-pub struct EventDispatcherService {
-    tx: mpsc::UnboundedSender<ServerEvent>,
+pub struct EventWebhookHandler {
+    rx: mpsc::UnboundedReceiver<ServerEvent>,
 }
 
+impl EventWebhookHandler {
+    pub fn create() -> (Self, mpsc::UnboundedSender<ServerEvent>) {
+        // create message queue
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<ServerEvent>();
+
+        (Self { rx }, tx)
+    }
+
+    /// Begin handling events sent over the channel
+    ///
+    /// Each event is handled in a separate thread. Panics
+    /// are recovered from gracefully.
+    pub async fn start(&mut self, state: Arc<AppState>) {
+        // Create a single client instance to reuse across events
+        let client = reqwest::Client::new();
+
+        loop {
+            if let Some(event) = self.rx.recv().await {
+                let webhooks = &state.config.integrations.webhooks;
+                let mut join_set = JoinSet::new();
+
+                for webhook_url in webhooks {
+                    let client = client.clone();
+                    let event = event.clone();
+                    let url = webhook_url.clone();
+                    let url_str = url.to_string();
+
+                    join_set.spawn(async move {
+                        match client.post(url).json(&event).send().await {
+                            Ok(r) => {
+                                trace!("Published event to {} with status {}", url_str, r.status())
+                            }
+                            Err(e) => {
+                                error!("Error publishing event to {}, {:?}", url_str, e)
+                            }
+                        }
+                    });
+                }
+
+                join_set.join_all().await;
+            };
+        }
+    }
+}
+
+/// Responsible for dispatching WebHook events
+pub struct EventDispatcherService {
+    #[cfg(feature = "scripting")]
+    hooks_tx: mpsc::UnboundedSender<ServerEvent>,
+    #[cfg(feature = "webhooks")]
+    webhooks_tx: mpsc::UnboundedSender<ServerEvent>,
+}
+
+#[allow(clippy::new_without_default)]
 impl EventDispatcherService {
-    pub fn new(tx: mpsc::UnboundedSender<ServerEvent>) -> Self {
-        Self { tx }
+    pub fn new(
+        #[cfg(feature = "scripting")] hooks_tx: mpsc::UnboundedSender<ServerEvent>,
+        #[cfg(feature = "webhooks")] webhooks_tx: mpsc::UnboundedSender<ServerEvent>,
+    ) -> Self {
+        Self {
+            #[cfg(feature = "scripting")]
+            hooks_tx,
+            #[cfg(feature = "webhooks")]
+            webhooks_tx,
+        }
     }
 
     pub fn dispatch(&self, event: ServerEvent) -> anyhow::Result<()> {
-        self.tx.send(event).context("Failed to transmit event")?;
+        info!("Event dispatched: {:?}", event);
+        #[cfg(feature = "scripting")]
+        self.hooks_tx
+            .send(event.clone())
+            .context("Failed to transmit hook event")?;
+        #[cfg(feature = "webhooks")]
+        self.webhooks_tx
+            .send(event)
+            .context("Failed to transmit webhook event")?;
         Ok(())
     }
 }

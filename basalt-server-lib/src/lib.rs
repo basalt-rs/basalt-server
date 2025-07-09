@@ -1,5 +1,6 @@
-mod extractors;
-mod repositories;
+pub mod extractors;
+pub mod macros;
+pub mod repositories;
 pub mod server;
 mod services;
 pub mod storage;
