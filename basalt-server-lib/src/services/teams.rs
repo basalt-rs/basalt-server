@@ -69,11 +69,13 @@ mod tests {
 
     use crate::{
         repositories::users::get_user_by_username,
-        server::hooks::handler::{EventDispatcherService, EventHookHandler},
+        server::hooks::handler::EventDispatcherService,
         testing::{mock_db, SAMPLE_1},
     };
 
     #[cfg(feature = "scripting")]
+    use crate::server::hooks::handler::EventHookHandler;
+    #[cfg(feature = "webhooks")]
     use crate::server::hooks::handler::EventWebhookHandler;
 
     use super::*;
