@@ -22,7 +22,7 @@ concurrency:
 name: check
 jobs:
     fmt:
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-2vcpu-ubuntu-2404
         name: stable / fmt
         steps:
             - uses: actions/checkout@v4
@@ -35,7 +35,7 @@ jobs:
             - name: cargo fmt --check
               run: cargo fmt --check
     clippy:
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-4vcpu-ubuntu-2404
         name: ${{ matrix.toolchain }} / clippy
         permissions:
             contents: read
@@ -64,7 +64,7 @@ jobs:
                   reporter: "github-pr-check"
                   github_token: ${{ secrets.GITHUB_TOKEN }}
     dependencies:
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-2vcpu-ubuntu-2404
         name: stable / machete
         permissions:
             contents: read
@@ -79,7 +79,7 @@ jobs:
               uses: bnjbvr/cargo-machete@main
     msrv:
         # check that we can build using the minimal rust version that is specified by this crate
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-2vcpu-ubuntu-2404
         # we use a matrix here just because env can't be used in job names
         # https://docs.github.com/en/actions/learn-github-actions/contexts#context-availability
         strategy:
@@ -102,7 +102,7 @@ jobs:
               run: cargo check
 
     test:
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-4vcpu-ubuntu-2404
         strategy:
             matrix:
                 # Get early warning of new lints which are regularly introduced in beta channels.
