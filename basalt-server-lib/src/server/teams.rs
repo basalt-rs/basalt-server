@@ -61,10 +61,13 @@ impl TeamManagement {
         ids.into_iter().for_each(|id| self.insert(id));
     }
 
-    pub fn check_in(&self, id: &UserId) {
+    pub fn check_in(&self, id: &UserId) -> bool {
+        let mut effective = false;
         if let Some(mut t) = self.teams.get_mut(id) {
+            effective = !t.checked_in;
             t.check();
         }
+        effective
     }
 
     pub fn disconnect(&self, id: &UserId) {
@@ -114,7 +117,8 @@ mod tests {
         assert!(!team.info.disconnected);
         assert!(team.info.last_seen.is_none());
 
-        manager.check_in(&team1);
+        let result = manager.check_in(&team1);
+        assert!(result);
 
         let team = manager.get_team(&team1).unwrap();
         let team_name = team.id.clone();
@@ -122,6 +126,9 @@ mod tests {
         assert!(team.info.checked_in);
         assert!(!team.info.disconnected);
         assert!(team.info.last_seen.is_some());
+
+        let result = manager.check_in(&userify(TEST_TEAM_1));
+        assert!(!result);
     }
 
     #[test]

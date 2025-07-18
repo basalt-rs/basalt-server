@@ -14,12 +14,6 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 
 #[derive(Serialize, ToSchema, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct LeaderBoard {
-    leadboard_information: Vec<TeamProgression>,
-}
-
-#[derive(Serialize, ToSchema, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct TeamProgression {
     user: User,
     score: f64,

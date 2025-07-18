@@ -3,8 +3,10 @@ use axum::{extract::State, Json};
 use bedrock::{
     language::{Language, LanguageSet, Syntax},
     packet::{Problem, Test},
+    Config,
 };
 use std::sync::Arc;
+use tokio::sync::OnceCell;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 #[derive(serde::Serialize, utoipa::ToSchema)]
@@ -79,30 +81,51 @@ impl QuestionResponse {
     }
 }
 
+// Questions with test cases hidden
+static QUESTIONS_VISIBLE: OnceCell<Vec<QuestionResponse>> = OnceCell::const_new();
+// Questions with all test cases
+static QUESTIONS_FULL: OnceCell<Vec<QuestionResponse>> = OnceCell::const_new();
+
+pub async fn get_or_init_questions(
+    config: &Config,
+    show_hidden: bool,
+) -> &'static [QuestionResponse] {
+    let questions = if show_hidden {
+        &QUESTIONS_FULL
+    } else {
+        &QUESTIONS_VISIBLE
+    };
+
+    questions
+        .get_or_init(|| async {
+            config
+                .packet
+                .problems
+                .iter()
+                .map(|x| {
+                    QuestionResponse::from(
+                        x,
+                        &config.languages,
+                        match &config.game {
+                            bedrock::Game::Points(x) => Some(x.question_point_value),
+                            bedrock::Game::Race(_) => None,
+                        },
+                        show_hidden,
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .await
+}
+
 #[axum::debug_handler]
-#[utoipa::path(get, tag = "questions", path = "/", responses((status = OK, body = Vec<QuestionResponse>, content_type = "application/json")))]
+#[utoipa::path(get, tag = "questions", path = "/", responses((status = OK, body = &[QuestionResponse], content_type = "application/json")))]
 pub async fn get_all(
     OptionalUser(user): OptionalUser,
     State(state): State<Arc<AppState>>,
-) -> Json<Vec<QuestionResponse>> {
+) -> Json<&'static [QuestionResponse]> {
     let show_hidden = user.is_some_and(|u| matches!(u.role, Role::Host));
-    let questions = state
-        .config
-        .packet
-        .problems
-        .iter()
-        .map(|x| {
-            QuestionResponse::from(
-                x,
-                &state.config.languages,
-                match &state.config.game {
-                    bedrock::Game::Points(x) => Some(x.question_point_value),
-                    bedrock::Game::Race(_) => None,
-                },
-                show_hidden,
-            )
-        })
-        .collect();
+    let questions = get_or_init_questions(&state.config, show_hidden).await;
 
     Json(questions)
 }
@@ -120,23 +143,12 @@ pub async fn get_specific_question(
     State(state): State<Arc<AppState>>,
     OptionalUser(user): OptionalUser,
     axum::extract::Path(question): axum::extract::Path<usize>,
-) -> Result<Json<QuestionResponse>, axum::http::StatusCode> {
-    state
-        .config
-        .packet
-        .problems
+) -> Result<Json<&'static QuestionResponse>, axum::http::StatusCode> {
+    let show_hidden = user.is_some_and(|u| matches!(u.role, Role::Host));
+    get_or_init_questions(&state.config, show_hidden)
+        .await
         .get(question)
-        .map(|x| {
-            Json(QuestionResponse::from(
-                x,
-                &state.config.languages,
-                match &state.config.game {
-                    bedrock::Game::Points(x) => Some(x.question_point_value),
-                    bedrock::Game::Race(_) => None,
-                },
-                user.is_some_and(|u| matches!(u.role, Role::Host)),
-            ))
-        })
+        .map(Json)
         .ok_or(axum::http::StatusCode::NOT_FOUND)
 }
 

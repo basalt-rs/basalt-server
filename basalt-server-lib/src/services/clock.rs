@@ -2,12 +2,12 @@ use std::{sync::Arc, time::Duration};
 
 use axum::{extract::State, http::StatusCode, Json};
 use bedrock::{Game, PointsSettings};
-use tracing::trace;
+use tracing::{error, trace};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
     extractors::auth::{HostUser, OptionalUser},
-    server::AppState,
+    server::{hooks::events::ServerEvent, AppState},
     services::ws::{Broadcast, WebSocketSend},
 };
 
@@ -36,7 +36,7 @@ struct ClockStatusResponse {
 )]
 async fn patch_clock(
     State(state): State<Arc<AppState>>,
-    _: HostUser,
+    auth: HostUser,
     Json(update): Json<UpdateClockRequest>,
 ) -> Result<Json<ClockStatusResponse>, StatusCode> {
     let time_limit = match &state.config.game {
@@ -52,6 +52,14 @@ async fn patch_clock(
         match update {
             UpdateClockRequest::PauseUpdate { is_paused: true } => {
                 let affected = clock.pause();
+                if affected {
+                    if let Err(err) = state.evh.dispatch(ServerEvent::OnPause {
+                        paused_by: auth.user.username.clone(),
+                        time: chrono::offset::Local::now().to_utc(),
+                    }) {
+                        error!("Failed to dispatch pause event: {:?}", err);
+                    };
+                }
                 (
                     ClockStatusResponse {
                         is_paused: true,
@@ -66,6 +74,14 @@ async fn patch_clock(
             }
             UpdateClockRequest::PauseUpdate { is_paused: false } => {
                 let affected = clock.unpause();
+                if affected {
+                    if let Err(err) = state.evh.dispatch(ServerEvent::OnUnpause {
+                        unpaused_by: auth.user.username.clone(),
+                        time: chrono::offset::Local::now().to_utc(),
+                    }) {
+                        error!("Failed to dispatch pause event: {:?}", err);
+                    };
+                }
                 let time_left_in_seconds = current_time.time_left(time_limit).as_secs();
                 (
                     ClockStatusResponse {

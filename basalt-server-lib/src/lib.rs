@@ -1,8 +1,9 @@
-pub mod extractors;
-pub mod repositories;
+mod extractors;
+mod repositories;
 pub mod server;
-pub mod services;
+mod services;
 pub mod storage;
+mod utils;
 
 #[cfg(test)]
 mod testing;
