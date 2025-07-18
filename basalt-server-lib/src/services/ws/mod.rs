@@ -54,7 +54,9 @@ pub enum Broadcast {
         name: String,
         display_name: Option<String>,
     },
-    TeamUpdate(Vec<TeamUpdate>),
+    TeamUpdate {
+        teams: Vec<TeamUpdate>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -215,13 +217,15 @@ impl WebSocketRecv<'_> {
             .context("getting user score")?;
 
         state.websocket.broadcast(WebSocketSend::Broadcast {
-            broadcast: Broadcast::TeamUpdate(vec![TeamUpdate {
-                id: user.id.clone(),
-                name: user.username.clone(),
-                display_name: user.display_name.clone(),
-                new_score,
-                new_states: states,
-            }]),
+            broadcast: Broadcast::TeamUpdate {
+                teams: vec![TeamUpdate {
+                    id: user.id.clone(),
+                    name: user.username.clone(),
+                    display_name: user.display_name.clone(),
+                    new_score,
+                    new_states: states,
+                }],
+            },
         });
         Ok(())
     }

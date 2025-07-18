@@ -8,7 +8,6 @@ use axum::{
 };
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use sqlx::Acquire;
 use tokio::task::JoinSet;
 use tracing::{error, info, trace};
 use utoipa::ToSchema;
@@ -144,10 +143,7 @@ async fn add_team(
     for new in new.to_vec() {
         info!(creator = %creator.username, new = %new.username, "Creating new user");
         let user = repositories::users::create_user(
-            txn.acquire().await.map_err(|e| {
-                error!("Error acquiring transaction: {:?}", e);
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(None))
-            })?,
+            &mut *txn,
             &new.username,
             new.display_name.as_deref(),
             new.password,
@@ -163,7 +159,7 @@ async fn add_team(
                     conflicts.push(new.username);
                     continue;
                 }
-                repositories::users::CreateUserError::Other(_) => {
+                repositories::users::CreateUserError::Other(e) => {
                     error!("Error creating user: {:?}", e);
                     return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(None)));
                 }
@@ -187,17 +183,23 @@ async fn add_team(
         .team_manager
         .insert_many(users.iter().map(|u| u.id.clone()));
 
-    for user in &users {
-        state.websocket.broadcast(WebSocketSend::Broadcast {
-            broadcast: Broadcast::TeamUpdate(vec![TeamUpdate {
-                id: user.id.clone(),
-                name: user.username.clone(),
-                display_name: user.display_name.clone(),
-                new_score: 0.,
-                new_states: vec![QuestionState::NotAttempted; state.config.packet.problems.len()],
-            }]),
-        });
-    }
+    state.websocket.broadcast(WebSocketSend::Broadcast {
+        broadcast: Broadcast::TeamUpdate {
+            teams: users
+                .iter()
+                .map(|user| TeamUpdate {
+                    id: user.id.clone(),
+                    name: user.username.clone(),
+                    display_name: user.display_name.clone(),
+                    new_score: 0.,
+                    new_states: vec![
+                        QuestionState::NotAttempted;
+                        state.config.packet.problems.len()
+                    ],
+                })
+                .collect(),
+        },
+    });
 
     Ok(Json(users.into()))
 }
