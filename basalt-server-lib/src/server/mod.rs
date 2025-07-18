@@ -14,7 +14,11 @@ pub mod hooks;
 pub mod teams;
 pub mod websocket;
 
-use crate::{services, storage::SqliteLayer};
+use crate::{
+    repositories::{self, users::Role},
+    services,
+    storage::SqliteLayer,
+};
 
 pub struct AppState {
     pub db: RwLock<SqliteLayer>,
@@ -39,13 +43,21 @@ impl AppState {
             db: RwLock::new(db),
             web_dir,
             websocket: Default::default(),
-            team_manager: TeamManagement::from_config(&config),
+            team_manager: Default::default(),
             active_tests: Default::default(),
             active_submissions: Default::default(),
             evh,
             config,
             clock: Default::default(),
         }
+    }
+
+    pub async fn init(&mut self) -> anyhow::Result<()> {
+        let sql = self.db.read().await;
+        let users = repositories::users::get_users_with_role(&sql.db, Role::Competitor).await?;
+        self.team_manager
+            .insert_many(users.into_iter().map(|u| u.id));
+        Ok(())
     }
 }
 

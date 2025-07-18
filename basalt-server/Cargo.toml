@@ -8,6 +8,9 @@ rust-version.workspace = true
 default = ["doc-gen"]
 doc-gen = []
 
+[lints.clippy]
+uninlined_format_args = "allow"
+
 [dependencies]
 basalt-server-lib = { path = "../basalt-server-lib" }
 anyhow.workspace = true

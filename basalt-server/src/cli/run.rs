@@ -79,15 +79,20 @@ pub async fn handle(args: RunArgs) -> anyhow::Result<()> {
     info!(?addr, "Serving via HTTP");
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
+
     let (mut hook_handler, hook_dispatcher) = EventHookHandler::create();
-    let app_state = Arc::new(AppState::new(db, config, hook_dispatcher, args.web_dir));
+    let mut state = AppState::new(db, config, hook_dispatcher, args.web_dir);
+    state.init().await?;
+    let state = Arc::new(state);
+
     let hook_task = tokio::spawn({
-        let app_state = app_state.clone();
-        async move { hook_handler.start(app_state).await }
+        let state = Arc::clone(&state);
+        async move { hook_handler.start(state).await }
     });
+
     axum::serve(
         listener,
-        server::router(app_state).into_make_service_with_connect_info::<SocketAddr>(),
+        server::router(state).into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await?;
     hook_task.await.context("Failed to execute hook handler")?;

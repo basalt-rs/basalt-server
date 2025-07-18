@@ -1,4 +1,4 @@
-use crate::{extractors::auth::OptionalAuthUser, repositories::users::Role, server::AppState};
+use crate::{extractors::auth::OptionalUser, repositories::users::Role, server::AppState};
 use axum::{extract::State, Json};
 use bedrock::{
     language::{Language, LanguageSet, Syntax},
@@ -121,10 +121,10 @@ pub async fn get_or_init_questions(
 #[axum::debug_handler]
 #[utoipa::path(get, tag = "questions", path = "/", responses((status = OK, body = &[QuestionResponse], content_type = "application/json")))]
 pub async fn get_all(
-    OptionalAuthUser(user): OptionalAuthUser,
+    OptionalUser(user): OptionalUser,
     State(state): State<Arc<AppState>>,
 ) -> Json<&'static [QuestionResponse]> {
-    let show_hidden = user.is_some_and(|u| matches!(u.user.role, Role::Host));
+    let show_hidden = user.is_some_and(|u| matches!(u.role, Role::Host));
     let questions = get_or_init_questions(&state.config, show_hidden).await;
 
     Json(questions)
@@ -141,10 +141,10 @@ pub async fn get_all(
 )]
 pub async fn get_specific_question(
     State(state): State<Arc<AppState>>,
-    OptionalAuthUser(user): OptionalAuthUser,
+    OptionalUser(user): OptionalUser,
     axum::extract::Path(question): axum::extract::Path<usize>,
 ) -> Result<Json<&'static QuestionResponse>, axum::http::StatusCode> {
-    let show_hidden = user.is_some_and(|u| matches!(u.user.role, Role::Host));
+    let show_hidden = user.is_some_and(|u| matches!(u.role, Role::Host));
     get_or_init_questions(&state.config, show_hidden)
         .await
         .get(question)
