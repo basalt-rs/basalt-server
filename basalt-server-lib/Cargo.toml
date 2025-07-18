@@ -7,6 +7,9 @@ rust-version.workspace = true
 [features]
 doc-gen = []
 
+[lints.clippy]
+uninlined_format_args = "allow"
+
 [dependencies]
 anyhow.workspace = true
 argon2.workspace = true

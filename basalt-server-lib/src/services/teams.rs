@@ -92,7 +92,7 @@ pub enum OneOrMany<T> {
 }
 
 impl<T> OneOrMany<T> {
-    pub fn to_vec(self) -> Vec<T> {
+    pub fn into_vec(self) -> Vec<T> {
         match self {
             OneOrMany::One(one) => vec![one],
             OneOrMany::Many(many) => many,
@@ -140,7 +140,7 @@ async fn add_team(
 
     let mut users = Vec::with_capacity(new.len());
     let mut conflicts = Vec::new();
-    for new in new.to_vec() {
+    for new in new.into_vec() {
         info!(creator = %creator.username, new = %new.username, "Creating new user");
         let user = repositories::users::create_user(
             &mut *txn,
