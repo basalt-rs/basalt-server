@@ -70,7 +70,7 @@ pub async fn new(
                     broadcast: super::ws::Broadcast::NewAnnouncement(new.clone()),
                 });
             if let Err(err) = state.evh.dispatch(ServerEvent::OnAnnouncement {
-                announcer: user.username.clone(),
+                announcer: user.id.clone(),
                 announcement: message,
                 time: utils::utc_now(),
             }) {

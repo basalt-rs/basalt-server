@@ -63,9 +63,9 @@ async fn login(
     drop(sql);
 
     if state.team_manager.check_in(&user.id) {
-        trace!("checking in user: {}", &user.username.0);
+        trace!("checking in user: {}", &user.username);
         if let Err(err) = state.evh.dispatch(ServerEvent::OnCheckIn {
-            name: user.username.clone(),
+            id: user.id.clone(),
             time: Local::now().to_utc(),
         }) {
             error!("error occurred dispatching event hook: {}", err.to_string());

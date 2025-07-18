@@ -321,7 +321,7 @@ mod tests {
         let cfg = Config::from_str(SAMPLE_1, "Single.toml".into()).unwrap();
         sql.ingest(&cfg).await.unwrap();
 
-        let user1 = get_user_by_username(&sql, "team1").await.unwrap();
+        let user1 = get_user_by_username(&sql.db, "team1").await.unwrap();
 
         crate::testing::submissions_repositories::dummy_submission(
             &sql.db,

@@ -9,8 +9,6 @@ use sqlx::prelude::FromRow;
 use sqlx::SqliteExecutor;
 use utoipa::ToSchema;
 
-use crate::storage::SqliteLayer;
-
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[repr(i32)]
 #[serde(rename_all = "kebab-case")]
@@ -104,13 +102,14 @@ pub enum GetUserError {
     },
 }
 
+#[cfg(test)]
 pub async fn get_user_by_username(
-    sql: &SqliteLayer,
+    db: impl SqliteExecutor<'_>,
     name: impl AsRef<str>,
 ) -> Result<User, GetUserError> {
     let name = name.as_ref();
     sqlx::query_as!(User, "SELECT * from users WHERE username = $1", name)
-        .fetch_optional(&sql.db)
+        .fetch_optional(db)
         .await
         .map_err(|e| GetUserError::QueryError(e.to_string()))?
         .ok_or(GetUserError::UserNotFound {
@@ -314,7 +313,7 @@ mod tests {
             Role::Competitor,
         )
         .await;
-        let user = get_user_by_username(&sql, "awesome_user")
+        let user = get_user_by_username(&sql.db, "awesome_user")
             .await
             .expect("Failed to find user");
         assert_eq!(user.username, dummy_user.username);
@@ -357,7 +356,7 @@ mod tests {
             Role::Competitor,
         )
         .await;
-        let user = get_user_by_username(&sql, "awesome_user")
+        let user = get_user_by_username(&sql.db, "awesome_user")
             .await
             .expect("Failed to find user");
         assert_eq!(user.username, dummy_user.username);

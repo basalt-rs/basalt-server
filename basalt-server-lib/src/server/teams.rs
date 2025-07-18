@@ -127,7 +127,7 @@ mod tests {
         assert!(!team.info.disconnected);
         assert!(team.info.last_seen.is_some());
 
-        let result = manager.check_in(&userify(TEST_TEAM_1));
+        let result = manager.check_in(&team1);
         assert!(!result);
     }
 

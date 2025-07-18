@@ -548,7 +548,7 @@ impl WebSocketRecv<'_> {
         };
 
         if let Err(err) = state.evh.dispatch(ServerEvent::OnSubmissionEvaluation {
-            name: user.username.clone(),
+            id: user.id.clone(),
             question_idx: problem_index as u32,
             question_text: problem.title.clone(),
             test_results,
