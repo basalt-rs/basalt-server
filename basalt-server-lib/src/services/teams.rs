@@ -69,7 +69,6 @@ mod tests {
 
     use crate::{
         repositories::users::get_user_by_username,
-        server::hooks::handler::EventDispatcherService,
         testing::{mock_db, SAMPLE_1},
     };
 
@@ -103,17 +102,7 @@ mod tests {
         )
         .await;
 
-        #[cfg(feature = "scripting")]
-        let (_, hooks_tx) = EventHookHandler::create();
-        #[cfg(feature = "webhooks")]
-        let (_, webhooks_tx) = EventWebhookHandler::create();
-        let hook_dispatcher = EventDispatcherService::new(
-            #[cfg(feature = "scripting")]
-            hooks_tx,
-            #[cfg(feature = "webhooks")]
-            webhooks_tx,
-        );
-        let appstate = Arc::new(AppState::new(sql, cfg, hook_dispatcher, None));
+        let appstate = Arc::new(AppState::new(sql, cfg, Vec::new(), None));
 
         let teams = get_teams(State(appstate)).await.unwrap().0 .0;
         assert_eq!(

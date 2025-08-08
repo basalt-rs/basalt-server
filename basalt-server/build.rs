@@ -4,14 +4,7 @@ use anyhow::Context;
 use tokio::fs;
 use utoipa::OpenApi;
 
-#[cfg(feature = "scripting")]
-use basalt_server_lib::server::hooks::handler::EventHookHandler;
-#[cfg(feature = "webhooks")]
-use basalt_server_lib::server::hooks::handler::EventWebhookHandler;
-use basalt_server_lib::{
-    server::{hooks::handler::EventDispatcherService, AppState},
-    storage::SqliteLayer,
-};
+use basalt_server_lib::{server::AppState, storage::SqliteLayer};
 
 const SPEC_PATH: &str = "../openapi.yaml";
 
@@ -67,20 +60,10 @@ pub async fn main() -> anyhow::Result<()> {
         .await
         .context("Failed to create sqlite layer")?;
 
-    #[cfg(feature = "scripting")]
-    let (_, hooks_tx) = EventHookHandler::create();
-    #[cfg(feature = "webhooks")]
-    let (_, webhooks_tx) = EventWebhookHandler::create();
-    let hook_dispatcher = EventDispatcherService::new(
-        #[cfg(feature = "scripting")]
-        hooks_tx,
-        #[cfg(feature = "webhooks")]
-        webhooks_tx,
-    );
     let dummy_state = Arc::new(AppState::new(
         sqlite_layer,
         bedrock::Config::default(),
-        hook_dispatcher,
+        Vec::new(),
         None,
     ));
     let router = basalt_server_lib::server::doc_router(dummy_state);
