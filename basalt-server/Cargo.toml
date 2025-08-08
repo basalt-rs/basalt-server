@@ -23,7 +23,9 @@ tracing-subscriber.workspace = true
 tracing.workspace = true
 
 [build-dependencies]
-basalt-server-lib = { path = "../basalt-server-lib", features = ["doc-gen"] }
+basalt-server-lib = { path = "../basalt-server-lib", features = [
+    "doc-gen",
+], default-features = false }
 anyhow.workspace = true
 async-tempfile.workspace = true
 bedrock.workspace = true
