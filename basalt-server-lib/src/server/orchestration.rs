@@ -16,12 +16,12 @@ pub fn init_state_with_hooks(
 ) -> (Arc<AppState>, JoinSet<()>) {
     let mut dispatchers: Vec<UnboundedSender<(ServerEvent, Arc<AppState>)>> = Vec::new();
     #[cfg(feature = "scripting")]
-    let (mut hook_handler, hooks_tx) = crate::server::hooks::handler::EventHookHandler::create();
+    let (mut hook_handler, hooks_tx) = crate::server::hooks::handlers::EventHookHandler::create();
     #[cfg(feature = "scripting")]
     dispatchers.push(hooks_tx);
     #[cfg(feature = "webhooks")]
     let (mut webhook_handler, webhooks_tx) =
-        crate::server::hooks::handler::EventWebhookHandler::create();
+        crate::server::hooks::webhooks::EventWebhookHandler::create();
     #[cfg(feature = "webhooks")]
     dispatchers.push(webhooks_tx);
 

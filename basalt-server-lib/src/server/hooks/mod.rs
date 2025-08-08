@@ -1,3 +1,5 @@
-mod evaluator;
 pub mod events;
-pub mod handler;
+#[cfg(feature = "scripting")]
+pub mod handlers;
+#[cfg(feature = "webhooks")]
+pub mod webhooks;

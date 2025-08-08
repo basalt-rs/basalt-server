@@ -72,11 +72,6 @@ mod tests {
         testing::{mock_db, SAMPLE_1},
     };
 
-    #[cfg(feature = "scripting")]
-    use crate::server::hooks::handler::EventHookHandler;
-    #[cfg(feature = "webhooks")]
-    use crate::server::hooks::handler::EventWebhookHandler;
-
     use super::*;
     #[tokio::test]
     async fn get_teams_works() {
