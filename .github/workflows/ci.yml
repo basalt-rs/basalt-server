@@ -100,7 +100,7 @@ jobs:
               run: cargo check
 
     test:
-        runs-on: blacksmith-4vcpu-ubuntu-2404
+        runs-on: ubuntu-latest
         strategy:
             matrix:
                 # Get early warning of new lints which are regularly introduced in beta channels.
@@ -141,6 +141,6 @@ jobs:
               uses: docker/build-push-action@v5
               with:
                   context: .
-                  file: ./docker/Dockerfile
+                  file: ./containers/${{ matrix.dockerfile }}
                   push: true
                   tags: ghcr.io/${{ github.repository_owner }}/basalt-server-${{ matrix.tagSuffix }}:pr-${{ github.event.pull_request.number }}
