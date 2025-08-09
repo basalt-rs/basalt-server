@@ -6,7 +6,7 @@ COPY . .
 
 WORKDIR /basalt-server
 
-RUN cargo build --release --no-default-features
+RUN cargo build --release
 
 FROM fedora:rawhide as base-basalt
 
