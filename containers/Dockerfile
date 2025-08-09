@@ -1,4 +1,4 @@
-FROM rust:1.84 as basalt-compilation
+FROM rust:1.86 as basalt-compilation
 
 RUN touch /redocly && chmod +x /redocly
 ENV PATH=/:$PATH
