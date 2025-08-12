@@ -2,9 +2,9 @@ FROM rust:1.86 as basalt-compilation
 
 RUN touch /redocly && chmod +x /redocly
 ENV PATH=/:$PATH
+WORKDIR /basalt-server
 COPY . .
 
-WORKDIR /basalt-server
 
 RUN cargo build --release
 
