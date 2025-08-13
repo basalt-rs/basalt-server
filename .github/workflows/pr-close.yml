@@ -1,0 +1,39 @@
+name: Cleanup PR Images
+
+on:
+    pull_request:
+        types:
+            - closed # runs on both merge and just close
+
+jobs:
+    cleanup:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            packages: write
+        strategy:
+            matrix:
+                include:
+                    - tagSuffix: full
+        steps:
+            - name: Delete GHCR image for PR
+              run: |
+                  PR_TAG="pr-${{ github.event.pull_request.number }}"
+                  IMAGE="ghcr.io/${{ github.repository }}/basalt-server-${{ matrix.tagSuffix }}"
+
+                  echo "Deleting $IMAGE:$PR_TAG..."
+
+                  # Get package version ID from GHCR API
+                  VERSION_ID=$(curl -s \
+                    -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                    "https://api.github.com/user/packages/container/$(echo $IMAGE | cut -d/ -f3)/versions" \
+                    | jq -r ".[] | select(.metadata.container.tags[]? == \"$PR_TAG\") | .id")
+
+                  if [ -n "$VERSION_ID" ]; then
+                    curl -X DELETE \
+                      -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                      "https://api.github.com/user/packages/container/$(echo $IMAGE | cut -d/ -f3)/versions/$VERSION_ID"
+                    echo "Deleted $IMAGE:$PR_TAG"
+                  else
+                    echo "No version found for tag $PR_TAG"
+                  fi

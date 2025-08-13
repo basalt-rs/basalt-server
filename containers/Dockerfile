@@ -7,6 +7,6 @@ COPY . .
 
 RUN cargo build --release --no-default-features
 
-FROM fedora:rawhide as base-basalt
+FROM scratch as base-basalt
 
 COPY --from=basalt-compilation /basalt-server/target/release/basalt-server /usr/local/bin/

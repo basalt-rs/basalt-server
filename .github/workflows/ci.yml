@@ -7,7 +7,6 @@
 # - msrv: check that the msrv specified in the crate is correct
 permissions:
     contents: read
-    packages: write
 # This configuration allows maintainers of this repo to create a branch and pull request based on
 # the new branch. Restricting the push trigger to the main branch ensures that the PR only gets
 # built once.
@@ -124,6 +123,9 @@ jobs:
     push-containers:
         runs-on: ubuntu-latest
         needs: [test, clippy]
+        permissions:
+            contents: read
+            packages: write
         strategy:
             matrix:
                 include:
