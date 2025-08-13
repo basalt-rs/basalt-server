@@ -8,8 +8,8 @@ rust-version.workspace = true
 doc-gen = []
 webhooks = ["dep:reqwest"]
 scripting = ["dep:rustyscript"]
-full = ["webhooks", "scripting", "doc-gen"]
-default = ["full"]
+full = ["webhooks", "scripting"]
+default = ["full", "doc-gen"]
 
 [dependencies]
 anyhow.workspace = true
