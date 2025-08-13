@@ -17,7 +17,7 @@ eval $(opam env)
 [test_runner]
 # import = "./test-runner.toml"
 
-timeout_ms = 60_000
+timeout = "60s"
 trim_output = true
 max_memory = { compile = 128, run = 64 }
 max_file_size = 8192
