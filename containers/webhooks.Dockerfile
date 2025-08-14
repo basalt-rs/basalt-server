@@ -5,7 +5,7 @@ WORKDIR /basalt-server
 COPY . .
 
 
-RUN cargo build --release
+RUN cargo build --release --no-default-features --features webhooks
 
 FROM scratch as base-basalt
 

@@ -126,7 +126,15 @@ jobs:
             matrix:
                 include:
                     - dockerfile: Dockerfile
-                      tagSuffix: full
+                      tags:
+                          - ghcr.io/${{ github.repository_owner }}/basalt-server:dev-pr-${{ github.event.pull_request.number }}
+                          - ghcr.io/${{ github.repository_owner }}/basalt-server:dev-pr-${{ github.event.pull_request.number }}-full
+                    - dockerfile: Dockerfile.scripting
+                      tags:
+                          - ghcr.io/${{ github.repository_owner }}/basalt-server:dev-pr-${{ github.event.pull_request.number }}-scripting
+                    - dockerfile: Dockerfile.webhooks
+                      tags:
+                          - ghcr.io/${{ github.repository_owner }}/basalt-server:dev-pr-${{ github.event.pull_request.number }}-webhooks
         steps:
             - uses: actions/checkout@v4
             # - name: Set up QEMU (for ARM builds)
@@ -150,4 +158,6 @@ jobs:
                   # platforms: linux/amd64,linux/arm64
                   platforms: linux/amd64
                   push: true
-                  tags: ghcr.io/${{ github.repository_owner }}/basalt-server-${{ matrix.tagSuffix }}:pr-${{ github.event.pull_request.number }}
+                  # tags: ghcr.io/${{ github.repository_owner }}/basalt-server-${{ matrix.tagSuffix }}:pr-${{ github.event.pull_request.number }}
+                  tags: |
+                      ${{ join(matrix.tags, '\n') }}
