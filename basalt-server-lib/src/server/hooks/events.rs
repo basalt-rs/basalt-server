@@ -1,7 +1,12 @@
+use std::sync::Arc;
+
+use anyhow::Context;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
+use tracing::info;
 
 use crate::repositories::users::Username;
+use crate::server::AppState;
 use crate::services::ws::TestResults;
 
 #[derive(Clone, Debug, Serialize)]
@@ -72,6 +77,23 @@ impl ServerEvent {
             ServerEvent::OnTeamBan { .. } => "onTeamBan",
             ServerEvent::OnAnnouncement { .. } => "onAnnouncement",
             ServerEvent::OnCheckIn { .. } => "onCheckIn",
+        }
+    }
+
+    /// Dispatch an event to all subscribers asynchronously
+    pub fn dispatch(&self, state: Arc<AppState>) -> anyhow::Result<()> {
+        info!("Event dispatched: {:?}", self);
+        match state
+            .dispatchers
+            .iter()
+            .map(|tx| {
+                tx.send((self.clone(), state.clone()))
+                    .context("Failed to emit event")
+            })
+            .collect::<anyhow::Result<Vec<()>>>()
+        {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e),
         }
     }
 }

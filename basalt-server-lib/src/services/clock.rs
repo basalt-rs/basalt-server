@@ -53,10 +53,12 @@ async fn patch_clock(
             UpdateClockRequest::PauseUpdate { is_paused: true } => {
                 let affected = clock.pause();
                 if affected {
-                    if let Err(err) = state.evh.dispatch(ServerEvent::OnPause {
+                    if let Err(err) = (ServerEvent::OnPause {
                         paused_by: auth.user.username.clone(),
                         time: chrono::offset::Local::now().to_utc(),
-                    }) {
+                    }
+                    .dispatch(state.clone()))
+                    {
                         error!("Failed to dispatch pause event: {:?}", err);
                     };
                 }
@@ -75,10 +77,12 @@ async fn patch_clock(
             UpdateClockRequest::PauseUpdate { is_paused: false } => {
                 let affected = clock.unpause();
                 if affected {
-                    if let Err(err) = state.evh.dispatch(ServerEvent::OnUnpause {
+                    if let Err(err) = (ServerEvent::OnUnpause {
                         unpaused_by: auth.user.username.clone(),
                         time: chrono::offset::Local::now().to_utc(),
-                    }) {
+                    }
+                    .dispatch(state.clone()))
+                    {
                         error!("Failed to dispatch pause event: {:?}", err);
                     };
                 }

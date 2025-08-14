@@ -5,11 +5,14 @@ version.workspace = true
 rust-version.workspace = true
 
 [features]
-default = ["doc-gen"]
 doc-gen = []
+webhooks = ["basalt-server-lib/webhooks"]
+scripting = ["basalt-server-lib/scripting"]
+full = ["webhooks", "scripting"]
+default = ["full", "doc-gen"]
 
 [dependencies]
-basalt-server-lib = { path = "../basalt-server-lib" }
+basalt-server-lib = { path = "../basalt-server-lib", default-features = false }
 anyhow.workspace = true
 axum.workspace = true
 bedrock.workspace = true
@@ -20,7 +23,9 @@ tracing-subscriber.workspace = true
 tracing.workspace = true
 
 [build-dependencies]
-basalt-server-lib = { path = "../basalt-server-lib", features = ["doc-gen"] }
+basalt-server-lib = { path = "../basalt-server-lib", features = [
+    "doc-gen",
+], default-features = false }
 anyhow.workspace = true
 async-tempfile.workspace = true
 bedrock.workspace = true

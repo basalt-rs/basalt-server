@@ -2,19 +2,21 @@ use axum::Router;
 use bedrock::Config;
 use clock::ClockInfo;
 use dashmap::DashSet;
-use hooks::handler::EventDispatcherService;
 use rand::{distributions::Alphanumeric, Rng};
 use std::{path::PathBuf, sync::Arc};
 use teams::TeamManagement;
-use tokio::sync::RwLock;
+use tokio::sync::{mpsc::UnboundedSender, RwLock};
 use websocket::WebSocketManager;
 
 pub mod clock;
 pub mod hooks;
+pub mod orchestration;
 pub mod teams;
 pub mod websocket;
 
-use crate::{services, storage::SqliteLayer};
+use crate::{server::hooks::events::ServerEvent, services, storage::SqliteLayer};
+
+type Dispatchers = Vec<UnboundedSender<(ServerEvent, Arc<AppState>)>>;
 
 pub struct AppState {
     pub db: RwLock<SqliteLayer>,
@@ -25,14 +27,14 @@ pub struct AppState {
     pub active_submissions: DashSet<(websocket::ConnectionKind, usize)>,
     pub config: Config,
     pub clock: RwLock<ClockInfo>,
-    pub evh: EventDispatcherService,
+    pub dispatchers: Dispatchers,
 }
 
 impl AppState {
     pub fn new(
         db: SqliteLayer,
         config: Config,
-        evh: EventDispatcherService,
+        dispatchers: Dispatchers,
         web_dir: Option<PathBuf>,
     ) -> Self {
         Self {
@@ -42,7 +44,7 @@ impl AppState {
             team_manager: TeamManagement::from_config(&config),
             active_tests: Default::default(),
             active_submissions: Default::default(),
-            evh,
+            dispatchers,
             config,
             clock: Default::default(),
         }
