@@ -534,13 +534,15 @@ impl WebSocketRecv<'_> {
             }
         };
 
-        if let Err(err) = state.evh.dispatch(ServerEvent::OnSubmissionEvaluation {
+        if let Err(err) = (ServerEvent::OnSubmissionEvaluation {
             name: user.username.clone(),
             question_idx: problem_index as u32,
             question_text: problem.title.clone(),
             test_results,
             time: utils::utc_now(),
-        }) {
+        }
+        .dispatch(state.clone()))
+        {
             tracing::error!("error dispatching submission event: {:?}", err);
         }
         Ok(())
