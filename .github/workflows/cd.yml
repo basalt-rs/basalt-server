@@ -47,14 +47,18 @@ jobs:
                           - ghcr.io/${{ github.repository_owner }}/basalt-server:__VERSION__
                           - ghcr.io/${{ github.repository_owner }}/basalt-server:latest-full
                           - ghcr.io/${{ github.repository_owner }}/basalt-server:__VERSION__-full
-                    - dockerfile: Dockerfile.scripting
+                    - dockerfile: scripting.Dockerfile
                       tags:
                           - ghcr.io/${{ github.repository_owner }}/basalt-server:latest-scripting
                           - ghcr.io/${{ github.repository_owner }}/basalt-server:__VERSION__-scripting
-                    - dockerfile: Dockerfile.webhooks
+                    - dockerfile: webhooks.Dockerfile
                       tags:
                           - ghcr.io/${{ github.repository_owner }}/basalt-server:latest-webhooks
                           - ghcr.io/${{ github.repository_owner }}/basalt-server:__VERSION__-webhooks
+                    - dockerfile: minimal.Dockerfile
+                      tags:
+                          - ghcr.io/${{ github.repository_owner }}/basalt-server:latest-minimal
+                          - ghcr.io/${{ github.repository_owner }}/basalt-server:__VERSION__-minimal
         env:
             VERSION: ${{ needs.get-version.outputs.version }}
         steps:

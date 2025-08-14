@@ -136,6 +136,9 @@ jobs:
                     - dockerfile: webhooks.Dockerfile
                       tags:
                           - ghcr.io/${{ github.repository_owner }}/basalt-server:dev-pr-${{ github.event.pull_request.number }}-webhooks
+                    - dockerfile: minimal.Dockerfile
+                      tags:
+                          - ghcr.io/${{ github.repository_owner }}/basalt-server:dev-pr-${{ github.event.pull_request.number }}-minimal
         steps:
             - uses: actions/checkout@v4
             # - name: Set up QEMU (for ARM builds)
