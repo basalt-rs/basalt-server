@@ -528,6 +528,7 @@ dependencies = [
  "bedrock",
  "chrono",
  "dashmap 6.1.0",
+ "deno_core",
  "derive_more",
  "directories",
  "erudite",
