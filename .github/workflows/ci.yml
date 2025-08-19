@@ -74,7 +74,7 @@ jobs:
         with:
           submodules: true
       - name: machete
-        uses: bnjbvr/cargo-machete@v0.9.0
+        uses: bnjbvr/cargo-machete@v0.8.0
   msrv:
     # check that we can build using the minimal rust version that is specified by this crate
     runs-on: blacksmith-2vcpu-ubuntu-2404
