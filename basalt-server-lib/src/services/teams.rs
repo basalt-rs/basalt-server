@@ -88,12 +88,14 @@ mod tests {
             &sql.db,
             &user1,
             expected_score / 2.0,
+            0,
         )
         .await;
         crate::testing::submissions_repositories::dummy_submission(
             &sql.db,
             &user1,
             expected_score / 2.0,
+            1,
         )
         .await;
 
