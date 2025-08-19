@@ -43,22 +43,22 @@ jobs:
         include:
           - dockerfile: Dockerfile
             tags:
-              - ghcr.io/${{ github.repository_owner }}/basalt-server-temp:latest
-              - ghcr.io/${{ github.repository_owner }}/basalt-server-temp:__VERSION__
-              - ghcr.io/${{ github.repository_owner }}/basalt-server-temp:latest-full
-              - ghcr.io/${{ github.repository_owner }}/basalt-server-temp:__VERSION__-full
+              - ghcr.io/${{ github.repository_owner }}/basalt-server:latest
+              - ghcr.io/${{ github.repository_owner }}/basalt-server:__VERSION__
+              - ghcr.io/${{ github.repository_owner }}/basalt-server:latest-full
+              - ghcr.io/${{ github.repository_owner }}/basalt-server:__VERSION__-full
           - dockerfile: scripting.Dockerfile
             tags:
-              - ghcr.io/${{ github.repository_owner }}/basalt-server-temp:latest-scripting
-              - ghcr.io/${{ github.repository_owner }}/basalt-server-temp:__VERSION__-scripting
+              - ghcr.io/${{ github.repository_owner }}/basalt-server:latest-scripting
+              - ghcr.io/${{ github.repository_owner }}/basalt-server:__VERSION__-scripting
           - dockerfile: webhooks.Dockerfile
             tags:
-              - ghcr.io/${{ github.repository_owner }}/basalt-server-temp:latest-webhooks
-              - ghcr.io/${{ github.repository_owner }}/basalt-server-temp:__VERSION__-webhooks
+              - ghcr.io/${{ github.repository_owner }}/basalt-server:latest-webhooks
+              - ghcr.io/${{ github.repository_owner }}/basalt-server:__VERSION__-webhooks
           - dockerfile: minimal.Dockerfile
             tags:
-              - ghcr.io/${{ github.repository_owner }}/basalt-server-temp:latest-minimal
-              - ghcr.io/${{ github.repository_owner }}/basalt-server-temp:__VERSION__-minimal
+              - ghcr.io/${{ github.repository_owner }}/basalt-server:latest-minimal
+              - ghcr.io/${{ github.repository_owner }}/basalt-server:__VERSION__-minimal
     env:
       VERSION: ${{ needs.get-version.outputs.version }}
     steps:
