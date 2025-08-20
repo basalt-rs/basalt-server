@@ -307,7 +307,6 @@ mod tests {
 
     use crate::{
         repositories::users::get_user_by_username,
-        server::hooks::handler::EventHookHandler,
         testing::{mock_db, SAMPLE_1},
     };
 
@@ -336,8 +335,7 @@ mod tests {
         )
         .await;
 
-        let (_, hook_dispatcher) = EventHookHandler::create();
-        let mut appstate = AppState::new(sql, cfg, hook_dispatcher, None);
+        let mut appstate = AppState::new(sql, cfg, Vec::new(), None);
         appstate.init().await.unwrap();
         let Json(TeamsListResponse(teams)) = get_teams(State(Arc::new(appstate))).await.unwrap();
 

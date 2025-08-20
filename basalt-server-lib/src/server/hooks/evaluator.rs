@@ -55,7 +55,7 @@ impl JSEvaluator {
             let results = state
                 .config
                 .integrations
-                .events
+                .event_handlers
                 .iter()
                 .map(|p| {
                     let event = event.clone();
