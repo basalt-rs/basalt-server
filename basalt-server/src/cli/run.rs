@@ -83,7 +83,7 @@ pub async fn handle(args: RunArgs) -> anyhow::Result<()> {
     let (app_state, jset) = init_state_with_hooks(db, config, args.web_dir).await?;
     axum::serve(
         listener,
-        server::router(state).into_make_service_with_connect_info::<SocketAddr>(),
+        server::router(app_state).into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await?;
     // wait for any dispatcher tasks to complete

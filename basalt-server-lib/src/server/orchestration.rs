@@ -8,12 +8,11 @@ use crate::{
     storage::SqliteLayer,
 };
 
-#[allow(unused_mut)]
 pub async fn init_state_with_hooks(
     db: SqliteLayer,
     cfg: Config,
     webdir: Option<PathBuf>,
-) -> (Arc<AppState>, JoinSet<()>) {
+) -> anyhow::Result<(Arc<AppState>, JoinSet<()>)> {
     let mut dispatchers: Vec<UnboundedSender<(ServerEvent, Arc<AppState>)>> = Vec::new();
     #[cfg(feature = "scripting")]
     let (mut hook_handler, hooks_tx) = crate::server::hooks::handlers::EventHookHandler::create();
@@ -27,7 +26,7 @@ pub async fn init_state_with_hooks(
 
     let mut jset: tokio::task::JoinSet<()> = tokio::task::JoinSet::new();
 
-    let app_state = AppState::new(db, cfg, dispatchers, webdir);
+    let mut app_state = AppState::new(db, cfg, dispatchers, webdir);
     app_state.init().await?;
     let app_state = Arc::new(app_state);
 
@@ -37,5 +36,5 @@ pub async fn init_state_with_hooks(
     #[cfg(feature = "webhooks")]
     jset.spawn(async move { webhook_handler.start().await });
 
-    (app_state, jset)
+    Ok((app_state, jset))
 }

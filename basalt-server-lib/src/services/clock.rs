@@ -77,13 +77,8 @@ async fn patch_clock(
             UpdateClockRequest::PauseUpdate { is_paused: false } => {
                 let affected = clock.unpause();
                 if affected {
-<<<<<<< HEAD
-                    if let Err(err) = state.evh.dispatch(ServerEvent::OnUnpause {
-                        unpaused_by: auth.id.clone(),
-=======
                     if let Err(err) = (ServerEvent::OnUnpause {
-                        unpaused_by: auth.user.username.clone(),
->>>>>>> main
+                        unpaused_by: auth.id.clone(),
                         time: chrono::offset::Local::now().to_utc(),
                     }
                     .dispatch(state.clone()))
