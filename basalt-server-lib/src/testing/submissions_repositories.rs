@@ -8,6 +8,7 @@ pub async fn dummy_submission(
     db: impl SqliteExecutor<'_>,
     submitter: &User,
     score: f64,
+    question_index: usize,
 ) -> SubmissionHistory {
     create_submission_history(
         db,
@@ -15,7 +16,7 @@ pub async fn dummy_submission(
             submitter: &submitter.id,
             compile_fail: false,
             code: "",
-            question_index: 0,
+            question_index,
             score,
             success: true,
             language: "java",
