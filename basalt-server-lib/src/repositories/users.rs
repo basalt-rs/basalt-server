@@ -102,22 +102,6 @@ pub enum GetUserError {
     },
 }
 
-#[cfg(test)]
-pub async fn get_user_by_username(
-    db: impl SqliteExecutor<'_>,
-    name: impl AsRef<str>,
-) -> Result<User, GetUserError> {
-    let name = name.as_ref();
-    sqlx::query_as!(User, "SELECT * from users WHERE username = $1", name)
-        .fetch_optional(db)
-        .await
-        .map_err(|e| GetUserError::QueryError(e.to_string()))?
-        .ok_or(GetUserError::UserNotFound {
-            property: "username",
-            value: name.to_string(),
-        })
-}
-
 pub async fn get_user_by_id(
     db: impl SqliteExecutor<'_>,
     id: &UserId,
@@ -304,23 +288,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_existing_user_by_username() {
-        let (f, sql) = mock_db().await;
-        let dummy_user = crate::testing::users_repositories::dummy_user(
-            &sql.db,
-            "awesome_user".to_string(),
-            "awesome-password".to_string(),
-            Role::Competitor,
-        )
-        .await;
-        let user = get_user_by_username(&sql.db, "awesome_user")
-            .await
-            .expect("Failed to find user");
-        assert_eq!(user.username, dummy_user.username);
-        drop(f)
-    }
-
-    #[tokio::test]
     async fn get_existing_user_by_id() {
         let (f, sql) = mock_db().await;
         let dummy_user = create_user(
@@ -356,7 +323,7 @@ mod tests {
             Role::Competitor,
         )
         .await;
-        let user = get_user_by_username(&sql.db, "awesome_user")
+        let user = get_user_by_id(&sql.db, &dummy_user.id)
             .await
             .expect("Failed to find user");
         assert_eq!(user.username, dummy_user.username);

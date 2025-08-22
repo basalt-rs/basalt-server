@@ -4,7 +4,7 @@ use argon2::{
 };
 use sqlx::SqliteExecutor;
 
-use crate::repositories::users::{Role, User, UserId};
+use crate::repositories::users::{GetUserError, Role, User, UserId};
 
 pub async fn dummy_user(
     db: impl SqliteExecutor<'_>,
@@ -28,4 +28,19 @@ pub async fn dummy_user(
         password_hash,
         role_int
     ).fetch_one(db).await.expect("Failed to create user")
+}
+
+pub async fn get_user_by_username(
+    db: impl SqliteExecutor<'_>,
+    name: impl AsRef<str>,
+) -> Result<User, GetUserError> {
+    let name = name.as_ref();
+    sqlx::query_as!(User, "SELECT * from users WHERE username = $1", name)
+        .fetch_optional(db)
+        .await
+        .map_err(|e| GetUserError::QueryError(e.to_string()))?
+        .ok_or(GetUserError::UserNotFound {
+            property: "username",
+            value: name.to_string(),
+        })
 }

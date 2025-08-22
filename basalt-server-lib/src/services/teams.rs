@@ -305,10 +305,7 @@ pub fn service() -> axum::Router<Arc<AppState>> {
 mod tests {
     use bedrock::Config;
 
-    use crate::{
-        repositories::users::get_user_by_username,
-        testing::{mock_db, SAMPLE_1},
-    };
+    use crate::testing::{mock_db, users_repositories::get_user_by_username, SAMPLE_1};
 
     use super::*;
     #[tokio::test]
