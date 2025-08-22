@@ -25,6 +25,7 @@ use crate::{
         AppState,
     },
     services::ws::{Broadcast, TeamUpdate, WebSocketSend},
+    utils::OneOrMany,
 };
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -84,39 +85,6 @@ struct NewTeam {
     password: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-#[serde(untagged)]
-pub enum OneOrMany<T> {
-    One(T),
-    Many(Vec<T>),
-}
-
-impl<T> OneOrMany<T> {
-    pub fn into_vec(self) -> Vec<T> {
-        match self {
-            OneOrMany::One(one) => vec![one],
-            OneOrMany::Many(many) => many,
-        }
-    }
-
-    #[allow(clippy::len_without_is_empty)]
-    pub fn len(&self) -> usize {
-        match self {
-            OneOrMany::One(_) => 1,
-            OneOrMany::Many(items) => items.len(),
-        }
-    }
-}
-
-impl<T> From<Vec<T>> for OneOrMany<T> {
-    fn from(mut value: Vec<T>) -> Self {
-        match value.len() {
-            1 => OneOrMany::One(value.pop().unwrap()),
-            _ => OneOrMany::Many(value),
-        }
-    }
-}
-
 #[axum::debug_handler]
 #[utoipa::path(
     post,
@@ -140,7 +108,7 @@ async fn add_team(
 
     let mut users = Vec::with_capacity(new.len());
     let mut conflicts = Vec::new();
-    for new in new.into_vec() {
+    for new in new {
         info!(creator = %creator.username, new = %new.username, "Creating new user");
         let user = repositories::users::create_user(
             &mut *txn,

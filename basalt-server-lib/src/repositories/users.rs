@@ -9,7 +9,9 @@ use sqlx::prelude::FromRow;
 use sqlx::SqliteExecutor;
 use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(
+    Debug, Clone, Copy, Hash, Eq, PartialEq, Serialize, Deserialize, utoipa::ToSchema, sqlx::Type,
+)]
 #[repr(i32)]
 #[serde(rename_all = "kebab-case")]
 pub enum Role {
@@ -121,7 +123,6 @@ pub async fn get_users_with_role(
     db: impl SqliteExecutor<'_>,
     role: Role,
 ) -> Result<Vec<User>, sqlx::Error> {
-    let role = i32::from(role);
     sqlx::query_as!(User, "SELECT * from users WHERE role = $1", role)
         .fetch_all(db)
         .await

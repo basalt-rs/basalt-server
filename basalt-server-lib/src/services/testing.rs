@@ -90,7 +90,7 @@ pub async fn get_submissions_state(
         }
     };
 
-    match dbg!(repositories::submissions::count_tests(&sql.db, dbg!(user_id)).await) {
+    match repositories::submissions::count_tests(&sql.db, user_id).await {
         Ok(counts) => {
             for c in counts {
                 if states[c.question_index as usize].state == QuestionState::NotAttempted {
