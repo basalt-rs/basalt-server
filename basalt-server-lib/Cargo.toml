@@ -7,7 +7,7 @@ rust-version.workspace = true
 [features]
 doc-gen = []
 webhooks = ["dep:reqwest"]
-scripting = ["dep:rustyscript"]
+scripting = ["dep:rustyscript", "dep:deno_core"]
 full = ["webhooks", "scripting"]
 default = ["full", "doc-gen"]
 
@@ -42,6 +42,7 @@ rustyscript = { git = "https://github.com/rscarson/rustyscript.git", branch = "m
     "http",
 ], optional = true }
 reqwest = { version = "0.11.0", features = ["json"], optional = true }
+deno_core = { version = "0.340.0", optional = true }
 
 [dev-dependencies]
 async-tempfile = "0.6.0"
