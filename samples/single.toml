@@ -1,11 +1,12 @@
 port = 80
+web_client = true
 
 [setup]
 # import = "./setup.toml"
 
 # install = { import = "./install.sh" }
 install = '''
-dnf install opam
+dnf install opam -y
 '''
 
 # init = { import = "./init.sh" }
