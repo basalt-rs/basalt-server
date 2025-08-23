@@ -206,6 +206,57 @@ paths:
                 $ref: '#/components/schemas/TeamsListResponse'
         '500':
           description: ''
+    post:
+      tags:
+      - teams
+      operationId: add_team
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OneOrMany_NewTeam'
+        required: true
+      responses:
+        '200':
+          description: Team(s) were created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OneOrMany_User'
+        '409':
+          description: Team(s) with returned usernames already exist
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+        '500':
+          description: ''
+  /teams/{id}:
+    patch:
+      tags:
+      - teams
+      operationId: patch_team
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchTeam'
+        required: true
+      responses:
+        '200':
+          description: Team was succesfully updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          description: User with ID not found
+        '409':
+          description: Team with provided username already exists
+        '500':
+          description: ''
   /testing/state:
     get:
       tags:
@@ -229,13 +280,13 @@ paths:
       - testing
       operationId: get_submissions
       parameters:
-      - name: username
+      - name: user_id
         in: path
         required: true
         schema:
           oneOf:
           - type: 'null'
-          - $ref: '#/components/schemas/Username'
+          - $ref: '#/components/schemas/UserId'
       - name: question_index
         in: path
         required: true
@@ -276,7 +327,7 @@ components:
         message:
           type: string
         sender:
-          $ref: '#/components/schemas/Username'
+          $ref: '#/components/schemas/UserId'
         time:
           type: string
           format: date
@@ -294,6 +345,17 @@ components:
           type: integer
           format: int64
           minimum: 0
+    DisplayNamePatch:
+      oneOf:
+      - type: string
+        enum:
+        - remove
+      - type: object
+        required:
+        - set
+        properties:
+          set:
+            type: string
     LanguageSyntax:
       type: object
       required:
@@ -323,7 +385,7 @@ components:
         role:
           $ref: '#/components/schemas/Role'
         token:
-          type: string
+          $ref: '#/components/schemas/SessionId'
     NewAnnouncement:
       type: object
       required:
@@ -331,6 +393,101 @@ components:
       properties:
         message:
           type: string
+    NewTeam:
+      type: object
+      required:
+      - username
+      - password
+      properties:
+        displayName:
+          type:
+          - string
+          - 'null'
+        password:
+          type: string
+        username:
+          type: string
+    OneOrMany_NewTeam:
+      oneOf:
+      - type: object
+        required:
+        - username
+        - password
+        properties:
+          displayName:
+            type:
+            - string
+            - 'null'
+          password:
+            type: string
+          username:
+            type: string
+      - type: array
+        items:
+          type: object
+          required:
+          - username
+          - password
+          properties:
+            displayName:
+              type:
+              - string
+              - 'null'
+            password:
+              type: string
+            username:
+              type: string
+    OneOrMany_User:
+      oneOf:
+      - type: object
+        required:
+        - id
+        - username
+        - role
+        properties:
+          displayName:
+            type:
+            - string
+            - 'null'
+          id:
+            $ref: '#/components/schemas/UserId'
+          role:
+            $ref: '#/components/schemas/Role'
+          username:
+            type: string
+      - type: array
+        items:
+          type: object
+          required:
+          - id
+          - username
+          - role
+          properties:
+            displayName:
+              type:
+              - string
+              - 'null'
+            id:
+              $ref: '#/components/schemas/UserId'
+            role:
+              $ref: '#/components/schemas/Role'
+            username:
+              type: string
+    PatchTeam:
+      type: object
+      properties:
+        displayName:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/DisplayNamePatch'
+        password:
+          type:
+          - string
+          - 'null'
+        username:
+          type:
+          - string
+          - 'null'
     QuestionResponse:
       type: object
       required:
@@ -382,6 +539,8 @@ components:
       enum:
       - competitor
       - host
+    SessionId:
+      type: string
     SubmissionHistory:
       type: object
       required:
@@ -410,7 +569,7 @@ components:
           type: number
           format: double
         submitter:
-          $ref: '#/components/schemas/Username'
+          $ref: '#/components/schemas/UserId'
         success:
           type: boolean
         time:
@@ -424,10 +583,10 @@ components:
         description: Contains full information about team
       - type: object
         required:
-        - team
+        - id
         properties:
-          team:
-            $ref: '#/components/schemas/Username'
+          id:
+            $ref: '#/components/schemas/UserId'
             description: Username of team/player
     TeamInfo:
       type: object
@@ -450,7 +609,7 @@ components:
     TeamProgression:
       type: object
       required:
-      - username
+      - user
       - score
       - submissionStates
       properties:
@@ -461,15 +620,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/QuestionState'
-        username:
-          $ref: '#/components/schemas/Username'
+        user:
+          $ref: '#/components/schemas/User'
     TeamWithScore:
       allOf:
       - $ref: '#/components/schemas/TeamFull'
       - type: object
         required:
         - score
+        - id
+        - name
         properties:
+          displayName:
+            type:
+            - string
+            - 'null'
+          id:
+            $ref: '#/components/schemas/UserId'
+          name:
+            type: string
           score:
             type: number
             format: double
@@ -501,12 +670,19 @@ components:
     User:
       type: object
       required:
+      - id
       - username
       - role
       properties:
+        displayName:
+          type:
+          - string
+          - 'null'
+        id:
+          $ref: '#/components/schemas/UserId'
         role:
           $ref: '#/components/schemas/Role'
         username:
-          $ref: '#/components/schemas/Username'
-    Username:
+          type: string
+    UserId:
       type: string
