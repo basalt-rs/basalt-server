@@ -64,8 +64,6 @@ jobs:
                   reporter: "github-pr-check"
                   github_token: ${{ secrets.GITHUB_TOKEN }}
     dependencies:
-        # Disabling this check for now
-        if: github.repository == 'not-our-repo'
         runs-on: blacksmith-2vcpu-ubuntu-2404
         name: stable / machete
         permissions:
