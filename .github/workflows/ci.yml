@@ -64,8 +64,6 @@ jobs:
                   reporter: "github-pr-check"
                   github_token: ${{ secrets.GITHUB_TOKEN }}
     dependencies:
-        # Disabling this check for now
-        if: github.repository == 'not-our-repo'
         runs-on: blacksmith-2vcpu-ubuntu-2404
         name: stable / machete
         permissions:
@@ -76,7 +74,7 @@ jobs:
               with:
                   submodules: true
             - name: machete
-              uses: bnjbvr/cargo-machete@v0.9.1
+              uses: bnjbvr/cargo-machete@auto-install-action
     msrv:
         # check that we can build using the minimal rust version that is specified by this crate
         runs-on: blacksmith-2vcpu-ubuntu-2404

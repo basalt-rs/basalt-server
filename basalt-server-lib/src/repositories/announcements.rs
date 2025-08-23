@@ -4,7 +4,7 @@ use sqlx::{Executor, Sqlite};
 use time::OffsetDateTime;
 use utoipa::ToSchema;
 
-use super::users::Username;
+use super::users::UserId;
 
 #[derive(
     Debug,
@@ -39,7 +39,7 @@ impl AnnouncementId {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, sqlx::FromRow, ToSchema)]
 pub struct Announcement {
     pub id: AnnouncementId,
-    pub sender: Username,
+    pub sender: UserId,
     #[serde(with = "time::serde::rfc3339")]
     #[schema(value_type = String, format = Date)]
     pub time: OffsetDateTime,
@@ -48,7 +48,7 @@ pub struct Announcement {
 
 pub async fn create_announcement(
     db: impl Executor<'_, Database = Sqlite>,
-    sender: &Username,
+    sender: &UserId,
     message: impl AsRef<str>,
 ) -> anyhow::Result<Announcement> {
     let id = AnnouncementId::new();
@@ -102,11 +102,11 @@ mod tests {
     async fn create_announcement() {
         let (f, sql) = mock_db().await;
         let user = dummy_user(&sql.db, "dummy_user", "foobar", Role::Competitor).await;
-        let announcement = super::create_announcement(&sql.db, &user.username, "hello world")
+        let announcement = super::create_announcement(&sql.db, &user.id, "hello world")
             .await
             .unwrap();
 
-        assert_eq!(announcement.sender.as_str(), "dummy_user");
+        assert_eq!(announcement.sender, user.id);
         assert_eq!(&announcement.message, "hello world");
         drop(f)
     }
@@ -115,10 +115,10 @@ mod tests {
     async fn get_announcements() {
         let (f, sql) = mock_db().await;
         let user = dummy_user(&sql.db, "dummy_user", "foobar", Role::Competitor).await;
-        super::create_announcement(&sql.db, &user.username, "foo")
+        super::create_announcement(&sql.db, &user.id, "foo")
             .await
             .unwrap();
-        super::create_announcement(&sql.db, &user.username, "bar")
+        super::create_announcement(&sql.db, &user.id, "bar")
             .await
             .unwrap();
 
@@ -133,7 +133,7 @@ mod tests {
     async fn delete_announcement() {
         let (f, sql) = mock_db().await;
         let user = dummy_user(&sql.db, "dummy_user", "foobar", Role::Competitor).await;
-        let Announcement { id, .. } = super::create_announcement(&sql.db, &user.username, "foo")
+        let Announcement { id, .. } = super::create_announcement(&sql.db, &user.id, "foo")
             .await
             .unwrap();
 

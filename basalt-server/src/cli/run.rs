@@ -80,7 +80,7 @@ pub async fn handle(args: RunArgs) -> anyhow::Result<()> {
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     // expands to create hooks if needed and provide to app_state's dispatcher service
-    let (app_state, jset) = init_state_with_hooks(db, config, args.web_dir);
+    let (app_state, jset) = init_state_with_hooks(db, config, args.web_dir).await?;
     axum::serve(
         listener,
         server::router(app_state).into_make_service_with_connect_info::<SocketAddr>(),

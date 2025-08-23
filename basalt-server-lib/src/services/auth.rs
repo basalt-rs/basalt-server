@@ -6,9 +6,10 @@ use tracing::{debug, error, trace};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
-    extractors::auth::AuthUser,
+    extractors::auth::UserWithSession,
     repositories::{
         self,
+        session::SessionId,
         users::{Role, User, UserLogin},
     },
     server::{hooks::events::ServerEvent, teams::TeamWithScore, AppState},
@@ -23,7 +24,7 @@ struct LoginRequest {
 
 #[derive(serde::Serialize, utoipa::ToSchema)]
 struct LoginResponse {
-    token: String,
+    token: SessionId,
     role: Role,
 }
 
@@ -40,7 +41,7 @@ async fn login(
     State(state): State<Arc<AppState>>,
     Json(login): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, StatusCode> {
-    trace!(login.username, "attempt to login to user");
+    trace!(%login.username, "attempt to login to user");
     let sql = state.db.read().await;
 
     let login = UserLogin {
@@ -49,22 +50,22 @@ async fn login(
     };
 
     let Ok(user) = repositories::users::login_user(&sql.db, &login).await else {
-        debug!(login.username, "failed login attempt");
+        debug!(%login.username, "failed login attempt");
         return Err(StatusCode::UNAUTHORIZED);
     };
 
     let token = repositories::session::create_session(&sql.db, &user)
         .await
         .unwrap();
-    let score = repositories::submissions::get_user_score(&sql.db, &user.username)
+    let score = repositories::submissions::get_user_score(&sql.db, &user.id)
         .await
         .unwrap();
     drop(sql);
 
-    if state.team_manager.check_in(&user.username) {
-        trace!("checking in user: {}", &user.username.0);
+    if state.team_manager.check_in(&user.id) {
+        trace!("checking in user: {}", &user.username);
         if let Err(err) = (ServerEvent::OnCheckIn {
-            name: user.username.clone(),
+            id: user.id.clone(),
             time: Local::now().to_utc(),
         }
         .dispatch(state.clone()))
@@ -73,17 +74,28 @@ async fn login(
         }
     }
 
-    if let Some(team) = state.team_manager.get_team(&user.username) {
+    if let Some(team) = state.team_manager.get_team(&user.id) {
+        let sql = state.db.read().await;
+        let user = repositories::users::get_user_by_id(&sql.db, &user.id)
+            .await
+            .map_err(|e| {
+                error!("Error getting username: {:?}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
         state.websocket.broadcast(WebSocketSend::Broadcast {
             broadcast: Broadcast::TeamConnected(TeamWithScore {
                 score,
+                id: user.id,
+                name: user.username,
+                display_name: user.display_name,
                 team_info: team,
             }),
-        })
-    };
+        });
+    }
 
     let role = user.role;
-    debug!(login.username, "log in");
+    debug!(%login.username, "log in");
 
     Ok(Json(LoginResponse { token, role }))
 }
@@ -97,32 +109,46 @@ async fn login(
         (status=401, description="User was not logged in"),
     )
 )]
-async fn logout(State(state): State<Arc<AppState>>, user: AuthUser) -> Result<(), StatusCode> {
-    debug!(?user.user.username, "logout");
+async fn logout(
+    State(state): State<Arc<AppState>>,
+    UserWithSession(user, session_id): UserWithSession,
+) -> Result<(), StatusCode> {
+    debug!(?user.username, "logout");
 
     let score = {
         let sql = state.db.read().await;
 
-        repositories::session::close_session(&sql.db, &user.session_id)
+        repositories::session::close_session(&sql.db, &session_id)
             .await
             .unwrap();
 
-        repositories::submissions::get_user_score(&sql.db, &user.user.username)
+        repositories::submissions::get_user_score(&sql.db, &user.id)
             .await
             .unwrap()
     };
 
-    state.team_manager.disconnect(&user.user.username);
+    state.team_manager.disconnect(&user.id);
 
-    if let Some(team) = state.team_manager.get_team(&user.user.username) {
+    if let Some(team) = state.team_manager.get_team(&user.id) {
+        let sql = state.db.read().await;
+        let user = repositories::users::get_user_by_id(&sql.db, &user.id)
+            .await
+            .map_err(|e| {
+                error!("Error getting username: {:?}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
         state
             .websocket
             .broadcast(crate::services::ws::WebSocketSend::Broadcast {
                 broadcast: crate::services::ws::Broadcast::TeamDisconnected(TeamWithScore {
                     score,
+                    id: user.id,
+                    name: user.username,
+                    display_name: user.display_name,
                     team_info: team,
                 }),
-            })
+            });
     }
 
     Ok(())
@@ -138,8 +164,8 @@ async fn logout(State(state): State<Arc<AppState>>, user: AuthUser) -> Result<()
         (status=401, description="Auth token is expired"),
     )
 )]
-async fn me(State(_state): State<Arc<AppState>>, user: AuthUser) -> Result<Json<User>, StatusCode> {
-    Ok(Json(user.user))
+async fn me(State(_state): State<Arc<AppState>>, user: User) -> Result<Json<User>, StatusCode> {
+    Ok(Json(user))
 }
 
 pub fn router() -> OpenApiRouter<Arc<AppState>> {

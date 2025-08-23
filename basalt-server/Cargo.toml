@@ -11,6 +11,9 @@ scripting = ["basalt-server-lib/scripting"]
 full = ["webhooks", "scripting"]
 default = ["full", "doc-gen"]
 
+[lints.clippy]
+uninlined_format_args = "allow"
+
 [dependencies]
 basalt-server-lib = { path = "../basalt-server-lib", default-features = false }
 anyhow.workspace = true

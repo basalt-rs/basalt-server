@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use tracing::info;
 
-use crate::repositories::users::Username;
+use crate::repositories::users::UserId;
 use crate::server::AppState;
 use crate::services::ws::TestResults;
 
@@ -14,20 +14,20 @@ use crate::services::ws::TestResults;
 pub enum ServerEvent {
     // Unused
     #[serde(rename_all = "camelCase")]
-    OnComplete { name: Username, time: DateTime<Utc> },
+    OnComplete { id: UserId, time: DateTime<Utc> },
     #[serde(rename_all = "camelCase")]
     OnPause {
-        paused_by: Username,
+        paused_by: UserId,
         time: DateTime<Utc>,
     },
     #[serde(rename_all = "camelCase")]
     OnUnpause {
-        unpaused_by: Username,
+        unpaused_by: UserId,
         time: DateTime<Utc>,
     },
     #[serde(rename_all = "camelCase")]
     OnTestEvaluation {
-        name: Username,
+        id: UserId,
         question_idx: u32,
         question_text: String,
         test_results: TestResults,
@@ -35,7 +35,7 @@ pub enum ServerEvent {
     },
     #[serde(rename_all = "camelCase")]
     OnSubmissionEvaluation {
-        name: Username,
+        id: UserId,
         question_idx: u32,
         question_text: String,
         test_results: TestResults,
@@ -44,25 +44,25 @@ pub enum ServerEvent {
     #[serde(rename_all = "camelCase")]
     // Unused
     OnTeamKick {
-        team_kicked: Username,
-        kicked_by: Username,
+        team_kicked: UserId,
+        kicked_by: UserId,
         time: DateTime<Utc>,
     },
     #[serde(rename_all = "camelCase")]
     // Unused
     OnTeamBan {
-        team_banned: Username,
-        banned_by: Username,
+        team_banned: UserId,
+        banned_by: UserId,
         time: DateTime<Utc>,
     },
     #[serde(rename_all = "camelCase")]
     OnAnnouncement {
-        announcer: Username,
+        announcer: UserId,
         announcement: String,
         time: DateTime<Utc>,
     },
     #[serde(rename_all = "camelCase")]
-    OnCheckIn { name: Username, time: DateTime<Utc> },
+    OnCheckIn { id: UserId, time: DateTime<Utc> },
 }
 
 impl ServerEvent {

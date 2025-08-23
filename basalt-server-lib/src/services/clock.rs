@@ -6,7 +6,7 @@ use tracing::{error, trace};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
-    extractors::auth::{HostUser, OptionalAuthUser},
+    extractors::auth::{HostUser, OptionalUser},
     server::{hooks::events::ServerEvent, AppState},
     services::ws::{Broadcast, WebSocketSend},
 };
@@ -54,7 +54,7 @@ async fn patch_clock(
                 let affected = clock.pause();
                 if affected {
                     if let Err(err) = (ServerEvent::OnPause {
-                        paused_by: auth.user.username.clone(),
+                        paused_by: auth.id.clone(),
                         time: chrono::offset::Local::now().to_utc(),
                     }
                     .dispatch(state.clone()))
@@ -78,7 +78,7 @@ async fn patch_clock(
                 let affected = clock.unpause();
                 if affected {
                     if let Err(err) = (ServerEvent::OnUnpause {
-                        unpaused_by: auth.user.username.clone(),
+                        unpaused_by: auth.id.clone(),
                         time: chrono::offset::Local::now().to_utc(),
                     }
                     .dispatch(state.clone()))
@@ -122,7 +122,7 @@ async fn patch_clock(
     )
 )]
 async fn get_clock(
-    OptionalAuthUser(_): OptionalAuthUser,
+    OptionalUser(_): OptionalUser,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ClockStatusResponse>, StatusCode> {
     trace!("user getting clock");

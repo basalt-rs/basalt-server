@@ -12,12 +12,11 @@ use tracing::{debug, trace};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
-    extractors::auth::AuthUser,
     repositories::{
         self,
         announcements::{Announcement, AnnouncementId},
         submissions::NewSubmissionHistory,
-        users::{QuestionState, Username},
+        users::{QuestionState, User, UserId},
     },
     server::{
         hooks::events::ServerEvent, teams::TeamWithScore, websocket::ConnectionKind, AppState,
@@ -26,6 +25,16 @@ use crate::{
 };
 
 pub mod connect;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub struct TeamUpdate {
+    pub id: UserId,
+    pub name: String,
+    pub display_name: Option<String>,
+    pub new_score: f64,
+    pub new_states: Vec<QuestionState>,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
@@ -43,10 +52,13 @@ pub enum Broadcast {
     GameUnpaused {
         time_left_in_seconds: u64,
     },
+    TeamRename {
+        id: UserId,
+        name: String,
+        display_name: Option<String>,
+    },
     TeamUpdate {
-        team: Username,
-        new_score: f64,
-        new_states: Vec<QuestionState>,
+        teams: Vec<TeamUpdate>,
     },
 }
 
@@ -173,9 +185,9 @@ impl WebSocketRecv<'_> {
         .context("sending error message")
     }
 
-    async fn broadcast_team_update(state: &AppState, username: &Username) -> anyhow::Result<()> {
+    async fn broadcast_team_update(state: &AppState, user: &User) -> anyhow::Result<()> {
         let sql = state.db.read().await;
-        let submissions = repositories::submissions::get_latest_submissions(&sql.db, username)
+        let submissions = repositories::submissions::get_latest_submissions(&sql.db, &user.id)
             .await
             .context("getting user submissions")?;
 
@@ -188,7 +200,7 @@ impl WebSocketRecv<'_> {
             }
         }
 
-        match repositories::submissions::count_tests(&sql.db, username).await {
+        match repositories::submissions::count_tests(&sql.db, &user.id).await {
             Ok(counts) => {
                 for c in counts {
                     if states[c.question_index as usize] == QuestionState::NotAttempted
@@ -203,15 +215,19 @@ impl WebSocketRecv<'_> {
             }
         }
 
-        let new_score = repositories::submissions::get_user_score(&sql.db, username)
+        let new_score = repositories::submissions::get_user_score(&sql.db, &user.id)
             .await
             .context("getting user score")?;
 
         state.websocket.broadcast(WebSocketSend::Broadcast {
             broadcast: Broadcast::TeamUpdate {
-                team: username.clone(),
-                new_score,
-                new_states: states,
+                teams: vec![TeamUpdate {
+                    id: user.id.clone(),
+                    name: user.username.clone(),
+                    display_name: user.display_name.clone(),
+                    new_score,
+                    new_states: states,
+                }],
             },
         });
         Ok(())
@@ -240,7 +256,7 @@ impl WebSocketRecv<'_> {
             return self.error(ws, "Tests are already running");
         };
 
-        let AuthUser { user, .. } = who.user().unwrap();
+        let user = who.user().unwrap();
 
         scopeguard::defer! {
             state.active_tests.remove(&key);
@@ -270,10 +286,10 @@ impl WebSocketRecv<'_> {
         let results = runner.run().await?;
 
         let sql = state.db.read().await;
-        repositories::submissions::add_test(&sql.db, &user.username, problem_index)
+        repositories::submissions::add_test(&sql.db, &user.id, problem_index)
             .await
             .context("adding user test")?;
-        Self::broadcast_team_update(&state, &user.username).await?;
+        Self::broadcast_team_update(&state, user).await?;
 
         match results {
             RunOutput::CompileSpawnFail(s) => {
@@ -336,20 +352,17 @@ impl WebSocketRecv<'_> {
             .get_sender(who)
             .context("websocket not in active_connections")?;
 
-        let AuthUser { user, .. } = who.user().unwrap();
+        let user = who.user().unwrap();
 
         let Some(language) = state.config.languages.get_by_str(language) else {
             return self.error(ws, format!("Unknown language '{}'", language));
         };
 
         let sql = state.db.read().await;
-        let attempts = repositories::submissions::count_previous_submissions(
-            &sql.db,
-            &user.username,
-            problem_index,
-        )
-        .await
-        .context("getting previous submissions")?;
+        let attempts =
+            repositories::submissions::count_previous_submissions(&sql.db, &user.id, problem_index)
+                .await
+                .context("getting previous submissions")?;
         drop(sql); // ensure we don't hold the lock while doing time-consuming things
 
         let max_attempts: Option<u32> = state.config.max_submissions.map(NonZero::get);
@@ -398,7 +411,7 @@ impl WebSocketRecv<'_> {
                 repositories::submissions::create_submission_history(
                     &sql.db,
                     NewSubmissionHistory {
-                        submitter: &user.username,
+                        submitter: &user.id,
                         compile_fail: true,
                         code: solution,
                         question_index: problem_index,
@@ -419,7 +432,7 @@ impl WebSocketRecv<'_> {
                 })
                 .context("sending submission results message")?;
 
-                Self::broadcast_team_update(&state, &user.username).await?;
+                Self::broadcast_team_update(&state, user).await?;
                 TestResults::InternalError
             }
             RunOutput::CompileFail(simple_output) => {
@@ -427,7 +440,7 @@ impl WebSocketRecv<'_> {
                 repositories::submissions::create_submission_history(
                     &sql.db,
                     NewSubmissionHistory {
-                        submitter: &user.username,
+                        submitter: &user.id,
                         compile_fail: true,
                         code: solution,
                         question_index: problem_index,
@@ -449,7 +462,7 @@ impl WebSocketRecv<'_> {
                 })
                 .context("sending test results message")?;
 
-                Self::broadcast_team_update(&state, &user.username).await?;
+                Self::broadcast_team_update(&state, user).await?;
                 results
             }
             RunOutput::RunSuccess(vec) => {
@@ -484,7 +497,7 @@ impl WebSocketRecv<'_> {
                 let history = repositories::submissions::create_submission_history(
                     txn.acquire().await.unwrap(),
                     NewSubmissionHistory {
-                        submitter: &user.username,
+                        submitter: &user.id,
                         compile_fail: false,
                         code: solution,
                         question_index: problem_index,
@@ -529,13 +542,13 @@ impl WebSocketRecv<'_> {
                     remaining_attempts: max_attempts.map(|x| x - attempts - 1),
                 })
                 .context("sending test results message")?;
-                Self::broadcast_team_update(&state, &user.username).await?;
+                Self::broadcast_team_update(&state, user).await?;
                 results
             }
         };
 
         if let Err(err) = (ServerEvent::OnSubmissionEvaluation {
-            name: user.username.clone(),
+            id: user.id.clone(),
             question_idx: problem_index as u32,
             question_text: problem.title.clone(),
             test_results,
