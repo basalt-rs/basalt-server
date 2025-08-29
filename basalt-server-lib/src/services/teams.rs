@@ -146,16 +146,14 @@ async fn add_team(
         (StatusCode::INTERNAL_SERVER_ERROR, Json(None))
     })?;
 
-    state
-        .team_manager
-        .insert_many(users.iter().map(|u| u.id.clone()));
+    state.team_manager.insert_many(users.iter().map(|u| u.id));
 
     state.websocket.broadcast(WebSocketSend::Broadcast {
         broadcast: Broadcast::TeamUpdate {
             teams: users
                 .iter()
                 .map(|user| TeamUpdate {
-                    id: user.id.clone(),
+                    id: user.id,
                     name: user.username.clone(),
                     display_name: user.display_name.clone(),
                     new_score: 0.,
@@ -247,7 +245,7 @@ async fn patch_team(
 
     state.websocket.broadcast(WebSocketSend::Broadcast {
         broadcast: Broadcast::TeamRename {
-            id: new.id.clone(),
+            id: new.id,
             name: new.username.clone(),
             display_name: new.display_name.clone(),
         },

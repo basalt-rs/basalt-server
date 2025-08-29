@@ -15,12 +15,12 @@ macro_rules! define_id_type {
             ::derive_more::Debug,
             ::derive_more::From,
             ::derive_more::Into,
+            ::utoipa::ToSchema,
             Clone,
             Copy,
             PartialEq,
             Eq,
             Hash,
-            ToSchema,
         )]
         pub struct $name([u8; $name::LEN]);
 
@@ -83,7 +83,7 @@ macro_rules! define_id_type {
             }
         }
 
-        impl Serialize for $name {
+        impl serde::Serialize for $name {
             fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
             where
                 S: serde::Serializer,

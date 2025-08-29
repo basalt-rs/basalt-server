@@ -3,7 +3,6 @@ use std::time::{Duration, SystemTime};
 use redact::Secret;
 use serde::{Deserialize, Serialize};
 use sqlx::{prelude::FromRow, SqliteExecutor};
-use utoipa::ToSchema;
 
 use crate::{
     define_id_type,

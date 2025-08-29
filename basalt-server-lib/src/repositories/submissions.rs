@@ -112,7 +112,7 @@ pub struct PartialSubmissionHistory(SubmissionHistory);
 
 impl PartialSubmissionHistory {
     pub async fn fail(
-        self,
+        &self,
         db: impl Executor<'_, Database = Sqlite>,
     ) -> anyhow::Result<SubmissionHistory> {
         sqlx::query_as!(SubmissionHistory, r#"

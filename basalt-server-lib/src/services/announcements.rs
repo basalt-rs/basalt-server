@@ -67,7 +67,7 @@ pub async fn new(
                     broadcast: super::ws::Broadcast::NewAnnouncement(new.clone()),
                 });
             if let Err(err) = (ServerEvent::OnAnnouncement {
-                announcer: user.id.clone(),
+                announcer: user.id,
                 announcement: message,
                 time: utils::utc_now(),
             }

@@ -9,15 +9,13 @@ use axum::{
     http::HeaderMap,
     response::Response,
 };
-use rand::Rng;
-use tokio::sync::mpsc;
 use tracing::{debug, error, trace, warn};
 
 use super::WebSocketRecv;
 use crate::{
     extractors::auth::AuthError,
     repositories,
-    server::{websocket::ConnectedClient, AppState},
+    server::{websocket::LeaderboardId, AppState},
     services::ws::ConnectionKind,
 };
 
@@ -48,13 +46,9 @@ pub async fn connect_websocket(
     };
 
     let who = match user {
-        Some(user) => ConnectionKind::User { user },
+        Some(user) => ConnectionKind::User { user: user.id },
         None => ConnectionKind::Leaderboard {
-            id: rand::thread_rng()
-                .sample_iter(rand::distributions::Alphanumeric)
-                .take(20)
-                .map(char::from)
-                .collect(),
+            id: LeaderboardId::new(),
             addr,
         },
     };
@@ -68,9 +62,9 @@ pub async fn connect_websocket(
     Ok(ws.on_upgrade(move |ws| async move {
         // Using defer here so that if the thread panics, we still remove the connection.
         scopeguard::defer! {
-            state.websocket.active_connections.remove(&who);
+            state.websocket.remove_connection(&who);
         }
-        if let Err(e) = handle_socket(ws, who.clone(), Arc::clone(&state)).await {
+        if let Err(e) = handle_socket(ws, who, Arc::clone(&state)).await {
             error!(?who, ?e, "Error handling websocket connection");
         }
     }))
@@ -82,11 +76,7 @@ async fn handle_socket(
     who: ConnectionKind,
     state: Arc<AppState>,
 ) -> anyhow::Result<()> {
-    let (tx, mut rx) = mpsc::unbounded_channel();
-    state
-        .websocket
-        .active_connections
-        .insert(who.clone(), ConnectedClient { send: tx });
+    let mut rx = state.websocket.add_connection(who);
 
     if ws.send(Message::Ping("ping".into())).await.is_ok() {
         trace!("Send ping");

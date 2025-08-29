@@ -210,7 +210,6 @@ pub async fn run_tests(
     };
 
     let test_id = TestId::new();
-    let ret = test_id.clone();
 
     tokio::spawn(async move {
         let (runner, source_file) = state
@@ -275,33 +274,38 @@ pub async fn run_tests(
         let mut handle = compiled.run();
 
         let test_count = handle.test_count();
-        let conn_kind = ConnectionKind::User { user };
         let result_tx = {
-            // TODO: bounded?
             let (result_tx, mut result_rx) =
-                tokio::sync::mpsc::unbounded_channel::<TestResult<TestData>>();
-            let Some(websocket_sender) = state.websocket.get_sender(&conn_kind) else {
-                warn!("Test run started without connected websocket");
-                if let Err(error) = submission.fail(&state.db).await {
-                    error!(?error, "Error updating submission to failed in database");
-                }
-                return;
-            };
+                tokio::sync::mpsc::channel::<TestResult<TestData>>(test_count);
+            let state = Arc::clone(&state);
+            let user_id = user.id;
             tokio::spawn(async move {
                 // it's fairly likely that all tests will finish within one debounce, so let's
                 // allocate all of them
                 let mut results = Vec::with_capacity(test_count);
-                while let Some(ref r) = result_rx.recv().await {
+                while let Some(r) = result_rx.recv().await {
+                    trace!("Got an item");
                     tokio::time::sleep(Duration::from_millis(100)).await; // debounce
+                    trace!("Waiting for websocket connection");
+                    let Some(websocket_sender) = state
+                        .websocket
+                        .wait_for_connection(user_id, Duration::from_secs(5))
+                        .await
+                    else {
+                        debug!("No WS connection after timeout of 5s");
+                        // if no connection after five seconds, we can just quit assume that the
+                        // websocket is disconnected and the client will request the results later
+                        return;
+                    };
 
-                    results.push(r.into());
+                    results.push((&r).into());
                     while let Ok(ref v) = result_rx.try_recv() {
                         results.push(v.into());
                     }
 
                     if websocket_sender
                         .send(WebSocketSend::TestResults {
-                            id: test_id.clone(),
+                            id: test_id,
                             results: results.clone(),
                         })
                         .is_err()
@@ -314,9 +318,6 @@ pub async fn run_tests(
             });
 
             result_tx
-        };
-        let ConnectionKind::User { user } = conn_kind else {
-            unreachable!("We constructed this before the tokio::spawn")
         };
 
         let start = Instant::now();
@@ -354,7 +355,8 @@ pub async fn run_tests(
                 }
             };
 
-            let _ = result_tx.send(result);
+            // if the result_rx is dropped, we don't really care
+            let _ = result_tx.send(result).await;
         }
 
         let elapsed = start.elapsed();
@@ -370,7 +372,7 @@ pub async fn run_tests(
         };
     });
 
-    Ok(Json(ret))
+    Ok(Json(test_id))
 }
 
 pub fn router() -> OpenApiRouter<Arc<AppState>> {

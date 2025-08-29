@@ -84,10 +84,7 @@ impl TeamManagement {
     }
 
     pub fn get_team(&self, id: &UserId) -> Option<TeamFull> {
-        self.teams.get(id).map(|t| TeamFull {
-            id: id.clone(),
-            info: *t,
-        })
+        self.teams.get(id).map(|t| TeamFull { id: *id, info: *t })
     }
 
     pub fn get_all(&self) -> DashMap<UserId, TeamInfo> {
