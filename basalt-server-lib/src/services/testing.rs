@@ -44,11 +44,9 @@ pub async fn get_submissions_state(
     Query(SubmissionStateParams { user_id }): Query<SubmissionStateParams>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<QuestionSubmissionState>>, StatusCode> {
-    let sql = state.db.read().await;
-
     let user_id = if let Some(ref user_id) = user_id {
         if user.role == Role::Host {
-            repositories::users::get_user_by_id(&sql.db, user_id)
+            repositories::users::get_user_by_id(&state.db, user_id)
                 .await
                 .map_err(|e| match e {
                     repositories::users::GetUserError::QueryError(e) => {
@@ -74,7 +72,7 @@ pub async fn get_submissions_state(
         state.config.packet.problems.len()
     ];
 
-    match repositories::submissions::get_latest_submissions(&sql.db, user_id).await {
+    match repositories::submissions::get_latest_submissions(&state.db, user_id).await {
         Ok(submissions) => {
             for s in submissions {
                 states[s.question_index as usize].state = if s.success {
@@ -90,7 +88,7 @@ pub async fn get_submissions_state(
         }
     };
 
-    match repositories::submissions::count_tests(&sql.db, user_id).await {
+    match repositories::submissions::count_tests(&state.db, user_id).await {
         Ok(counts) => {
             for c in counts {
                 if states[c.question_index as usize].state == QuestionState::NotAttempted {
@@ -108,7 +106,7 @@ pub async fn get_submissions_state(
         }
     }
 
-    match repositories::submissions::get_attempts(&sql.db, user_id).await {
+    match repositories::submissions::get_attempts(&state.db, user_id).await {
         Ok(attempts) => {
             for a in attempts {
                 states[a.question_index as usize].remaining_attempts =
@@ -149,9 +147,8 @@ pub async fn get_submissions(
         return Err(StatusCode::FORBIDDEN);
     }
 
-    let sql = state.db.read().await;
     let subs =
-        match repositories::submissions::get_submissions(&sql.db, user_id, params.question_index)
+        match repositories::submissions::get_submissions(&state.db, user_id, params.question_index)
             .await
         {
             Ok(subs) => subs,

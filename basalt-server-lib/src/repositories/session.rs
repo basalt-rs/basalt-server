@@ -5,10 +5,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{prelude::FromRow, SqliteExecutor};
 use utoipa::ToSchema;
 
-use crate::{
-    repositories::users::{Role, UserId},
-    storage::SqliteLayer,
-};
+use crate::repositories::users::{Role, UserId};
 
 use super::users::User;
 
@@ -88,7 +85,7 @@ pub enum GetSessionError {
 }
 
 pub async fn get_user_from_session(
-    sql: &SqliteLayer,
+    sql: impl SqliteExecutor<'_> + Copy, // Copy is implemented for &T
     session_id: &str,
 ) -> Result<User, GetSessionError> {
     #[derive(sqlx::FromRow)]
@@ -102,7 +99,7 @@ pub async fn get_user_from_session(
     }
 
     let session = sqlx::query_as!(SessionUser, "SELECT users.*, expires_at FROM users JOIN sessions ON users.id = sessions.user_id WHERE session_id = $1", session_id)
-        .fetch_optional(&sql.db)
+        .fetch_optional(sql)
         .await
         .map_err(|e| GetSessionError::QueryError(e.to_string()))?
         .ok_or_else(|| GetSessionError::SessionNotFound {
@@ -111,7 +108,7 @@ pub async fn get_user_from_session(
 
     if SystemTime::UNIX_EPOCH + Duration::from_secs(session.expires_at as u64) < SystemTime::now() {
         sqlx::query!("DELETE FROM sessions WHERE session_id = $1", session_id)
-            .execute(&sql.db)
+            .execute(sql)
             .await
             .map_err(|e| GetSessionError::QueryError(e.to_string()))?;
 

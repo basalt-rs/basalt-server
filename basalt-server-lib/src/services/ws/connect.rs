@@ -29,13 +29,12 @@ pub async fn connect_websocket(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Response, AuthError> {
-    let db = state.db.read().await;
     trace!("Attempting to connect to WS");
     let protocol = headers
         .get("Sec-WebSocket-Protocol")
         .map(|s| s.to_str().unwrap().to_string());
     let user = if let Some(session_id) = &protocol {
-        let user = repositories::session::get_user_from_session(&db, session_id)
+        let user = repositories::session::get_user_from_session(&state.db, session_id)
             .await
             .map_err(|_| {
                 trace!("token expired");
@@ -47,7 +46,7 @@ pub async fn connect_websocket(
         trace!("user not authed");
         None
     };
-    drop(db);
+
     let who = match user {
         Some(user) => ConnectionKind::User { user },
         None => ConnectionKind::Leaderboard {

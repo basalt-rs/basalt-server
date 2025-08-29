@@ -1,5 +1,6 @@
 use anyhow::Context;
 use bedrock::Config;
+use derive_more::Deref;
 use std::path::Path;
 use std::str::FromStr;
 use tokio::io::AsyncWriteExt;
@@ -7,15 +8,16 @@ use tracing::debug;
 
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode},
-    Pool, Sqlite,
+    Database, Executor, Pool, Sqlite,
 };
 
 use crate::repositories::users::{create_user, Role};
 
 const INITIAL_DB_CONTENT: &[u8] = include_bytes!(env!("INITIAL_DATA_PATH"));
 
+#[derive(Debug, Deref)]
 pub struct SqliteLayer {
-    pub db: Pool<Sqlite>,
+    db: Pool<Sqlite>,
 }
 
 impl SqliteLayer {
@@ -110,6 +112,72 @@ impl SqliteLayer {
     }
 }
 
+// just proxy methods to self.db
+impl<'a> Executor<'a> for &SqliteLayer {
+    type Database = Sqlite;
+
+    fn fetch_many<'e, 'q: 'e, E>(
+        self,
+        query: E,
+    ) -> rustyscript::deno_core::futures::stream::BoxStream<
+        'e,
+        Result<
+            sqlx::Either<
+                <Self::Database as Database>::QueryResult,
+                <Self::Database as Database>::Row,
+            >,
+            sqlx::Error,
+        >,
+    >
+    where
+        'a: 'e,
+        E: 'q + sqlx::Execute<'q, Self::Database>,
+    {
+        self.db.fetch_many(query)
+    }
+
+    fn fetch_optional<'e, 'q: 'e, E>(
+        self,
+        query: E,
+    ) -> rustyscript::deno_core::futures::future::BoxFuture<
+        'e,
+        Result<Option<<Self::Database as Database>::Row>, sqlx::Error>,
+    >
+    where
+        'a: 'e,
+        E: 'q + sqlx::Execute<'q, Self::Database>,
+    {
+        self.db.fetch_optional(query)
+    }
+
+    fn prepare_with<'e, 'q: 'e>(
+        self,
+        sql: &'q str,
+        parameters: &'e [<Self::Database as Database>::TypeInfo],
+    ) -> rustyscript::deno_core::futures::future::BoxFuture<
+        'e,
+        Result<<Self::Database as Database>::Statement<'q>, sqlx::Error>,
+    >
+    where
+        'a: 'e,
+    {
+        self.db.prepare_with(sql, parameters)
+    }
+
+    fn describe<'e, 'q: 'e>(
+        self,
+        sql: &'q str,
+    ) -> rustyscript::deno_core::futures::future::BoxFuture<
+        'e,
+        Result<sqlx::Describe<Self::Database>, sqlx::Error>,
+    >
+    where
+        'a: 'e,
+    {
+        self.db.describe(sql)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::testing::mock_db;
@@ -122,8 +190,8 @@ mod tests {
             Some("single.toml"),
         )
         .unwrap();
-        let (f, sql) = mock_db().await;
-        sql.ingest(&cfg).await.expect("Failed to ingest config");
+        let (f, db) = mock_db().await;
+        db.ingest(&cfg).await.expect("Failed to ingest config");
 
         drop(f)
     }

@@ -5,7 +5,7 @@ resolver = "2"
 [workspace.package]
 edition = "2021"
 version = "0.1.0"
-rust-version = "1.81"
+rust-version = "1.82"
 
 [workspace.dependencies]
 anyhow = "1.0.95"
@@ -26,11 +26,8 @@ derive_more = { version = "2.0.1", features = [
     "from_str",
 ] }
 directories = "6.0.0"
-erudite = { git = "https://github.com/basalt-rs/erudite.git", rev = "7de318e", features = [
-    "serde",
-] }
+erudite = { git = "https://github.com/basalt-rs/erudite.git", rev = "f45f587" }
 lazy_static = "1.5.0"
-leucite = "0.2.0"
 rand = "0.8.5"
 redact = { version = "0.1.10", features = ["serde"] }
 scopeguard = "1.2.0"
@@ -41,7 +38,7 @@ sqlx = { version = "0.8.3", features = [
     "runtime-tokio-native-tls",
     "time",
 ] }
-thiserror = "2.0.11"
+thiserror = "2.0.16"
 time = { version = "0.3.40", features = ["serde"] }
 tokio = { version = "1.43.0", features = ["full"] }
 tower-http = { version = "0.6.2", features = ["cors", "trace", "fs"] }
