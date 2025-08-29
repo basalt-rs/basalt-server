@@ -19,20 +19,8 @@ concurrency:
     cancel-in-progress: true
 name: publish main images
 jobs:
-    get-version:
-        runs-on: ubuntu-latest
-        outputs:
-            version: ${{ steps.extract.outputs.version }}
-        steps:
-            - name: Extract version from ref
-              id: extract
-              run: |
-                  VERSION="${GITHUB_REF_NAME#v}"
-                  echo "version=$VERSION" >> $GITHUB_OUTPUT
-
     push-containers:
         runs-on: blacksmith-4vcpu-ubuntu-2404
-        needs: [get-version]
         permissions:
             contents: read
             packages: write
