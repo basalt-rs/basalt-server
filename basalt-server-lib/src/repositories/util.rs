@@ -12,17 +12,17 @@ use utoipa::ToSchema;
 macro_rules! define_id_type {
     ($name: ident) => {
         #[derive(
-            Debug,
+            ::derive_more::Debug,
+            ::derive_more::From,
+            ::derive_more::Into,
+            ::serde::Deserialize,
+            ::serde::Serialize,
+            ::sqlx::Type,
             Clone,
-            Serialize,
-            Deserialize,
-            derive_more::From,
-            derive_more::Into,
-            sqlx::Type,
-            ToSchema,
             Eq,
-            PartialEq,
             Hash,
+            PartialEq,
+            ToSchema,
         )]
         #[sqlx(transparent)]
         // TODO: replace inner type with [u8; 20] for memory efficiency
@@ -30,7 +30,8 @@ macro_rules! define_id_type {
         pub struct $name(String);
 
         impl $name {
-            fn new() -> Self {
+            #[allow(clippy::new_without_default)] // default is kind of bad here as new generates a random string
+            pub fn new() -> Self {
                 use rand::{distributions::Alphanumeric, Rng};
                 let id = rand::thread_rng()
                     .sample_iter(Alphanumeric)
@@ -40,7 +41,110 @@ macro_rules! define_id_type {
                 Self(id)
             }
         }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{}", self.0)
+            }
+        }
     };
+}
+
+/// Define a new enum that works with sqlx via integer serialisation
+///
+/// If parentheses are provided after the name, it will be used as a mapper from the type in
+/// parens, see submissions repo.
+#[macro_export]
+macro_rules! define_sqlx_enum {
+    // define_sqlx_enum! {
+    //     pub enum Foo(Bar) {
+    //         A = Bar::A,
+    //         B = Bar::B,
+    //     }
+    // }
+    (
+        $(#[$($attr: tt)+])*
+        pub enum $name: ident($map_from: ty) {
+            $variant0: ident = $pat0: pat,
+            $($variant: ident = $pat: pat),+$(,)?
+        }
+    ) => {
+        define_sqlx_enum! {
+            $(#[$($attr)+])*
+            pub enum $name {
+                $variant0,
+                $($variant),+
+            }
+        }
+
+        impl From<$map_from> for $name {
+            fn from(value: $map_from) -> Self {
+                match value {
+                    $pat0 => Self::$variant0,
+                    $($pat => Self::$variant),+
+                }
+            }
+        }
+    };
+    // define_sqlx_enum! {
+    //     pub enum Foo {
+    //         A,
+    //         B,
+    //     }
+    // }
+    (
+        $(#[$($attr: tt)+])*
+        pub enum $name: ident {
+            $variant0: ident,
+            $($variant: ident),+$(,)?
+        }
+    ) => {
+        #[derive(
+            ::derive_more::Debug,
+            ::serde::Deserialize,
+            ::serde::Serialize,
+            ::sqlx::Type,
+            ::utoipa::ToSchema,
+            Clone,
+            Copy,
+            Eq,
+            PartialEq,
+            Hash,
+        )]
+        #[repr(i64)]
+        $(#[$($attr)+])*
+        pub enum $name {
+            $variant0 = 0,
+            $($variant),+
+        }
+
+        impl From<$name> for i64 {
+            fn from(value: $name) -> Self {
+                value as _
+            }
+        }
+
+        impl From<i64> for $name {
+            fn from(value: i64) -> Self {
+                assert!(value >= 0);
+                [Self::$variant0, $(Self::$variant),+][value as usize]
+            }
+        }
+
+        impl From<$name> for i32 {
+            fn from(value: $name) -> Self {
+                value as _
+            }
+        }
+
+        impl From<i32> for $name {
+            fn from(value: i32) -> Self {
+                assert!(value >= 0);
+                [Self::$variant0, $(Self::$variant),+][value as usize]
+            }
+        }
+
+    }
 }
 
 #[derive(Clone, Debug, From, Into, Deref, DerefMut, Deserialize, Serialize, ToSchema)]

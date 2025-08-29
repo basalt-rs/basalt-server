@@ -7,84 +7,13 @@ use std::{borrow::Cow, time::Duration};
 use time::OffsetDateTime;
 use utoipa::ToSchema;
 
-use crate::{define_id_type, repositories::util::WrappedDuration};
+use crate::{define_id_type, define_sqlx_enum, repositories::util::WrappedDuration};
 
 use super::users::UserId;
 
 define_id_type!(SubmissionId);
 
-macro_rules! impl_erudite_enum {
-    (
-        $(#[$($attr: tt)+])*
-        pub enum $name: ident($erudite_ty: ty) {
-            $variant0: ident = $pat0: pat,
-            $($variant: ident = $pat: pat),+$(,)?
-        }
-    ) => {
-        $(#[$($attr)+])*
-        #[derive(Clone, Copy, PartialEq, Eq)]
-        #[repr(i64)]
-        pub enum $name {
-            $variant0 = 0,
-            $($variant),+
-        }
-
-        impl From<$name> for i64 {
-            fn from(value: $name) -> Self {
-                value as _
-            }
-        }
-
-        impl From<i64> for $name {
-            fn from(value: i64) -> Self {
-                assert!(value >= 0);
-                [Self::$variant0, $(Self::$variant),+][value as usize]
-            }
-        }
-
-        impl From<$erudite_ty> for $name {
-            fn from(value: $erudite_ty) -> Self {
-                match value {
-                    $pat0 => Self::$variant0,
-                    $($pat => Self::$variant),+
-                }
-            }
-        }
-
-    };
-    (
-        $(#[$($attr: tt)+])*
-        pub enum $name: ident {
-            $variant0: ident,
-            $($variant: ident),+$(,)?
-        }
-    ) => {
-        $(#[$($attr)+])*
-        #[derive(Clone, Copy, PartialEq, Eq)]
-        #[repr(i64)]
-        pub enum $name {
-            $variant0 = 0,
-            $($variant),+
-        }
-
-        impl From<$name> for i64 {
-            fn from(value: $name) -> Self {
-                value as _
-            }
-        }
-
-        impl From<i64> for $name {
-            fn from(value: i64) -> Self {
-                assert!(value >= 0);
-                [Self::$variant0, $(Self::$variant),+][value as usize]
-            }
-        }
-
-    }
-}
-
-impl_erudite_enum! {
-    #[derive(Debug, Serialize, Deserialize, sqlx::Type, ToSchema)]
+define_sqlx_enum! {
     pub enum CompileResultState(Option<erudite::runner::CompileResultState>) {
         NoCompile = None,
         Success = Some(erudite::runner::CompileResultState::Success),
@@ -93,8 +22,7 @@ impl_erudite_enum! {
     }
 }
 
-impl_erudite_enum! {
-    #[derive(Debug, Hash, Serialize, Deserialize, utoipa::ToSchema, sqlx::Type)]
+define_sqlx_enum! {
     pub enum SubmissionState {
         Started,
         Finished,
@@ -133,8 +61,7 @@ pub struct NewSubmissionHistory<'a> {
     pub compile_result: Option<&'a CompileResult>,
 }
 
-impl_erudite_enum! {
-    #[derive(Debug, Serialize, Deserialize, sqlx::Type, ToSchema)]
+define_sqlx_enum! {
     pub enum TestResultState(erudite::runner::TestResultState) {
         Pass = erudite::runner::TestResultState::Pass,
         RuntimeFail = erudite::runner::TestResultState::RuntimeFail,
