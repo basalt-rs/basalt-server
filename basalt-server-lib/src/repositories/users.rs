@@ -52,7 +52,7 @@ pub async fn get_user_by_id(
         .map_err(|e| GetUserError::QueryError(e.to_string()))?
         .ok_or(GetUserError::UserNotFound {
             property: "id",
-            value: id.0.clone(),
+            value: id.to_string(),
         })
 }
 

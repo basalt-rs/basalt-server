@@ -15,36 +15,120 @@ macro_rules! define_id_type {
             ::derive_more::Debug,
             ::derive_more::From,
             ::derive_more::Into,
-            ::serde::Deserialize,
-            ::serde::Serialize,
-            ::sqlx::Type,
             Clone,
+            Copy,
+            PartialEq,
             Eq,
             Hash,
-            PartialEq,
             ToSchema,
         )]
-        #[sqlx(transparent)]
-        // TODO: replace inner type with [u8; 20] for memory efficiency
-        //       We would also then be able to do Copy
-        pub struct $name(String);
+        pub struct $name([u8; $name::LEN]);
 
         impl $name {
+            const LEN: usize = 20;
+
             #[allow(clippy::new_without_default)] // default is kind of bad here as new generates a random string
             pub fn new() -> Self {
                 use rand::{distributions::Alphanumeric, Rng};
-                let id = rand::thread_rng()
-                    .sample_iter(Alphanumeric)
-                    .take(20)
-                    .map(char::from)
-                    .collect::<String>();
-                Self(id)
+                let mut it = rand::thread_rng().sample_iter(Alphanumeric);
+                let buf: [u8; Self::LEN] = std::array::from_fn(|_| it.next().unwrap());
+                Self(buf)
+            }
+
+            fn as_str(&self) -> &str {
+                // SAFETY: we define this as an array of alphanumeric characters, so it's already
+                // utf-8
+                unsafe { str::from_utf8_unchecked(&self.0) }
             }
         }
 
         impl std::fmt::Display for $name {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "{}", self.0)
+                write!(f, "{}", self.as_str())
+            }
+        }
+
+        impl From<&str> for $name {
+            fn from(value: &str) -> Self {
+                assert!(value.len() == Self::LEN);
+                Self(
+                    value
+                        .as_bytes()
+                        .try_into()
+                        .expect("if value.len() == Self::LEN, then this works"),
+                )
+            }
+        }
+
+        impl From<String> for $name {
+            fn from(value: String) -> Self {
+                Self::from(value.as_str())
+            }
+        }
+
+        impl<'de> serde::Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                let s: &str = <&str>::deserialize(deserializer)?;
+                if s.len() != Self::LEN {
+                    return Err(serde::de::Error::custom(format!(
+                        "Invalid string length, got {}, expected {}",
+                        s.len(),
+                        Self::LEN
+                    )));
+                }
+                Ok(Self::from(s))
+            }
+        }
+
+        impl Serialize for $name {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                self.as_str().serialize(serializer)
+            }
+        }
+
+        impl sqlx::Type<sqlx::Sqlite> for $name {
+            fn type_info() -> <sqlx::Sqlite as sqlx::Database>::TypeInfo {
+                <&str as sqlx::Type<sqlx::Sqlite>>::type_info()
+            }
+
+            fn compatible(ty: &sqlx::sqlite::SqliteTypeInfo) -> bool {
+                <&str as sqlx::Type<sqlx::Sqlite>>::compatible(ty)
+            }
+        }
+
+        impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for $name {
+            fn encode_by_ref(
+                &self,
+                args: &mut <sqlx::Sqlite as sqlx::Database>::ArgumentBuffer<'q>,
+            ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
+                <String as sqlx::Encode<sqlx::Sqlite>>::encode(self.as_str().to_string(), args)
+            }
+        }
+
+        impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for $name {
+            fn decode(
+                value: <sqlx::Sqlite as sqlx::Database>::ValueRef<'r>,
+            ) -> Result<Self, sqlx::error::BoxDynError> {
+                let s = <&str as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;
+                if s.len() != Self::LEN {
+                    Err(format!(
+                        "Invalid length of string.  Got {}, expected {}",
+                        s.len(),
+                        Self::LEN
+                    ))?
+                }
+
+                Ok(Self(
+                    s.as_bytes()
+                        .try_into()
+                        .expect("if value.len() == Self::LEN, then this works"),
+                ))
             }
         }
     };
