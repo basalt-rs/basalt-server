@@ -1,22 +1,26 @@
+use std::{path::PathBuf, sync::Arc};
+
 use axum::Router;
 use bedrock::Config;
 use clock::ClockInfo;
 use dashmap::DashSet;
 use rand::{distributions::Alphanumeric, Rng};
-use std::{path::PathBuf, sync::Arc};
 use teams::TeamManagement;
-use tokio::sync::{mpsc::UnboundedSender, RwLock};
+use tokio::{
+    sync::{mpsc::UnboundedSender, RwLock},
+    task::JoinSet,
+};
 use websocket::WebSocketManager;
 
 pub mod clock;
 pub mod hooks;
-pub mod orchestration;
 pub mod teams;
+pub mod tester;
 pub mod websocket;
 
 use crate::{
     repositories::{self, users::Role},
-    server::hooks::events::ServerEvent,
+    server::{hooks::events::ServerEvent, tester::Tester},
     services,
     storage::SqliteLayer,
 };
@@ -24,42 +28,62 @@ use crate::{
 type Dispatchers = Vec<UnboundedSender<(ServerEvent, Arc<AppState>)>>;
 
 pub struct AppState {
-    pub db: RwLock<SqliteLayer>,
+    pub db: SqliteLayer,
     pub web_dir: Option<PathBuf>,
     pub websocket: WebSocketManager,
     pub team_manager: TeamManagement,
     pub active_tests: DashSet<(websocket::ConnectionKind, usize)>,
     pub active_submissions: DashSet<(websocket::ConnectionKind, usize)>,
+    pub tester: Tester,
     pub config: Config,
     pub clock: RwLock<ClockInfo>,
     pub dispatchers: Dispatchers,
 }
 
 impl AppState {
-    pub fn new(
-        db: SqliteLayer,
-        config: Config,
-        dispatchers: Dispatchers,
-        web_dir: Option<PathBuf>,
-    ) -> Self {
+    pub fn new(db: SqliteLayer, config: Config, web_dir: Option<PathBuf>) -> Self {
         Self {
-            db: RwLock::new(db),
+            db,
             web_dir,
             websocket: Default::default(),
             team_manager: Default::default(),
             active_tests: Default::default(),
             active_submissions: Default::default(),
-            dispatchers,
+            dispatchers: Default::default(),
+            tester: Tester::new(&config),
             config,
             clock: Default::default(),
         }
     }
 
+    pub fn init_hooks(&mut self) -> JoinSet<()> {
+        let mut jset = JoinSet::<()>::new();
+
+        #[cfg(feature = "scripting")]
+        {
+            let (mut hook_handler, hooks_tx) =
+                crate::server::hooks::handlers::EventHookHandler::create();
+            self.dispatchers.push(hooks_tx);
+            jset.spawn(async move { hook_handler.start().await });
+        }
+
+        #[cfg(feature = "webhooks")]
+        {
+            let (mut webhook_handler, webhooks_tx) =
+                crate::server::hooks::webhooks::EventWebhookHandler::create();
+            self.dispatchers.push(webhooks_tx);
+            jset.spawn(async move { webhook_handler.start().await });
+        }
+
+        jset
+    }
+
     pub async fn init(&mut self) -> anyhow::Result<()> {
-        let sql = self.db.read().await;
-        let users = repositories::users::get_users_with_role(&sql.db, Role::Competitor).await?;
+        // init teams
+        let users = repositories::users::get_users_with_role(&*self.db, Role::Competitor).await?;
         self.team_manager
             .insert_many(users.into_iter().map(|u| u.id));
+
         Ok(())
     }
 }

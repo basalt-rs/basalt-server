@@ -42,30 +42,27 @@ async fn login(
     Json(login): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, StatusCode> {
     trace!(%login.username, "attempt to login to user");
-    let sql = state.db.read().await;
-
     let login = UserLogin {
         username: login.username,
         password: login.password.into(),
     };
 
-    let Ok(user) = repositories::users::login_user(&sql.db, &login).await else {
+    let Ok(user) = repositories::users::login_user(&state.db, &login).await else {
         debug!(%login.username, "failed login attempt");
         return Err(StatusCode::UNAUTHORIZED);
     };
 
-    let token = repositories::session::create_session(&sql.db, &user)
+    let token = repositories::session::create_session(&state.db, &user)
         .await
         .unwrap();
-    let score = repositories::submissions::get_user_score(&sql.db, &user.id)
+    let score = repositories::submissions::get_user_score(&state.db, &user.id)
         .await
         .unwrap();
-    drop(sql);
 
     if state.team_manager.check_in(&user.id) {
         trace!("checking in user: {}", &user.username);
         if let Err(err) = (ServerEvent::OnCheckIn {
-            id: user.id.clone(),
+            id: user.id,
             time: Local::now().to_utc(),
         }
         .dispatch(state.clone()))
@@ -75,8 +72,7 @@ async fn login(
     }
 
     if let Some(team) = state.team_manager.get_team(&user.id) {
-        let sql = state.db.read().await;
-        let user = repositories::users::get_user_by_id(&sql.db, &user.id)
+        let user = repositories::users::get_user_by_id(&state.db, &user.id)
             .await
             .map_err(|e| {
                 error!("Error getting username: {:?}", e);
@@ -115,23 +111,18 @@ async fn logout(
 ) -> Result<(), StatusCode> {
     debug!(?user.username, "logout");
 
-    let score = {
-        let sql = state.db.read().await;
+    repositories::session::close_session(&state.db, &session_id)
+        .await
+        .unwrap();
 
-        repositories::session::close_session(&sql.db, &session_id)
-            .await
-            .unwrap();
-
-        repositories::submissions::get_user_score(&sql.db, &user.id)
-            .await
-            .unwrap()
-    };
+    let score = repositories::submissions::get_user_score(&state.db, &user.id)
+        .await
+        .unwrap();
 
     state.team_manager.disconnect(&user.id);
 
     if let Some(team) = state.team_manager.get_team(&user.id) {
-        let sql = state.db.read().await;
-        let user = repositories::users::get_user_by_id(&sql.db, &user.id)
+        let user = repositories::users::get_user_by_id(&state.db, &user.id)
             .await
             .map_err(|e| {
                 error!("Error getting username: {:?}", e);

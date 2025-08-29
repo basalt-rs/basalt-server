@@ -28,8 +28,7 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 pub async fn get_all(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<Announcement>>, StatusCode> {
-    let sql = state.db.read().await;
-    match crate::repositories::announcements::get_announcements(&sql.db).await {
+    match crate::repositories::announcements::get_announcements(&state.db).await {
         Ok(a) => Ok(Json(a)),
         Err(err) => {
             tracing::error!("Error getting announcements: {:?}", err);
@@ -58,10 +57,8 @@ pub async fn new(
     HostUser(user): HostUser,
     Json(NewAnnouncement { message }): Json<NewAnnouncement>,
 ) -> Result<Json<Announcement>, StatusCode> {
-    let sql = state.db.read().await;
+    let new = repositories::announcements::create_announcement(&state.db, &user.id, &message).await;
 
-    let new = repositories::announcements::create_announcement(&sql.db, &user.id, &message).await;
-    drop(sql);
     match new {
         Ok(new) => {
             state
@@ -70,7 +67,7 @@ pub async fn new(
                     broadcast: super::ws::Broadcast::NewAnnouncement(new.clone()),
                 });
             if let Err(err) = (ServerEvent::OnAnnouncement {
-                announcer: user.id.clone(),
+                announcer: user.id,
                 announcement: message,
                 time: utils::utc_now(),
             }
@@ -102,10 +99,8 @@ pub async fn delete(
     Path(id): Path<AnnouncementId>,
     HostUser(_): HostUser,
 ) -> Result<Json<Announcement>, StatusCode> {
-    let sql = state.db.read().await;
+    let del = repositories::announcements::delete_announcement(&state.db, &id).await;
 
-    let del = repositories::announcements::delete_announcement(&sql.db, &id).await;
-    drop(sql);
     match del {
         Ok(Some(del)) => {
             state

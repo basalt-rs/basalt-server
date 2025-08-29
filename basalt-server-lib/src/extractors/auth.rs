@@ -54,9 +54,8 @@ async fn extract(
     let session_id = bearer.token();
 
     // confirm user is in db and the session is active
-    let db = state.db.read().await;
     trace!("getting user from session");
-    let user = repositories::session::get_user_from_session(&db, session_id)
+    let user = repositories::session::get_user_from_session(&state.db, session_id)
         .await
         .map_err(|_| {
             trace!("token expired");
