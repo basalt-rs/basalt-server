@@ -1,0 +1,5 @@
+self-hosted-runner:
+    # Labels of self-hosted runner in array of strings.
+    labels:
+        - blacksmith-2vcpu-ubuntu-2404
+        - blacksmith-4vcpu-ubuntu-2404
