@@ -1,184 +1,354 @@
 use anyhow::Context;
-use erudite::{TestFailReason, TestOutput};
+use derive_more::Deref;
+use erudite::runner::{CompileResult, TestResult};
 use serde::{Deserialize, Serialize};
 use sqlx::{Executor, Sqlite, SqliteExecutor};
-use std::fmt::Display;
+use std::{borrow::Cow, time::Duration};
 use time::OffsetDateTime;
 use utoipa::ToSchema;
 
+use crate::{define_id_type, repositories::util::WrappedDuration};
+
 use super::users::UserId;
 
-#[derive(
-    Debug, Serialize, Deserialize, derive_more::From, derive_more::Into, sqlx::Type, ToSchema,
-)]
-#[sqlx(transparent)]
-pub struct SubmissionId(String);
+define_id_type!(SubmissionId);
 
-impl SubmissionId {
-    fn new() -> Self {
-        use rand::{distributions::Alphanumeric, Rng};
-        let id = rand::thread_rng()
-            .sample_iter(Alphanumeric)
-            .take(20)
-            .map(char::from)
-            .collect::<String>();
-        Self(id)
+macro_rules! impl_erudite_enum {
+    (
+        $(#[$($attr: tt)+])*
+        pub enum $name: ident($erudite_ty: ty) {
+            $variant0: ident = $pat0: pat,
+            $($variant: ident = $pat: pat),+$(,)?
+        }
+    ) => {
+        $(#[$($attr)+])*
+        #[derive(Clone, Copy, PartialEq, Eq)]
+        #[repr(i64)]
+        pub enum $name {
+            $variant0 = 0,
+            $($variant),+
+        }
+
+        impl From<$name> for i64 {
+            fn from(value: $name) -> Self {
+                value as _
+            }
+        }
+
+        impl From<i64> for $name {
+            fn from(value: i64) -> Self {
+                assert!(value >= 0);
+                [Self::$variant0, $(Self::$variant),+][value as usize]
+            }
+        }
+
+        impl From<$erudite_ty> for $name {
+            fn from(value: $erudite_ty) -> Self {
+                match value {
+                    $pat0 => Self::$variant0,
+                    $($pat => Self::$variant),+
+                }
+            }
+        }
+
+    };
+    (
+        $(#[$($attr: tt)+])*
+        pub enum $name: ident {
+            $variant0: ident,
+            $($variant: ident),+$(,)?
+        }
+    ) => {
+        $(#[$($attr)+])*
+        #[derive(Clone, Copy, PartialEq, Eq)]
+        #[repr(i64)]
+        pub enum $name {
+            $variant0 = 0,
+            $($variant),+
+        }
+
+        impl From<$name> for i64 {
+            fn from(value: $name) -> Self {
+                value as _
+            }
+        }
+
+        impl From<i64> for $name {
+            fn from(value: i64) -> Self {
+                assert!(value >= 0);
+                [Self::$variant0, $(Self::$variant),+][value as usize]
+            }
+        }
+
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, sqlx::FromRow, ToSchema)]
+impl_erudite_enum! {
+    #[derive(Debug, Serialize, Deserialize, sqlx::Type, ToSchema)]
+    pub enum CompileResultState(Option<erudite::runner::CompileResultState>) {
+        NoCompile = None,
+        Success = Some(erudite::runner::CompileResultState::Success),
+        RuntimeFail = Some(erudite::runner::CompileResultState::RuntimeFail),
+        TimedOut = Some(erudite::runner::CompileResultState::TimedOut)
+    }
+}
+
+impl_erudite_enum! {
+    #[derive(Debug, Hash, Serialize, Deserialize, utoipa::ToSchema, sqlx::Type)]
+    pub enum SubmissionState {
+        Started,
+        Finished,
+        Cancelled,
+        Failed,
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, sqlx::FromRow, ToSchema)]
 pub struct SubmissionHistory {
     pub id: SubmissionId,
     pub submitter: UserId,
     #[serde(with = "time::serde::rfc3339")]
     #[schema(value_type = String, format = Date)]
     pub time: OffsetDateTime,
-    pub compile_fail: bool,
     pub code: String,
-    pub question_index: i64, // _really_ should be usize, but sqlx doesn't like that
-    pub score: f64,
-    pub success: bool,
+    pub question_index: i64,
     pub language: String,
+    pub compile_result: CompileResultState,
+    pub compile_stdout: String,
+    pub compile_stderr: String,
+    pub compile_exit_status: i64,
+    // The remaining data will be updated after the tests have finished running
+    pub state: SubmissionState,
+    pub score: f64,
+    pub success: bool, // effectively tests.all(state = Pass)
+    // NOTE: This is stored as a `u64` cast as an `i64`.  Keep that in mind while doing operations on this data in queries.
+    pub time_taken: WrappedDuration,
 }
 
 pub struct NewSubmissionHistory<'a> {
     pub submitter: &'a UserId,
-    pub compile_fail: bool,
     pub code: &'a str,
     pub question_index: usize,
-    pub score: f64,
-    pub success: bool,
     pub language: &'a str,
+    pub compile_result: Option<&'a CompileResult>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TestResult {
-    Pass,
-    Timeout,
-    IncorrectOutput,
-    Crash,
-}
-
-impl Display for TestResult {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TestResult::Pass => write!(f, "pass"),
-            TestResult::Timeout => write!(f, "timeout"),
-            TestResult::IncorrectOutput => write!(f, "incorrect_output"),
-            TestResult::Crash => write!(f, "crash"),
-        }
-    }
-}
-
-impl From<String> for TestResult {
-    fn from(value: String) -> Self {
-        match value.as_str() {
-            "pass" => Self::Pass,
-            "timeout" => Self::Timeout,
-            "incorrect_output" => Self::IncorrectOutput,
-            "crash" => Self::Crash,
-            _ => unreachable!(),
-        }
+impl_erudite_enum! {
+    #[derive(Debug, Serialize, Deserialize, sqlx::Type, ToSchema)]
+    pub enum TestResultState(erudite::runner::TestResultState) {
+        Pass = erudite::runner::TestResultState::Pass,
+        RuntimeFail = erudite::runner::TestResultState::RuntimeFail,
+        TimedOut = erudite::runner::TestResultState::TimedOut,
+        IncorrectOutput = erudite::runner::TestResultState::IncorrectOutput
     }
 }
 
 /// History of tests that have been run on submissions
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SubmissionTestHistory {
     pub submission: SubmissionId,
     pub test_index: i64, // _really_ should be usize, but sqlx doesn't like that
-    pub result: TestResult,
-    pub stdout: Option<String>,
-    pub stderr: Option<String>,
+    pub result: TestResultState,
+    pub stdout: String,
+    pub stderr: String,
     pub exit_status: i64,
+    // NOTE: This is stored as a `u64` cast as an `i64`.  Keep that in mind while doing operations on this data in queries.
+    pub time_taken: WrappedDuration,
 }
 
 /// History of tests that have been run on submissions
-#[derive(Serialize, Deserialize)]
-pub struct NewSubmissionTestHistory {
-    pub result: TestResult,
-    pub stdout: Option<String>,
-    pub stderr: Option<String>,
-    pub exit_status: i64,
+pub struct NewSubmissionTestHistory<'a> {
+    result: TestResultState,
+    stdout: Cow<'a, str>,
+    stderr: Cow<'a, str>,
+    exit_status: i32,
+    time_taken: WrappedDuration,
 }
 
-impl From<&TestOutput> for NewSubmissionTestHistory {
-    fn from(test: &TestOutput) -> Self {
-        match test {
-            TestOutput::Pass => Self {
-                result: TestResult::Pass,
-                stdout: None,
-                stderr: None,
-                exit_status: 0,
-            },
-            TestOutput::Fail(TestFailReason::Timeout) => Self {
-                result: TestResult::Timeout,
-                stdout: None,
-                stderr: None,
-                exit_status: 1,
-            },
-            TestOutput::Fail(TestFailReason::IncorrectOutput(output)) => Self {
-                result: TestResult::IncorrectOutput,
-                stdout: output.stdout.str().map(String::from),
-                stderr: output.stderr.str().map(String::from),
-                exit_status: output.status.into(),
-            },
-            TestOutput::Fail(TestFailReason::Crash(output)) => Self {
-                result: TestResult::Crash,
-                stdout: output.stdout.str().map(String::from),
-                stderr: output.stderr.str().map(String::from),
-                exit_status: output.status.into(),
-            },
+impl<'a, T> From<&'a TestResult<T>> for NewSubmissionTestHistory<'a> {
+    fn from(value: &'a TestResult<T>) -> Self {
+        Self {
+            result: value.state().into(),
+            stdout: value.stdout().to_str_lossy(),
+            stderr: value.stderr().to_str_lossy(),
+            exit_status: value.exit_status(),
+            time_taken: value.time_taken().into(),
         }
     }
+}
+
+/// A submission that has been added to the database, but hasn't been finished (call `.finish` to
+/// finish)
+#[derive(Clone, Debug, Deref)]
+#[must_use]
+pub struct PartialSubmissionHistory(SubmissionHistory);
+
+impl PartialSubmissionHistory {
+    pub async fn fail(
+        self,
+        db: impl Executor<'_, Database = Sqlite>,
+    ) -> anyhow::Result<SubmissionHistory> {
+        sqlx::query_as!(SubmissionHistory, r#"
+            UPDATE submission_history
+                SET state = ?
+            WHERE id = ?
+            RETURNING id, submitter, time, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, state, score, success, time_taken"#,
+            SubmissionState::Failed,
+            self.id,
+        )
+        .fetch_one(db)
+        .await
+        .context("Failed to create submission history")
+    }
+
+    pub async fn cancel(
+        self,
+        db: impl Executor<'_, Database = Sqlite>,
+    ) -> anyhow::Result<SubmissionHistory> {
+        sqlx::query_as!(SubmissionHistory, r#"
+            UPDATE submission_history
+                SET state = ?
+            WHERE id = ?
+            RETURNING id, submitter, time, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, state, score, success, time_taken"#,
+            SubmissionState::Cancelled,
+            self.id,
+        )
+        .fetch_one(db)
+        .await
+        .context("Failed to create submission history")
+    }
+
+    pub async fn finish(
+        self,
+        db: impl Executor<'_, Database = Sqlite>,
+        score: f64,
+        success: bool,
+        time_taken: Duration,
+    ) -> anyhow::Result<SubmissionHistory> {
+        let time_taken = WrappedDuration::from(time_taken);
+        sqlx::query_as!(SubmissionHistory, r#"
+            UPDATE submission_history
+                SET state = ?,
+                score = ?,
+                success = ?,
+                time_taken = ?
+            WHERE id = ?
+            RETURNING id, submitter, time, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, state, score, success, time_taken"#,
+            SubmissionState::Finished,
+            score,
+            success,
+            time_taken,
+            self.id,
+        )
+        .fetch_one(db)
+        .await
+        .context("Failed to create submission history")
+    }
+}
+
+pub async fn create_failed_submission_history<'a>(
+    db: impl Executor<'_, Database = Sqlite>,
+    new: NewSubmissionHistory<'a>,
+) -> anyhow::Result<PartialSubmissionHistory> {
+    let id = SubmissionId::new();
+    let question_index = new.question_index as i64;
+    let compile_result: CompileResultState = new.compile_result.map(|r| r.state()).into();
+    let compile_stdout = new
+        .compile_result
+        .map(|r| r.stdout().to_str_lossy())
+        .unwrap_or(Cow::Borrowed(""));
+    let compile_stderr = new
+        .compile_result
+        .map(|r| r.stderr().to_str_lossy())
+        .unwrap_or(Cow::Borrowed(""));
+    let compile_exit_status = new
+        .compile_result
+        .map(|r| r.exit_status())
+        .unwrap_or_default() as i64;
+
+    let hist = sqlx::query_as!(SubmissionHistory, r#"
+            INSERT INTO submission_history (id, submitter, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, state)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id, submitter, time, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, state, score, success, time_taken"#,
+            id,
+            new.submitter,
+            new.code,
+            question_index,
+            new.language,
+            compile_result, compile_stdout, compile_stderr, compile_exit_status,
+            SubmissionState::Failed,
+        )
+        .fetch_one(db)
+        .await
+        .context("Failed to create submission history")?;
+
+    Ok(PartialSubmissionHistory(hist))
 }
 
 pub async fn create_submission_history<'a>(
     db: impl Executor<'_, Database = Sqlite>,
     new: NewSubmissionHistory<'a>,
-) -> anyhow::Result<SubmissionHistory> {
+) -> anyhow::Result<PartialSubmissionHistory> {
     let id = SubmissionId::new();
     let question_index = new.question_index as i64;
-    sqlx::query_as!(SubmissionHistory, r#"
-            INSERT INTO submission_history (id, submitter, compile_fail, code, question_index, score, success, language)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            RETURNING id, submitter, time, compile_fail, code, question_index, score, success, language"#,
+    let compile_result: CompileResultState = new.compile_result.map(|r| r.state()).into();
+    let compile_stdout = new
+        .compile_result
+        .map(|r| r.stdout().to_str_lossy())
+        .unwrap_or(Cow::Borrowed(""));
+    let compile_stderr = new
+        .compile_result
+        .map(|r| r.stderr().to_str_lossy())
+        .unwrap_or(Cow::Borrowed(""));
+    let compile_exit_status = new
+        .compile_result
+        .map(|r| r.exit_status())
+        .unwrap_or_default() as i64;
+
+    let hist = sqlx::query_as!(SubmissionHistory, r#"
+            INSERT INTO submission_history (id, submitter, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id, submitter, time, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, state, score, success, time_taken"#,
             id,
             new.submitter,
-            new.compile_fail,
             new.code,
             question_index,
-            new.score,
-            new.success,
             new.language,
+            compile_result,
+            compile_stdout, compile_stderr, compile_exit_status
         )
         .fetch_one(db)
         .await
-        .context("Failed to create submission history")
+        .context("Failed to create submission history")?;
+
+    Ok(PartialSubmissionHistory(hist))
 }
 
 pub async fn create_submission_test_history<'a>(
     db: impl Executor<'_, Database = Sqlite>,
     submission: &SubmissionId,
     test_index: usize,
-    new: NewSubmissionTestHistory,
+    new: NewSubmissionTestHistory<'a>,
 ) -> anyhow::Result<SubmissionTestHistory> {
     let test_index = test_index as i64;
-    let result = new.result.to_string();
-    sqlx::query_as!(SubmissionTestHistory, r#"
-            INSERT INTO submission_test_history (submission, test_index, result, stdout, stderr, exit_status)
-            VALUES (?, ?, ?, ?, ?, ?)
-            RETURNING submission, test_index, result, stdout, stderr, exit_status"#,
-            submission,
-            test_index,
-            result,
-            new.stdout,
-            new.stderr,
-            new.exit_status,
-        )
-        .fetch_one(db)
-        .await
-        .context("Failed to create submission test history")
+
+    sqlx::query_as!(
+        SubmissionTestHistory,
+        r#"
+            INSERT INTO test_results (submission, test_index, result, stdout, stderr, exit_status, time_taken)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            RETURNING submission, test_index, result, stdout, stderr, exit_status, time_taken"#,
+        submission,
+        test_index,
+        new.result,
+        new.stdout,
+        new.stderr,
+        new.exit_status,
+        new.time_taken,
+    )
+    .fetch_one(db)
+    .await
+    .context("Failed to create submission test history")
 }
 
 pub async fn count_other_submissions<'a>(
@@ -370,24 +540,22 @@ mod tests {
     #[tokio::test]
     async fn create_submission() {
         let (f, sql) = mock_db().await;
-        let user = dummy_user(&sql.db, "dummy_user", "foobar", Role::Competitor).await;
+        let user = dummy_user(&sql, "dummy_user", "foobar", Role::Competitor).await;
         let history = create_submission_history(
-            &sql.db,
+            &sql,
             NewSubmissionHistory {
                 submitter: &user.id,
-                compile_fail: true,
                 code: "this is some code",
                 question_index: 42,
-                score: 42.,
-                success: false,
                 language: "java",
+                compile_result: None,
             },
         )
         .await
         .unwrap();
 
         assert_eq!(history.submitter, user.id);
-        assert!(history.compile_fail);
+        assert_eq!(history.compile_result, CompileResultState::NoCompile);
         assert_eq!(history.code.as_str(), "this is some code");
         assert_eq!(history.question_index, 42);
         assert_eq!(history.score, 42.);
@@ -398,40 +566,39 @@ mod tests {
     #[tokio::test]
     async fn create_submission_test() {
         let (f, sql) = mock_db().await;
-        let user = dummy_user(&sql.db, "dummy_user", "foobar", Role::Competitor).await;
+        let user = dummy_user(&sql, "dummy_user", "foobar", Role::Competitor).await;
         let history = create_submission_history(
-            &sql.db,
+            &sql,
             NewSubmissionHistory {
                 submitter: &user.id,
-                compile_fail: true,
                 code: "this is some code",
                 question_index: 42,
-                score: 42.,
-                success: false,
                 language: "java",
+                compile_result: None,
             },
         )
         .await
         .unwrap();
 
         let test = create_submission_test_history(
-            &sql.db,
+            &sql,
             &history.id,
             42,
             NewSubmissionTestHistory {
-                result: TestResult::Timeout,
-                stdout: Some("stdout".into()),
-                stderr: Some("stderr".into()),
+                result: TestResultState::TimedOut,
+                stdout: "stdout".into(),
+                stderr: "stderr".into(),
                 exit_status: 1,
+                time_taken: Duration::from_secs(1).into(),
             },
         )
         .await
         .unwrap();
 
         assert_eq!(test.test_index, 42);
-        assert_eq!(test.result, TestResult::Timeout);
-        assert_eq!(test.stdout, Some("stdout".into()));
-        assert_eq!(test.stderr, Some("stderr".into()));
+        assert_eq!(test.result, TestResultState::TimedOut);
+        assert_eq!(test.stdout, "stdout");
+        assert_eq!(test.stderr, "stderr");
         assert_eq!(test.exit_status, 1);
         drop(f)
     }
@@ -442,22 +609,20 @@ mod tests {
 
         for i in 0..5 {
             let user = dummy_user(
-                &sql.db,
+                &sql,
                 &format!("submitter-{}", i),
                 "foobar",
                 Role::Competitor,
             )
             .await;
             let history = create_submission_history(
-                &sql.db,
+                &sql,
                 NewSubmissionHistory {
                     submitter: &user.id,
-                    compile_fail: false,
                     code: "",
                     question_index: 1,
-                    score: 10.,
-                    success: true,
                     language: "java",
+                    compile_result: None,
                 },
             )
             .await
@@ -465,14 +630,15 @@ mod tests {
 
             for i in 0..5 {
                 create_submission_test_history(
-                    &sql.db,
+                    &sql,
                     &history.id,
                     i,
                     NewSubmissionTestHistory {
-                        result: TestResult::Pass,
-                        stdout: None,
-                        stderr: None,
+                        result: TestResultState::Pass,
+                        stdout: "".into(),
+                        stderr: "".into(),
                         exit_status: 0,
+                        time_taken: Duration::from_millis(1).into(),
                     },
                 )
                 .await
@@ -492,18 +658,16 @@ mod tests {
     async fn previous_submissions() {
         let (f, sql) = mock_db().await;
 
-        let user = dummy_user(&sql.db, "dummy_user", "foobar", Role::Competitor).await;
+        let user = dummy_user(&sql, "dummy_user", "foobar", Role::Competitor).await;
         for _ in 0..5 {
             create_submission_history(
                 &sql.db,
                 NewSubmissionHistory {
                     submitter: &user.id,
-                    compile_fail: true,
                     code: "",
                     question_index: 1,
-                    score: 10.,
-                    success: false,
                     language: "java",
+                    compile_result: None,
                 },
             )
             .await
@@ -524,18 +688,16 @@ mod tests {
     async fn user_score() {
         let (f, sql) = mock_db().await;
 
-        let user = dummy_user(&sql.db, "dummy_user", "foobar", Role::Competitor).await;
+        let user = dummy_user(&sql, "dummy_user", "foobar", Role::Competitor).await;
         for i in 0..5 {
             create_submission_history(
-                &sql.db,
+                &sql,
                 NewSubmissionHistory {
                     submitter: &user.id,
-                    compile_fail: false,
                     code: "",
                     question_index: i,
-                    score: 42.,
-                    success: true,
                     language: "java",
+                    compile_result: None,
                 },
             )
             .await
@@ -552,18 +714,16 @@ mod tests {
     async fn latest_submissions() {
         let (f, sql) = mock_db().await;
 
-        let user = dummy_user(&sql.db, "dummy_user", "foobar", Role::Competitor).await;
+        let user = dummy_user(&sql, "dummy_user", "foobar", Role::Competitor).await;
         for i in 0..5 {
             create_submission_history(
-                &sql.db,
+                &sql,
                 NewSubmissionHistory {
                     submitter: &user.id,
-                    compile_fail: false,
                     code: "not-latest",
                     question_index: i,
-                    score: 42.,
-                    success: true,
                     language: "java",
+                    compile_result: None,
                 },
             )
             .await
@@ -574,22 +734,20 @@ mod tests {
 
         for i in 0..5 {
             create_submission_history(
-                &sql.db,
+                &sql,
                 NewSubmissionHistory {
                     submitter: &user.id,
-                    compile_fail: false,
                     code: "latest",
                     question_index: i,
-                    score: 42.,
-                    success: true,
                     language: "java",
+                    compile_result: None,
                 },
             )
             .await
             .unwrap();
         }
 
-        let submissions = get_latest_submissions(&sql.db, &user.id).await.unwrap();
+        let submissions = get_latest_submissions(&sql, &user.id).await.unwrap();
 
         for s in submissions {
             assert_eq!(s.code, "latest");

@@ -44,6 +44,7 @@ rustyscript = { git = "https://github.com/rscarson/rustyscript.git", branch = "m
     "http",
 ], optional = true }
 reqwest = { version = "0.11.0", features = ["json"], optional = true }
+futures = "0.3.31"
 
 [dev-dependencies]
 async-tempfile = { version = "0.6.0", features = ["uuid"] }

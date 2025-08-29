@@ -46,16 +46,14 @@ pub struct WebSocketManager {
 
 impl WebSocketManager {
     pub fn broadcast(&self, broadcast: WebSocketSend) {
-        let mut to_remove = Vec::new();
-        for conn in &self.active_connections {
-            if conn.send.send(broadcast.clone()).is_err() {
-                // This _shouldn't_ happen, but it _could_
-                tracing::warn!(key = ?conn.key(), "Socket discovered to be closed when sending broadcast. Removing from active connections...");
-                to_remove.push(conn.key().clone());
+        self.active_connections.retain(|key, conn| {
+            match conn.send.send(broadcast.clone()) {
+                Ok(()) => true,
+                Err(_) => {
+                    tracing::warn!(?key, "Socket discovered to be closed when sending broadcast. Removing from active connections...");
+                    false
+                }
             }
-        }
-        to_remove.iter().for_each(|x| {
-            self.active_connections.remove(x);
         });
     }
 

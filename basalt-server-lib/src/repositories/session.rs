@@ -5,37 +5,14 @@ use serde::{Deserialize, Serialize};
 use sqlx::{prelude::FromRow, SqliteExecutor};
 use utoipa::ToSchema;
 
-use crate::repositories::users::{Role, UserId};
+use crate::{
+    define_id_type,
+    repositories::users::{Role, UserId},
+};
 
 use super::users::User;
 
-#[derive(
-    Debug,
-    Clone,
-    Hash,
-    Eq,
-    PartialEq,
-    Serialize,
-    Deserialize,
-    ToSchema,
-    derive_more::From,
-    derive_more::Into,
-    sqlx::Type,
-)]
-#[sqlx(transparent)]
-pub struct SessionId(pub String);
-
-impl SessionId {
-    fn new() -> Self {
-        use rand::{distributions::Alphanumeric, Rng};
-        let id = rand::thread_rng()
-            .sample_iter(Alphanumeric)
-            .take(20)
-            .map(char::from)
-            .collect::<String>();
-        Self(id)
-    }
-}
+define_id_type!(SessionId);
 
 #[derive(Debug, FromRow, Serialize, Deserialize)]
 pub struct Session {

@@ -1,6 +1,7 @@
 use anyhow::Context;
 use bedrock::Config;
 use derive_more::Deref;
+use futures::{future::BoxFuture, stream::BoxStream};
 use std::path::Path;
 use std::str::FromStr;
 use tokio::io::AsyncWriteExt;
@@ -119,7 +120,7 @@ impl<'a> Executor<'a> for &SqliteLayer {
     fn fetch_many<'e, 'q: 'e, E>(
         self,
         query: E,
-    ) -> rustyscript::deno_core::futures::stream::BoxStream<
+    ) -> BoxStream<
         'e,
         Result<
             sqlx::Either<
@@ -139,10 +140,7 @@ impl<'a> Executor<'a> for &SqliteLayer {
     fn fetch_optional<'e, 'q: 'e, E>(
         self,
         query: E,
-    ) -> rustyscript::deno_core::futures::future::BoxFuture<
-        'e,
-        Result<Option<<Self::Database as Database>::Row>, sqlx::Error>,
-    >
+    ) -> BoxFuture<'e, Result<Option<<Self::Database as Database>::Row>, sqlx::Error>>
     where
         'a: 'e,
         E: 'q + sqlx::Execute<'q, Self::Database>,
@@ -154,10 +152,7 @@ impl<'a> Executor<'a> for &SqliteLayer {
         self,
         sql: &'q str,
         parameters: &'e [<Self::Database as Database>::TypeInfo],
-    ) -> rustyscript::deno_core::futures::future::BoxFuture<
-        'e,
-        Result<<Self::Database as Database>::Statement<'q>, sqlx::Error>,
-    >
+    ) -> BoxFuture<'e, Result<<Self::Database as Database>::Statement<'q>, sqlx::Error>>
     where
         'a: 'e,
     {
@@ -167,10 +162,7 @@ impl<'a> Executor<'a> for &SqliteLayer {
     fn describe<'e, 'q: 'e>(
         self,
         sql: &'q str,
-    ) -> rustyscript::deno_core::futures::future::BoxFuture<
-        'e,
-        Result<sqlx::Describe<Self::Database>, sqlx::Error>,
-    >
+    ) -> BoxFuture<'e, Result<sqlx::Describe<Self::Database>, sqlx::Error>>
     where
         'a: 'e,
     {

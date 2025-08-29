@@ -1,19 +1,30 @@
 use crate::{
+    define_id_type,
     repositories::{
         self,
         submissions::SubmissionHistory,
         users::{QuestionState, Role, User, UserId},
     },
-    server::AppState,
+    server::{tester::TestData, websocket::ConnectionKind, AppState},
+    services::ws::WebSocketSend,
 };
 use axum::{
     extract::{Query, State},
     http::StatusCode,
     Json,
 };
+use erudite::{
+    error::CompileError,
+    runner::{TestResult, TestResultState},
+    BorrowedFileContent,
+};
 use serde::{Deserialize, Serialize};
-use std::{num::NonZero, sync::Arc};
-use tracing::error;
+use std::{
+    num::NonZero,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+use tracing::{debug, error, trace, warn};
 use utoipa::{IntoParams, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
@@ -161,10 +172,212 @@ pub async fn get_submissions(
     Ok(Json(subs))
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct RunTestsBody {
+    question_index: usize,
+    language: String,
+    solution: String,
+}
+
+define_id_type!(TestId);
+
+#[axum::debug_handler]
+#[utoipa::path(
+    post, path = "/run-tests", tag = "testing",
+    request_body = RunTestsBody,
+    responses(
+        (status = OK),
+        (status = 403, description = ""),
+    )
+)]
+pub async fn run_tests(
+    user: User,
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<RunTestsBody>,
+) -> Result<Json<TestId>, StatusCode> {
+    tracing::debug!(?body, "run_tests");
+    // NOTE: It's not great that we construct a test runner and then throw it await, but we can't
+    // move the test runner into the new task, so it's fine (constructing one is really cheap).
+    let runner = state.tester.runner(&body.language, body.question_index);
+    if runner.is_none() {
+        // This should be prevented by the UI
+        error!(
+            language = body.language,
+            question_index = body.question_index,
+            "Missing runner for attempted test"
+        );
+        return Err(StatusCode::BAD_REQUEST);
+    };
+
+    let test_id = TestId::new();
+    let ret = test_id.clone();
+
+    tokio::spawn(async move {
+        let (runner, source_file) = state
+            .tester
+            .runner(&body.language, body.question_index)
+            .expect("checked above");
+
+        let compiled = runner
+            .file(BorrowedFileContent::string(&body.solution), source_file)
+            .compile()
+            .await;
+
+        let compiled = match compiled {
+            Err(CompileError::CompileFail(compile_result)) => {
+                let res = repositories::submissions::create_failed_submission_history(
+                    &state.db,
+                    repositories::submissions::NewSubmissionHistory {
+                        submitter: &user.id,
+                        code: &body.solution,
+                        question_index: body.question_index,
+                        language: &body.language,
+                        compile_result: Some(&compile_result),
+                    },
+                )
+                .await;
+
+                // TODO: alert user
+                if let Err(error) = res {
+                    error!(?error, "Error creating failed submission history");
+                }
+                return;
+            }
+            Err(error) => {
+                // TODO: alert user
+                error!(?error, "Error spawning compile command");
+                return;
+            }
+            Ok(compiled) => compiled,
+        };
+
+        let res = repositories::submissions::create_submission_history(
+            &state.db,
+            repositories::submissions::NewSubmissionHistory {
+                submitter: &user.id,
+                code: &body.solution,
+                question_index: body.question_index,
+                language: &body.language,
+                compile_result: compiled.compile_result(),
+            },
+        )
+        .await;
+
+        let submission = match res {
+            Ok(h) => h,
+            Err(error) => {
+                // TODO: alert the client somehow (scopeguard-type thing?)
+                error!(?error, "Error adding submission to database");
+                return;
+            }
+        };
+
+        let mut handle = compiled.run();
+
+        let test_count = handle.test_count();
+        let conn_kind = ConnectionKind::User { user };
+        let result_tx = {
+            // TODO: bounded?
+            let (result_tx, mut result_rx) =
+                tokio::sync::mpsc::unbounded_channel::<TestResult<TestData>>();
+            let Some(websocket_sender) = state.websocket.get_sender(&conn_kind) else {
+                warn!("Test run started without connected websocket");
+                if let Err(error) = submission.fail(&state.db).await {
+                    error!(?error, "Error updating submission to failed in database");
+                }
+                return;
+            };
+            tokio::spawn(async move {
+                // it's fairly likely that all tests will finish within one debounce, so let's
+                // allocate all of them
+                let mut results = Vec::with_capacity(test_count);
+                while let Some(ref r) = result_rx.recv().await {
+                    tokio::time::sleep(Duration::from_millis(100)).await; // debounce
+
+                    results.push(r.into());
+                    while let Ok(ref v) = result_rx.try_recv() {
+                        results.push(v.into());
+                    }
+
+                    if websocket_sender
+                        .send(WebSocketSend::TestResults {
+                            id: test_id.clone(),
+                            results: results.clone(),
+                        })
+                        .is_err()
+                    {
+                        debug!("Websocket closed while trying to send test results");
+                        return; // we can't do anything else
+                    }
+                    results.clear();
+                }
+            });
+
+            result_tx
+        };
+        let ConnectionKind::User { user } = conn_kind else {
+            unreachable!("We constructed this before the tokio::spawn")
+        };
+
+        let start = Instant::now();
+        let mut success = true;
+        loop {
+            let result = match handle.wait_next().await {
+                Ok(None) => break,          // we're done (no more tests)
+                Ok(Some(result)) => result, // we have a result
+                Err(_) => todo!(),          // there was an error spawning the test
+            };
+            tracing::info!(?result, "test result!");
+
+            if result.state() != TestResultState::Pass {
+                success = false;
+            }
+
+            let res = repositories::submissions::create_submission_test_history(
+                &state.db,
+                &submission.id,
+                result.index(),
+                (&result).into(),
+            )
+            .await;
+
+            let test_hist = match res {
+                Ok(h) => h,
+                Err(error) => {
+                    // TODO: alert the client somehow (scopeguard-type thing?)
+                    error!(?error, "Error adding submission test to database");
+                    // TODO: complain about this error
+                    if let Err(error) = submission.fail(&state.db).await {
+                        error!(?error, "Error updating submission to failed in database");
+                    }
+                    return;
+                }
+            };
+
+            let _ = result_tx.send(result);
+        }
+
+        let elapsed = start.elapsed();
+        let res = submission.finish(&state.db, 0.0, success, elapsed).await;
+
+        let submission = match res {
+            Ok(h) => h,
+            Err(error) => {
+                // TODO: alert the client somehow (scopeguard-type thing?)
+                error!(?error, "Error updating submission in database");
+                return;
+            }
+        };
+    });
+
+    Ok(Json(ret))
+}
+
 pub fn router() -> OpenApiRouter<Arc<AppState>> {
     OpenApiRouter::new()
         .routes(routes!(get_submissions_state))
         .routes(routes!(get_submissions))
+        .routes(routes!(run_tests))
 }
 
 pub fn service() -> axum::Router<Arc<AppState>> {
