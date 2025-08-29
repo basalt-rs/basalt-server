@@ -40,8 +40,6 @@ jobs:
                     - dockerfile: minimal.Dockerfile
                       tags:
                           - ghcr.io/${{ github.repository_owner }}/basalt-server:main-minimal
-        env:
-            VERSION: ${{ needs.get-version.outputs.version }}
         steps:
             - uses: actions/checkout@v4
             - name: Collect tags
