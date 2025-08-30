@@ -1,21 +1,10 @@
-# several checks:
-# - fmt: checks that the code is formatted according to rustfmt
-# - clippy: checks that the code does not contain any clippy warnings
-# - doc: checks that the code can be documented without errors
-# - hack: check combinations of feature flags
-# - msrv: check that the msrv specified in the crate is correct
 permissions:
     contents: read
-    # This configuration allows maintainers of this repo to create a branch and pull request based on
-# the new branch. Restricting the push trigger to the main branch ensures that the PR only gets
-# built once.
 on:
     workflow_dispatch:
     push:
         tags:
             - "v[0-9]+.[0-9]+.[0-9]+.?*"
-# If new code is pushed to a PR branch, then cancel in progress workflows for that PR. Ensures that
-# we don't waste CI time, and returns results quicker https://github.com/jonhoo/rust-ci-conf/pull/5
 concurrency:
     group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
     cancel-in-progress: true
@@ -63,30 +52,47 @@ jobs:
             VERSION: ${{ needs.get-version.outputs.version }}
         steps:
             - uses: actions/checkout@v4
+
             - name: Replace version in tags
               id: tags
               run: |
                   VERSION="${{ needs.get-version.outputs.version }}"
-                  # Normalize version (strip leading v)
                   CLEAN_VERSION="${VERSION#v}"
+
+                  MAJOR=$(echo "$CLEAN_VERSION" | cut -d. -f1)
+                  MINOR=$(echo "$CLEAN_VERSION" | cut -d. -f2)
+                  PATCH=$(echo "$CLEAN_VERSION" | cut -d. -f3)
+
+                  MAJOR_MINOR="$MAJOR.$MINOR"
 
                   TAGS_JSON=$(jq -nc --argjson tags "$(jq -c '.tags' <<< '${{ toJson(matrix) }}')" '$tags')
                   TAGS=$(echo "$TAGS_JSON" | jq -r '.[]' | sed "s/__VERSION__/$CLEAN_VERSION/g")
 
-                  # If version contains a prerelease identifier, drop :latest
+                  # Add major.minor and major tags for every versioned tag
+                  EXTRA_TAGS=""
+                  for t in $TAGS; do
+                    if [[ "$t" == *"$CLEAN_VERSION"* ]]; then
+                      EXTRA_TAGS+=" $(echo "$t" | sed "s/$CLEAN_VERSION/$MAJOR_MINOR/")"
+                      EXTRA_TAGS+=" $(echo "$t" | sed "s/$CLEAN_VERSION/$MAJOR/")"
+                    fi
+                  done
+                  TAGS="$TAGS $EXTRA_TAGS"
+
+                  # Drop latest if prerelease
                   if [[ "$CLEAN_VERSION" =~ -(rc|alpha|beta) ]]; then
-                    TAGS=$(echo "$TAGS" | grep -v ':latest' || true)
+                    TAGS=$(echo "$TAGS" | tr ' ' '\n' | grep -v ':latest' || true)
                   fi
 
-                  TAGS=$(echo "$TAGS" | paste -sd "," -)
+                  TAGS=$(echo "$TAGS" | tr ' ' '\n' | paste -sd "," -)
                   echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
             - name: Log in to GHCR
               uses: docker/login-action@v3
               with:
                   registry: ghcr.io
                   username: ${{ github.actor }}
                   password: ${{ secrets.GITHUB_TOKEN }}
-            # Use QEMU to build images for both amd64 and arm64
+
             - name: Set up QEMU
               uses: docker/setup-qemu-action@v3
             - name: Set up Docker Buildx
