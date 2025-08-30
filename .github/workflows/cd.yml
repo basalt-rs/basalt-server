@@ -60,12 +60,12 @@ jobs:
 
                   # Check if this is a prerelease
                   if [[ "$CLEAN_VERSION" =~ -(rc|alpha|beta) ]]; then
-                    # Pre-release: only full version with suffix
-                    TAGS="ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server-test:$CLEAN_VERSION-$VARIANT"
                     # Full builds get some unqualified tags
                     if [[ "$VARIANT" == "full" ]]; then
-                        TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server-test:$CLEAN_VERSION"
+                        TAGS="ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server-test:$CLEAN_VERSION"
                     fi
+                    # Pre-release: only full version with suffix
+                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server-test:$CLEAN_VERSION-$VARIANT"
                   else
                     # Full build gets special, unqualified tags
                     if [[ "$VARIANT" == "full" ]]; then
