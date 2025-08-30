@@ -1,14 +1,19 @@
 permissions:
     contents: read
+    packages: write
+
 on:
     workflow_dispatch:
     push:
         tags:
             - "v[0-9]+.[0-9]+.[0-9]+.?*"
+
 concurrency:
     group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
     cancel-in-progress: true
+
 name: delivery
+
 jobs:
     get-version:
         runs-on: ubuntu-latest
@@ -21,69 +26,42 @@ jobs:
                   VERSION="${GITHUB_REF_NAME#v}"
                   echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-    push-containers:
-        runs-on: blacksmith-4vcpu-ubuntu-2404
-        needs: [get-version]
-        permissions:
-            contents: read
-            packages: write
+    build:
+        needs: get-version
         strategy:
             matrix:
-                include:
+                variant:
                     - dockerfile: Dockerfile
-                      tags:
-                          - ghcr.io/${{ github.repository_owner }}/basalt-server:latest
-                          - ghcr.io/${{ github.repository_owner }}/basalt-server:__VERSION__
-                          - ghcr.io/${{ github.repository_owner }}/basalt-server:latest-full
-                          - ghcr.io/${{ github.repository_owner }}/basalt-server:__VERSION__-full
+                      name: latest
                     - dockerfile: scripting.Dockerfile
-                      tags:
-                          - ghcr.io/${{ github.repository_owner }}/basalt-server:latest-scripting
-                          - ghcr.io/${{ github.repository_owner }}/basalt-server:__VERSION__-scripting
+                      name: latest-scripting
                     - dockerfile: webhooks.Dockerfile
-                      tags:
-                          - ghcr.io/${{ github.repository_owner }}/basalt-server:latest-webhooks
-                          - ghcr.io/${{ github.repository_owner }}/basalt-server:__VERSION__-webhooks
+                      name: latest-webhooks
                     - dockerfile: minimal.Dockerfile
-                      tags:
-                          - ghcr.io/${{ github.repository_owner }}/basalt-server:latest-minimal
-                          - ghcr.io/${{ github.repository_owner }}/basalt-server:__VERSION__-minimal
+                      name: latest-minimal
+                arch: [amd64, arm64]
+        runs-on: ${{ matrix.arch == 'amd64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm64' }}
         env:
             VERSION: ${{ needs.get-version.outputs.version }}
         steps:
             - uses: actions/checkout@v4
 
-            - name: Replace version in tags
+            - name: Compute tags
               id: tags
               run: |
-                  VERSION="${{ needs.get-version.outputs.version }}"
                   CLEAN_VERSION="${VERSION#v}"
-
                   MAJOR=$(echo "$CLEAN_VERSION" | cut -d. -f1)
                   MINOR=$(echo "$CLEAN_VERSION" | cut -d. -f2)
-                  PATCH=$(echo "$CLEAN_VERSION" | cut -d. -f3)
-
                   MAJOR_MINOR="$MAJOR.$MINOR"
 
-                  TAGS_JSON=$(jq -nc --argjson tags "$(jq -c '.tags' <<< '${{ toJson(matrix) }}')" '$tags')
-                  TAGS=$(echo "$TAGS_JSON" | jq -r '.[]' | sed "s/__VERSION__/$CLEAN_VERSION/g")
+                  BASE_TAG="${{ matrix.variant.name }}"
+                  TAGS="$BASE_TAG,$BASE_TAG-$CLEAN_VERSION,$BASE_TAG-$MAJOR_MINOR,$BASE_TAG-$MAJOR"
 
-                  # Add major.minor and major tags for every versioned tag
-                  EXTRA_TAGS=""
-                  for t in $TAGS; do
-                    if [[ "$t" == *"$CLEAN_VERSION"* ]]; then
-                      EXTRA_TAGS+=" $(echo "$t" | sed "s/$CLEAN_VERSION/$MAJOR_MINOR/")"
-                      EXTRA_TAGS+=" $(echo "$t" | sed "s/$CLEAN_VERSION/$MAJOR/")"
-                    fi
-                  done
-                  TAGS="$TAGS $EXTRA_TAGS"
-
-                  # Drop latest if prerelease
+                  # drop latest if prerelease
                   if [[ "$CLEAN_VERSION" =~ -(rc|alpha|beta) ]]; then
-                    TAGS=$(echo "$TAGS" | tr ' ' '\n' | grep -v ':latest' || true)
+                    TAGS=$(echo "$TAGS" | tr ',' '\n' | grep -v 'latest' | paste -sd "," -)
                   fi
 
-                  TAGS=$(echo "$TAGS" | tr ' ' '\n' | paste -sd "," -)
                   echo "tags=$TAGS" >> $GITHUB_OUTPUT
 
             - name: Log in to GHCR
@@ -93,16 +71,36 @@ jobs:
                   username: ${{ github.actor }}
                   password: ${{ secrets.GITHUB_TOKEN }}
 
-            - name: Set up QEMU
-              uses: docker/setup-qemu-action@v3
             - name: Set up Docker Buildx
               uses: docker/setup-buildx-action@v3
 
-            - name: Build and push Docker image
+            - name: Build & push ${{ matrix.variant.name }} (${{ matrix.arch }})
               uses: docker/build-push-action@v6
               with:
                   context: .
-                  file: ./containers/${{ matrix.dockerfile }}
-                  platforms: linux/amd64,linux/arm64
+                  file: ./containers/${{ matrix.variant.dockerfile }}
+                  platforms: ${{ matrix.arch == 'amd64' && 'linux/amd64' || 'linux/arm64' }}
                   push: true
-                  tags: ${{ steps.tags.outputs.tags }}
+                  tags: ${{ steps.tags.outputs.tags }}-${{ matrix.arch }}
+
+    manifest:
+        needs: build
+        runs-on: ubuntu-24.04
+        strategy:
+            matrix:
+                variant:
+                    [latest, latest-scripting, latest-webhooks, latest-minimal]
+        steps:
+            - name: Log in to GHCR
+              uses: docker/login-action@v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Create and push multi-arch manifest for ${{ matrix.variant }}
+              run: |
+                  docker buildx imagetools create \
+                    -t ghcr.io/${{ github.repository_owner }}/basalt-server:${{ matrix.variant }} \
+                    ghcr.io/${{ github.repository_owner }}/basalt-server:${{ matrix.variant }}-amd64 \
+                    ghcr.io/${{ github.repository_owner }}/basalt-server:${{ matrix.variant }}-arm64
