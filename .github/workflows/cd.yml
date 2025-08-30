@@ -49,22 +49,41 @@ jobs:
             - name: Compute tags
               id: tags
               run: |
-                  CLEAN_VERSION="${VERSION#v}"
+                  CLEAN_VERSION="${VERSION#v}"   # strip leading 'v' if present
                   MAJOR=$(echo "$CLEAN_VERSION" | cut -d. -f1)
                   MINOR=$(echo "$CLEAN_VERSION" | cut -d. -f2)
-                  MAJOR_MINOR="$MAJOR.$MINOR"
 
-                  BASE_TAG="${{ matrix.variant.name }}"
-                  TAGS="$BASE_TAG,$BASE_TAG-$CLEAN_VERSION,$BASE_TAG-$MAJOR_MINOR,$BASE_TAG-$MAJOR"
+                  VARIANT="${{ matrix.variant.name }}"
 
-                  # drop latest if prerelease
+                  # Initialize empty tag list
+                  TAGS=""
+
+                  # Check if this is a prerelease
                   if [[ "$CLEAN_VERSION" =~ -(rc|alpha|beta) ]]; then
-                    TAGS=$(echo "$TAGS" | tr ',' '\n' | grep -v 'latest' | paste -sd "," -)
+                    # Pre-release: only full version with suffix
+                    TAGS="ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server-test:$CLEAN_VERSION-$VARIANT"
+                    # Full builds get some unqualified tags
+                    if [[ "$VARIANT" == "full" ]]; then
+                        TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server-test:$CLEAN_VERSION"
+                    fi
+                  else
+                    # Full build gets special, unqualified tags
+                    if [[ "$VARIANT" == "full" ]]; then
+                        TAGS="ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server-test:latest"
+                        TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server-test:$CLEAN_VERSION"
+                        TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server-test:$MAJOR.$MINOR"
+                        TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server-test:$MAJOR"
+                    fi
+                    # All variants get qualified tags
+                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server-test:latest-$VARIANT"
+                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server-test:$CLEAN_VERSION-$VARIANT"
+                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server-test:$MAJOR.$MINOR-$VARIANT"
+                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server-test:$MAJOR-$VARIANT"
                   fi
 
-                  # prepend GHCR namespace
-                  TAGS=$(echo "$TAGS" | tr ',' '\n' | sed "s|^|ghcr.io/${{ github.repository_owner }}/basalt-server-test:|")
-                  TAGS=$(echo "$TAGS" | paste -sd "," -)
+                  # Remove leading/trailing commas if any
+                  TAGS=$(echo "$TAGS" | sed 's/^,//;s/,$//')
+
                   echo "tags=$TAGS" >> $GITHUB_OUTPUT
 
             - name: Show computed tags
@@ -89,26 +108,4 @@ jobs:
                   file: ./containers/${{ matrix.variant.dockerfile }}
                   platforms: ${{ matrix.arch == 'amd64' && 'linux/amd64' || 'linux/arm64' }}
                   push: true
-                  tags: ${{ steps.tags.outputs.tags }}-${{ matrix.arch }}
-
-    manifest:
-        needs: build
-        runs-on: ubuntu-24.04
-        strategy:
-            matrix:
-                variant:
-                    [latest, latest-scripting, latest-webhooks, latest-minimal]
-        steps:
-            - name: Log in to GHCR
-              uses: docker/login-action@v3
-              with:
-                  registry: ghcr.io
-                  username: ${{ github.actor }}
-                  password: ${{ secrets.GITHUB_TOKEN }}
-
-            - name: Create and push multi-arch manifest for ${{ matrix.variant }}
-              run: |
-                  docker buildx imagetools create \
-                    -t ghcr.io/${{ github.repository_owner }}/basalt-server-test:${{ matrix.variant }} \
-                    ghcr.io/${{ github.repository_owner }}/basalt-server-test:${{ matrix.variant }}-amd64 \
-                    ghcr.io/${{ github.repository_owner }}/basalt-server-test:${{ matrix.variant }}-arm64
+                  tags: ${{ steps.tags.outputs.tags }}
