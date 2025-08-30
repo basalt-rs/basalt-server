@@ -40,7 +40,7 @@ jobs:
                     - dockerfile: minimal.Dockerfile
                       name: minimal
                 arch: [amd64, arm64]
-        runs-on: ${{ matrix.arch == 'amd64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm64' }}
+        runs-on: ${{ matrix.arch == 'amd64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
         env:
             VERSION: ${{ needs.get-version.outputs.version }}
         steps:
@@ -83,6 +83,9 @@ jobs:
 
                   # Remove leading/trailing commas if any
                   TAGS=$(echo "$TAGS" | sed 's/^,//;s/,$//')
+
+                  # Reverse list (I want "latest" to be last)
+                  TAGS="$(echo "$TAGS" | tr ':' '\n' | tac | paste -sd ":" -)"
 
                   echo "tags=$TAGS" >> $GITHUB_OUTPUT
 
