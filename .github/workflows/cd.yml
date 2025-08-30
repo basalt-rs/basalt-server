@@ -62,7 +62,15 @@ jobs:
                     TAGS=$(echo "$TAGS" | tr ',' '\n' | grep -v 'latest' | paste -sd "," -)
                   fi
 
+                  # prepend GHCR namespace
+                  TAGS=$(echo "$TAGS" | tr ',' '\n' | sed "s|^|ghcr.io/${{ github.repository_owner }}/basalt-server-test:|")
+                  TAGS=$(echo "$TAGS" | paste -sd "," -)
                   echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
+            - name: Show computed tags
+              run: |
+                  echo "Computed tags for inspection:"
+                  echo "${{ steps.tags.outputs.tags }}" | tr ',' '\n'
 
             - name: Log in to GHCR
               uses: docker/login-action@v3
@@ -101,6 +109,6 @@ jobs:
             - name: Create and push multi-arch manifest for ${{ matrix.variant }}
               run: |
                   docker buildx imagetools create \
-                    -t ghcr.io/${{ github.repository_owner }}/basalt-server:${{ matrix.variant }} \
-                    ghcr.io/${{ github.repository_owner }}/basalt-server:${{ matrix.variant }}-amd64 \
-                    ghcr.io/${{ github.repository_owner }}/basalt-server:${{ matrix.variant }}-arm64
+                    -t ghcr.io/${{ github.repository_owner }}/basalt-server-test:${{ matrix.variant }} \
+                    ghcr.io/${{ github.repository_owner }}/basalt-server-test:${{ matrix.variant }}-amd64 \
+                    ghcr.io/${{ github.repository_owner }}/basalt-server-test:${{ matrix.variant }}-arm64
