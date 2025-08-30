@@ -32,13 +32,13 @@ jobs:
             matrix:
                 variant:
                     - dockerfile: Dockerfile
-                      name: latest
+                      name: full
                     - dockerfile: scripting.Dockerfile
-                      name: latest-scripting
+                      name: scripting
                     - dockerfile: webhooks.Dockerfile
-                      name: latest-webhooks
+                      name: webhooks
                     - dockerfile: minimal.Dockerfile
-                      name: latest-minimal
+                      name: minimal
                 arch: [amd64, arm64]
         runs-on: ${{ matrix.arch == 'amd64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm64' }}
         env:
