@@ -5,7 +5,6 @@ permissions:
 on:
     push:
         branches: [main]
-    workflow_dispatch:
 
 concurrency:
     group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -46,7 +45,7 @@ jobs:
                   file: ./containers/Dockerfile
                   platforms: ${{ matrix.platform }}
                   push: true
-                  tags: ghcr.io/${{ github.repository_owner }}/basalt-server-test:main-${{ matrix.arch }}
+                  tags: ghcr.io/${{ github.repository_owner }}/basalt-server:main-${{ matrix.arch }}
 
     manifest:
         needs: build
@@ -62,6 +61,6 @@ jobs:
             - name: Create and push multi-arch manifest for main
               run: |
                   docker buildx imagetools create \
-                    -t ghcr.io/${{ github.repository_owner }}/basalt-server-test:main \
-                    ghcr.io/${{ github.repository_owner }}/basalt-server-test:main-amd64 \
-                    ghcr.io/${{ github.repository_owner }}/basalt-server-test:main-arm64
+                    -t ghcr.io/${{ github.repository_owner }}/basalt-server:main \
+                    ghcr.io/${{ github.repository_owner }}/basalt-server:main-amd64 \
+                    ghcr.io/${{ github.repository_owner }}/basalt-server:main-arm64
