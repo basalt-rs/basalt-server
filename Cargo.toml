@@ -50,4 +50,9 @@ tower-http = { version = "0.6.2", features = ["cors", "trace", "fs"] }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 tracing = { version = "0.1.41", features = ["release_max_level_debug"] }
 utoipa-axum = { version = "0.2.0", features = ["debug"] }
-utoipa = { version = "5.3.1", features = ["chrono", "debug", "yaml"] }
+utoipa = { version = "5.4.0", features = [
+    "chrono",
+    "debug",
+    "yaml",
+    "axum_extras",
+] }

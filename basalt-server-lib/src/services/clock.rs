@@ -122,7 +122,7 @@ async fn patch_clock(
     )
 )]
 async fn get_clock(
-    OptionalUser(_): OptionalUser,
+    OptionalUser(_u): OptionalUser,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ClockStatusResponse>, StatusCode> {
     trace!("user getting clock");

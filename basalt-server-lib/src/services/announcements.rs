@@ -99,8 +99,8 @@ pub async fn new(
 )]
 pub async fn delete(
     State(state): State<Arc<AppState>>,
-    Path(id): Path<AnnouncementId>,
-    HostUser(_): HostUser,
+    HostUser(_u): HostUser,
+    Path((id,)): Path<(AnnouncementId,)>,
 ) -> Result<Json<Announcement>, StatusCode> {
     let sql = state.db.read().await;
 
