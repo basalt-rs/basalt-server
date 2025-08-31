@@ -62,23 +62,23 @@ jobs:
                   if [[ "$CLEAN_VERSION" =~ -(rc|alpha|beta) ]]; then
                     # Full builds get some unqualified tags
                     if [[ "$VARIANT" == "full" ]]; then
-                        TAGS="ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server-test:$CLEAN_VERSION"
+                        TAGS="ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$CLEAN_VERSION"
                     fi
                     # Pre-release: only full version with suffix
-                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server-test:$CLEAN_VERSION-$VARIANT"
+                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$CLEAN_VERSION-$VARIANT"
                   else
                     # Full build gets special, unqualified tags
                     if [[ "$VARIANT" == "full" ]]; then
-                        TAGS="ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server-test:latest"
-                        TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server-test:$CLEAN_VERSION"
-                        TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server-test:$MAJOR.$MINOR"
-                        TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server-test:$MAJOR"
+                        TAGS="ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:latest"
+                        TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$CLEAN_VERSION"
+                        TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$MAJOR.$MINOR.X"
+                        TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$MAJOR.X.X"
                     fi
                     # All variants get qualified tags
-                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server-test:latest-$VARIANT"
-                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server-test:$CLEAN_VERSION-$VARIANT"
-                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server-test:$MAJOR.$MINOR-$VARIANT"
-                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server-test:$MAJOR-$VARIANT"
+                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:latest-$VARIANT"
+                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$CLEAN_VERSION-$VARIANT"
+                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$MAJOR.$MINOR.X-$VARIANT"
+                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$MAJOR.X.X-$VARIANT"
                   fi
 
                   # Remove leading/trailing commas if any
