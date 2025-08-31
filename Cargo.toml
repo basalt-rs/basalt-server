@@ -6,6 +6,8 @@ resolver = "2"
 edition = "2021"
 version = "0.1.0"
 rust-version = "1.81"
+description = "Basalt competition server runtime"
+license = "GPL-3.0-only"
 
 [workspace.dependencies]
 anyhow = "1.0.95"
