@@ -1,58 +1,66 @@
 permissions:
     contents: read
+    packages: write
+
 on:
     push:
         branches: [main]
+
 concurrency:
     group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
     cancel-in-progress: true
-name: publish main images
+
+name: publish main image
+
 jobs:
-    push-containers:
-        runs-on: blacksmith-4vcpu-ubuntu-2404
-        permissions:
-            contents: read
-            packages: write
+    build:
         strategy:
             matrix:
+                arch: [amd64, arm64]
                 include:
-                    - dockerfile: Dockerfile
-                      tags:
-                          - ghcr.io/${{ github.repository_owner }}/basalt-server:main
-                          - ghcr.io/${{ github.repository_owner }}/basalt-server:main-full
-                    - dockerfile: scripting.Dockerfile
-                      tags:
-                          - ghcr.io/${{ github.repository_owner }}/basalt-server:main-scripting
-                    - dockerfile: webhooks.Dockerfile
-                      tags:
-                          - ghcr.io/${{ github.repository_owner }}/basalt-server:main-webhooks
-                    - dockerfile: minimal.Dockerfile
-                      tags:
-                          - ghcr.io/${{ github.repository_owner }}/basalt-server:main-minimal
+                    - arch: amd64
+                      runner: ubuntu-24.04
+                      platform: linux/amd64
+                    - arch: arm64
+                      runner: ubuntu-24.04-arm
+                      platform: linux/arm64
+        runs-on: ${{ matrix.runner }}
         steps:
             - uses: actions/checkout@v4
-            - name: Collect tags
-              id: tags
-              run: |
-                  TAGS=$(jq -r '.tags[]' <<< '${{ toJson(matrix) }}' | paste -sd "," -)
-                  echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
             - name: Log in to GHCR
               uses: docker/login-action@v3
               with:
                   registry: ghcr.io
                   username: ${{ github.actor }}
                   password: ${{ secrets.GITHUB_TOKEN }}
-            # Use QEMU to build images for both amd64 and arm64
-            - name: Set up QEMU
-              uses: docker/setup-qemu-action@v3
+
             - name: Set up Docker Buildx
               uses: docker/setup-buildx-action@v3
 
-            - name: Build and push Docker image
+            - name: Build & push main (${{ matrix.arch }})
               uses: docker/build-push-action@v6
               with:
                   context: .
-                  file: ./containers/${{ matrix.dockerfile }}
-                  platforms: linux/amd64,linux/arm64
+                  file: ./containers/Dockerfile
+                  platforms: ${{ matrix.platform }}
                   push: true
-                  tags: ${{ steps.tags.outputs.tags }}
+                  tags: ghcr.io/${{ github.repository_owner }}/basalt-server:main-${{ matrix.arch }}
+
+    manifest:
+        needs: build
+        runs-on: ubuntu-24.04
+        steps:
+            - name: Log in to GHCR
+              uses: docker/login-action@v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Create and push multi-arch manifest for main
+              run: |
+                  docker buildx imagetools create \
+                    -t ghcr.io/${{ github.repository_owner }}/basalt-server:main \
+                    ghcr.io/${{ github.repository_owner }}/basalt-server:main-amd64 \
+                    ghcr.io/${{ github.repository_owner }}/basalt-server:main-arm64
