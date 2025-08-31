@@ -48,13 +48,56 @@ impl EventHookHandler {
 }
 
 mod evaluator {
-    use crate::server::{hooks::events::ServerEvent, AppState};
+    use crate::{
+        repositories::{self, users::Username},
+        server::{hooks::events::ServerEvent, AppState},
+        services::ws::{self, Broadcast, WebSocketSend},
+        utils,
+    };
 
     use anyhow::Context;
+    use deno_core::OpState;
     use rustyscript::{json_args, Module, Runtime, RuntimeOptions};
     use std::{path::PathBuf, sync::Arc, time::Duration};
     use tokio::sync::oneshot;
     use tracing::debug;
+
+    #[deno_core::op2(async)]
+    async fn op_announcement(op_state: &OpState, #[string] msg: String) -> bool {
+        let state = op_state.borrow::<Arc<AppState>>().clone();
+        let sql = state.db.read().await;
+
+        let new = repositories::announcements::create_announcement(
+            &sql.db,
+            &Username("SYSTEM".to_owned()),
+            &msg,
+        )
+        .await;
+        drop(sql);
+        let result = match new {
+            Ok(new) => {
+                state.websocket.broadcast(ws::WebSocketSend::Broadcast {
+                    broadcast: ws::Broadcast::NewAnnouncement(new.clone()),
+                });
+                if let Err(err) = (ServerEvent::OnAnnouncement {
+                    announcer: Username("SYSTEM".into()),
+                    announcement: msg,
+                    time: utils::utc_now(),
+                }
+                .dispatch(state.clone()))
+                {
+                    tracing::error!("Error dispatching announcement event: {:?}", err);
+                }
+                true
+            }
+            Err(err) => {
+                tracing::error!("Error getting announcements: {:?}", err);
+                false
+            }
+        };
+        drop(state);
+        result
+    }
 
     pub fn evaluate(event: ServerEvent, path: &PathBuf) -> anyhow::Result<()> {
         let main_module = Module::load(path).context("Failed to load provided module")?;
