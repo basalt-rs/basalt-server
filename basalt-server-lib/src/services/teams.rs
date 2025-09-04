@@ -50,9 +50,8 @@ async fn get_teams(
     for t in teams {
         let state = Arc::clone(&state);
         async fn fut(t: TeamFull, state: Arc<AppState>) -> anyhow::Result<TeamWithScore> {
-            let sql = state.db.read().await;
-            let user = get_user_by_id(&sql.db, &t.id).await?;
-            let score = get_user_score(&sql.db, &t.id).await?;
+            let user = get_user_by_id(&state.db, &t.id).await?;
+            let score = get_user_score(&state.db, &t.id).await?;
             Ok(TeamWithScore {
                 team_info: t,
                 id: user.id,
@@ -101,7 +100,7 @@ async fn add_team(
     HostUser(creator): HostUser,
     Json(new): Json<OneOrMany<NewTeam>>,
 ) -> Result<Json<OneOrMany<User>>, (StatusCode, Json<Option<Vec<String>>>)> {
-    let mut txn = state.db.read().await.db.begin().await.map_err(|e| {
+    let mut txn = state.db.begin().await.map_err(|e| {
         error!("Error starting transaction: {:?}", e);
         (StatusCode::INTERNAL_SERVER_ERROR, Json(None))
     })?;
@@ -147,16 +146,14 @@ async fn add_team(
         (StatusCode::INTERNAL_SERVER_ERROR, Json(None))
     })?;
 
-    state
-        .team_manager
-        .insert_many(users.iter().map(|u| u.id.clone()));
+    state.team_manager.insert_many(users.iter().map(|u| u.id));
 
     state.websocket.broadcast(WebSocketSend::Broadcast {
         broadcast: Broadcast::TeamUpdate {
             teams: users
                 .iter()
                 .map(|user| TeamUpdate {
-                    id: user.id.clone(),
+                    id: user.id,
                     name: user.username.clone(),
                     display_name: user.display_name.clone(),
                     new_score: 0.,
@@ -205,9 +202,8 @@ async fn patch_team(
     Path(user_id): Path<UserId>,
     Json(patch): Json<PatchTeam>,
 ) -> Result<Json<User>, StatusCode> {
-    let sql = state.db.read().await;
     info!(host = %host.username, %user_id, ?patch, "Patching user");
-    let mut user = repositories::users::get_user_by_id(&sql.db, &user_id)
+    let mut user = repositories::users::get_user_by_id(&state.db, &user_id)
         .await
         .map_err(|e| match e {
             GetUserError::QueryError(_) => {
@@ -240,7 +236,7 @@ async fn patch_team(
         user.password_hash = password_hash.into();
     }
 
-    let new = repositories::users::update_user(&sql.db, user)
+    let new = repositories::users::update_user(&state.db, user)
         .await
         .map_err(|e| {
             error!("Error updating user: {:?}", e);
@@ -249,7 +245,7 @@ async fn patch_team(
 
     state.websocket.broadcast(WebSocketSend::Broadcast {
         broadcast: Broadcast::TeamRename {
-            id: new.id.clone(),
+            id: new.id,
             name: new.username.clone(),
             display_name: new.display_name.clone(),
         },
@@ -278,31 +274,31 @@ mod tests {
     use super::*;
     #[tokio::test]
     async fn get_teams_works() {
-        let (f, sql) = mock_db().await;
+        let (f, db) = mock_db().await;
 
         let expected_score = 3.0;
 
         let cfg = Config::from_str(SAMPLE_1, "Single.toml".into()).unwrap();
-        sql.ingest(&cfg).await.unwrap();
+        db.ingest(&cfg).await.unwrap();
 
-        let user1 = get_user_by_username(&sql.db, "team1").await.unwrap();
+        let user1 = get_user_by_username(&db, "team1").await.unwrap();
 
         crate::testing::submissions_repositories::dummy_submission(
-            &sql.db,
+            &db,
             &user1,
             expected_score / 2.0,
             0,
         )
         .await;
         crate::testing::submissions_repositories::dummy_submission(
-            &sql.db,
+            &db,
             &user1,
             expected_score / 2.0,
             1,
         )
         .await;
 
-        let mut appstate = AppState::new(sql, cfg, Vec::new(), None);
+        let mut appstate = AppState::new(db, cfg, None);
         appstate.init().await.unwrap();
         let Json(TeamsListResponse(teams)) = get_teams(State(Arc::new(appstate))).await.unwrap();
 

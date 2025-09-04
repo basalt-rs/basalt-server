@@ -51,44 +51,46 @@ async fn gen_docs(path: &Path) -> anyhow::Result<()> {
 #[tokio::main]
 pub async fn main() -> anyhow::Result<()> {
     println!("cargo::rerun-if-changed={}", SPEC_PATH);
+    println!("cargo::rerun-if-changed=../basalt-server-lib/src/services");
 
-    let tempfile = async_tempfile::TempFile::new()
-        .await
-        .context("Failed to create tempfile")?;
-
-    let sqlite_layer = SqliteLayer::from_path(tempfile.file_path())
-        .await
-        .context("Failed to create sqlite layer")?;
-
-    let dummy_state = Arc::new(AppState::new(
-        sqlite_layer,
-        bedrock::Config::default(),
-        Vec::new(),
-        None,
-    ));
-    let router = basalt_server_lib::server::doc_router(dummy_state);
-    let content = ApiDoc::openapi()
-        .merge_from(router.into_openapi())
-        .to_yaml()
-        .context("Failed to serialize to YAML")?;
-
-    let path = Path::new(SPEC_PATH);
-    let write = if path.exists() {
-        let existing = fs::read_to_string(path)
+    #[cfg(feature = "doc-gen")]
+    {
+        let tempfile = async_tempfile::TempFile::new()
             .await
-            .with_context(|| format!("reading existing {} file", SPEC_PATH))?;
-        existing != content
-    } else {
-        true
-    };
+            .context("Failed to create tempfile")?;
 
-    if write {
-        fs::write(path, content)
+        let sqlite_layer = SqliteLayer::from_path(tempfile.file_path())
             .await
-            .with_context(|| format!("Writing to {}", SPEC_PATH))?;
+            .context("Failed to create sqlite layer")?;
 
-        #[cfg(feature = "doc-gen")]
-        gen_docs(path).await?;
+        let dummy_state = Arc::new(AppState::new(
+            sqlite_layer,
+            bedrock::Config::default(),
+            None,
+        ));
+        let router = basalt_server_lib::server::doc_router(dummy_state);
+        let content = ApiDoc::openapi()
+            .merge_from(router.into_openapi())
+            .to_yaml()
+            .context("Failed to serialize to YAML")?;
+
+        let path = Path::new(SPEC_PATH);
+        let write = if path.exists() {
+            let existing = fs::read_to_string(path)
+                .await
+                .with_context(|| format!("reading existing {} file", SPEC_PATH))?;
+            existing != content
+        } else {
+            true
+        };
+
+        if write {
+            fs::write(path, content)
+                .await
+                .with_context(|| format!("Writing to {}", SPEC_PATH))?;
+
+            gen_docs(path).await?;
+        }
     }
     Ok(())
 }

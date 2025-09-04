@@ -7,7 +7,6 @@ use tracing::info;
 
 use crate::repositories::users::UserId;
 use crate::server::AppState;
-use crate::services::ws::TestResults;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "kind")]
@@ -30,7 +29,7 @@ pub enum ServerEvent {
         id: UserId,
         question_idx: u32,
         question_text: String,
-        test_results: TestResults,
+        // test_results: TestResults,
         time: DateTime<Utc>,
     },
     #[serde(rename_all = "camelCase")]
@@ -38,7 +37,7 @@ pub enum ServerEvent {
         id: UserId,
         question_idx: u32,
         question_text: String,
-        test_results: TestResults,
+        // test_results: TestResults,
         time: DateTime<Utc>,
     },
     #[serde(rename_all = "camelCase")]
