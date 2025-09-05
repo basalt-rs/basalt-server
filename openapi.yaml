@@ -1,0 +1,699 @@
+openapi: 3.1.0
+info:
+  title: basalt-server
+  description: Basalt server competition runtime
+  license:
+    name: ''
+  version: 0.1.0
+paths:
+  /announcements:
+    get:
+      tags:
+      - announcements
+      operationId: get_all
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Announcement'
+    post:
+      tags:
+      - announcements
+      operationId: new
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewAnnouncement'
+        required: true
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Announcement'
+        '401':
+          description: User may not create announcements
+  /announcements/{id}:
+    delete:
+      tags:
+      - announcements
+      operationId: delete
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/AnnouncementId'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Announcement'
+        '401':
+          description: User may not delete announcements
+        '404':
+          description: Announcement with provided id does not exists
+  /auth/login:
+    post:
+      tags:
+      - auth
+      operationId: login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
+      responses:
+        '200':
+          description: Session cookie has been set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Incorrect credentials provided
+  /auth/logout:
+    post:
+      tags:
+      - auth
+      operationId: logout
+      responses:
+        '200':
+          description: User has been logged out
+        '401':
+          description: User was not logged in
+  /auth/me:
+    get:
+      tags:
+      - auth
+      description: Get information about the current user
+      operationId: me
+      responses:
+        '200':
+          description: User is signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: Auth token is expired
+  /clock:
+    get:
+      tags:
+      - clock
+      operationId: get_clock
+      responses:
+        '200':
+          description: Information about the clock
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClockStatusResponse'
+    patch:
+      tags:
+      - clock
+      operationId: patch_clock
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateClockRequest'
+        required: true
+      responses:
+        '200':
+          description: Game is paused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClockStatusResponse'
+        '401':
+          description: Insufficient permissions
+  /competition/packet:
+    get:
+      tags:
+      - competition
+      operationId: download_packet
+      responses:
+        '200':
+          description: ''
+          content:
+            application/pdf:
+              schema:
+                type: array
+                items:
+                  type: integer
+                  format: int32
+                  minimum: 0
+  /leaderboard:
+    get:
+      tags:
+      - leaderboard
+      description: Gets all team's submission states and total number of points
+      operationId: get_leaderboard_info
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TeamProgression'
+        '403':
+          description: User does not have permission to view the leaderboard
+  /questions:
+    get:
+      tags:
+      - questions
+      operationId: get_all
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/QuestionResponse'
+  /questions/{id}:
+    get:
+      tags:
+      - questions
+      operationId: get_specific_question
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 0
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuestionResponse'
+        '404':
+          description: Question Not Found
+  /teams:
+    get:
+      tags:
+      - teams
+      operationId: get_teams
+      responses:
+        '200':
+          description: Information about teams
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamsListResponse'
+        '500':
+          description: ''
+    post:
+      tags:
+      - teams
+      operationId: add_team
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OneOrMany_NewTeam'
+        required: true
+      responses:
+        '200':
+          description: Team(s) were created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OneOrMany_User'
+        '409':
+          description: Team(s) with returned usernames already exist
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+        '500':
+          description: ''
+  /teams/{id}:
+    patch:
+      tags:
+      - teams
+      operationId: patch_team
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchTeam'
+        required: true
+      responses:
+        '200':
+          description: Team was succesfully updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          description: User with ID not found
+        '409':
+          description: Team with provided username already exists
+        '500':
+          description: ''
+  /testing/state:
+    get:
+      tags:
+      - testing
+      description: Get the current state of the current user's submissions
+      operationId: get_submissions_state
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/QuestionSubmissionState'
+        '403':
+          description: User does not have permission to view the submissions for this user
+  /testing/submissions:
+    get:
+      tags:
+      - testing
+      operationId: get_submissions
+      parameters:
+      - name: user_id
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/UserId'
+      - name: question_index
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 0
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SubmissionHistory'
+        '403':
+          description: User does not have permission to view the submissions for this user
+  /ws:
+    get:
+      tags:
+      - ws
+      operationId: connect_websocket
+      responses:
+        '200':
+          description: connected to websocket
+components:
+  schemas:
+    Announcement:
+      type: object
+      required:
+      - id
+      - sender
+      - time
+      - message
+      properties:
+        id:
+          $ref: '#/components/schemas/AnnouncementId'
+        message:
+          type: string
+        sender:
+          $ref: '#/components/schemas/UserId'
+        time:
+          type: string
+          format: date
+    AnnouncementId:
+      type: string
+    ClockStatusResponse:
+      type: object
+      required:
+      - is_paused
+      - time_left_in_seconds
+      properties:
+        is_paused:
+          type: boolean
+        time_left_in_seconds:
+          type: integer
+          format: int64
+          minimum: 0
+    DisplayNamePatch:
+      oneOf:
+      - type: string
+        enum:
+        - remove
+      - type: object
+        required:
+        - set
+        properties:
+          set:
+            type: string
+    LanguageSyntax:
+      type: object
+      required:
+      - name
+      - syntax
+      properties:
+        name:
+          type: string
+        syntax:
+          type: string
+    LoginRequest:
+      type: object
+      required:
+      - username
+      - password
+      properties:
+        password:
+          type: string
+        username:
+          type: string
+    LoginResponse:
+      type: object
+      required:
+      - token
+      - role
+      properties:
+        role:
+          $ref: '#/components/schemas/Role'
+        token:
+          $ref: '#/components/schemas/SessionId'
+    NewAnnouncement:
+      type: object
+      required:
+      - message
+      properties:
+        message:
+          type: string
+    NewTeam:
+      type: object
+      required:
+      - username
+      - password
+      properties:
+        displayName:
+          type:
+          - string
+          - 'null'
+        password:
+          type: string
+        username:
+          type: string
+    OneOrMany_NewTeam:
+      oneOf:
+      - type: object
+        required:
+        - username
+        - password
+        properties:
+          displayName:
+            type:
+            - string
+            - 'null'
+          password:
+            type: string
+          username:
+            type: string
+      - type: array
+        items:
+          type: object
+          required:
+          - username
+          - password
+          properties:
+            displayName:
+              type:
+              - string
+              - 'null'
+            password:
+              type: string
+            username:
+              type: string
+    OneOrMany_User:
+      oneOf:
+      - type: object
+        required:
+        - id
+        - username
+        - role
+        properties:
+          displayName:
+            type:
+            - string
+            - 'null'
+          id:
+            $ref: '#/components/schemas/UserId'
+          role:
+            $ref: '#/components/schemas/Role'
+          username:
+            type: string
+      - type: array
+        items:
+          type: object
+          required:
+          - id
+          - username
+          - role
+          properties:
+            displayName:
+              type:
+              - string
+              - 'null'
+            id:
+              $ref: '#/components/schemas/UserId'
+            role:
+              $ref: '#/components/schemas/Role'
+            username:
+              type: string
+    PatchTeam:
+      type: object
+      properties:
+        displayName:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/DisplayNamePatch'
+        password:
+          type:
+          - string
+          - 'null'
+        username:
+          type:
+          - string
+          - 'null'
+    QuestionResponse:
+      type: object
+      required:
+      - languages
+      - title
+      - tests
+      properties:
+        description:
+          type:
+          - string
+          - 'null'
+        languages:
+          type: array
+          items:
+            $ref: '#/components/schemas/LanguageSyntax'
+        points:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        tests:
+          type: array
+          items:
+            $ref: '#/components/schemas/TestResponse'
+        title:
+          type: string
+    QuestionState:
+      type: string
+      enum:
+      - pass
+      - fail
+      - in-progress
+      - not-attempted
+    QuestionSubmissionState:
+      type: object
+      required:
+      - state
+      properties:
+        remainingAttempts:
+          type:
+          - integer
+          - 'null'
+          format: int32
+          minimum: 0
+        state:
+          $ref: '#/components/schemas/QuestionState'
+    Role:
+      type: string
+      enum:
+      - competitor
+      - host
+    SessionId:
+      type: string
+    SubmissionHistory:
+      type: object
+      required:
+      - id
+      - submitter
+      - time
+      - compile_fail
+      - code
+      - question_index
+      - score
+      - success
+      - language
+      properties:
+        code:
+          type: string
+        compile_fail:
+          type: boolean
+        id:
+          $ref: '#/components/schemas/SubmissionId'
+        language:
+          type: string
+        question_index:
+          type: integer
+          format: int64
+        score:
+          type: number
+          format: double
+        submitter:
+          $ref: '#/components/schemas/UserId'
+        success:
+          type: boolean
+        time:
+          type: string
+          format: date
+    SubmissionId:
+      type: string
+    TeamFull:
+      allOf:
+      - $ref: '#/components/schemas/TeamInfo'
+        description: Contains full information about team
+      - type: object
+        required:
+        - id
+        properties:
+          id:
+            $ref: '#/components/schemas/UserId'
+            description: Username of team/player
+    TeamInfo:
+      type: object
+      required:
+      - checkedIn
+      - disconnected
+      properties:
+        checkedIn:
+          type: boolean
+          description: Whether or not the team has checked into the competition by logging in
+        disconnected:
+          type: boolean
+          description: Just a flag stating whether or not the team has deliberately disconnected
+        lastSeen:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: When the team last contacted the server
+    TeamProgression:
+      type: object
+      required:
+      - user
+      - score
+      - submissionStates
+      properties:
+        score:
+          type: number
+          format: double
+        submissionStates:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionState'
+        user:
+          $ref: '#/components/schemas/User'
+    TeamWithScore:
+      allOf:
+      - $ref: '#/components/schemas/TeamFull'
+      - type: object
+        required:
+        - score
+        - id
+        - name
+        properties:
+          displayName:
+            type:
+            - string
+            - 'null'
+          id:
+            $ref: '#/components/schemas/UserId'
+          name:
+            type: string
+          score:
+            type: number
+            format: double
+    TeamsListResponse:
+      type: array
+      items:
+        $ref: '#/components/schemas/TeamWithScore'
+    TestResponse:
+      type: object
+      required:
+      - input
+      - output
+      - visible
+      properties:
+        input:
+          type: string
+        output:
+          type: string
+        visible:
+          type: boolean
+    UpdateClockRequest:
+      oneOf:
+      - type: object
+        required:
+        - is_paused
+        properties:
+          is_paused:
+            type: boolean
+    User:
+      type: object
+      required:
+      - id
+      - username
+      - role
+      properties:
+        displayName:
+          type:
+          - string
+          - 'null'
+        id:
+          $ref: '#/components/schemas/UserId'
+        role:
+          $ref: '#/components/schemas/Role'
+        username:
+          type: string
+    UserId:
+      type: string
