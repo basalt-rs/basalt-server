@@ -150,7 +150,8 @@ lazy_static! {
         .add_read_only("/usr")
         .add_read_only("/etc")
         .add_read_only("/dev")
-        .add_read_only("/bin");
+        .add_read_only("/bin")
+        .add_read_only("/tmp");
     static ref RUN_RULES: Rules = Rules::new()
         .add_read_only("/usr")
         .add_read_only("/etc")
