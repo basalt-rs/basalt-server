@@ -2282,7 +2282,7 @@ checksum = "31ae425815400e5ed474178a7a22e275a9687086a12ca63ec793ff292d8fdae8"
 [[package]]
 name = "erudite"
 version = "0.1.0"
-source = "git+https://github.com/basalt-rs/erudite.git?rev=f45f587#f45f5879f1451a92d71256555a0e54565ed0491d"
+source = "git+https://github.com/basalt-rs/erudite.git?rev=85883832#85883832b006f735123702c4b0d44ef307ef75f7"
 dependencies = [
  "concat-idents",
  "derive_more",

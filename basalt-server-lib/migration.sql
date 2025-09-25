@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS submission_history (
   compile_stdout TEXT NOT NULL,
   compile_stderr TEXT NOT NULL,
   compile_exit_status INTEGER NOT NULL,
+  test_only BOOLEAN NOT NULL, -- false => ran all test cases and score is set, true => ran only visible tests and score is not set
   -- The remaining data will be updated after the tests have finished running
   state INTEGER NOT NULL DEFAULT 0, -- SubmissionState
   score FLOAT NOT NULL DEFAULT 0.0,
@@ -48,11 +49,4 @@ CREATE TABLE IF NOT EXISTS announcements (
     sender VARCHAR(32) NOT NULL REFERENCES users(id),
     time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     message TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS test_runs (
-    id VARCHAR(32) NOT NULL PRIMARY KEY,
-    user_id VARCHAR(32) NOT NULL REFERENCES users(id),
-    question_index INTEGER NOT NULL,
-    time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

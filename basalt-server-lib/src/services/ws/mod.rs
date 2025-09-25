@@ -7,11 +7,10 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 use crate::{
     repositories::{
         announcements::{Announcement, AnnouncementId},
-        submissions::TestResultState,
+        submissions::{SubmissionId, TestResultState, TestResults as DbTestResults},
         users::{QuestionState, UserId},
     },
     server::{teams::TeamWithScore, tester::TestData, websocket::ConnectionKind, AppState},
-    services::testing::TestId,
 };
 
 pub mod connect;
@@ -63,6 +62,19 @@ pub struct TestResultSend {
     time_taken: u64,
 }
 
+impl From<DbTestResults> for TestResultSend {
+    fn from(value: DbTestResults) -> Self {
+        Self {
+            index: value.test_index as _,
+            state: value.result,
+            stdout: value.stdout,
+            stderr: value.stderr,
+            exit_status: value.exit_status as _,
+            time_taken: value.time_taken.as_millis() as u64,
+        }
+    }
+}
+
 impl From<&TestResult<TestData>> for TestResultSend {
     fn from(value: &TestResult<TestData>) -> Self {
         Self {
@@ -87,8 +99,18 @@ pub enum WebSocketSend {
         id: Option<usize>,
         message: String,
     },
+    /// An error occurred while running tests
+    TestsError {
+        id: SubmissionId,
+    },
+    /// All tests have finished running
+    TestsComplete {
+        id: SubmissionId,
+        results: Vec<TestResultSend>,
+    },
+    /// One of more tests has finished
     TestResults {
-        id: TestId,
+        id: SubmissionId,
         results: Vec<TestResultSend>,
     },
 }

@@ -26,7 +26,7 @@ derive_more = { version = "2.0.1", features = [
     "from_str",
 ] }
 directories = "6.0.0"
-erudite = { git = "https://github.com/basalt-rs/erudite.git", rev = "f45f587" }
+erudite = { git = "https://github.com/basalt-rs/erudite.git", rev = "85883832" }
 lazy_static = "1.5.0"
 rand = "0.8.5"
 redact = { version = "0.1.10", features = ["serde"] }

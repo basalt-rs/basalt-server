@@ -2,14 +2,20 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     sync::Arc,
+    time::Instant,
 };
 
 use bedrock::{packet::Test, Config};
+use dashmap::DashMap;
 use erudite::{runner::TestRunner, Rules, TestContext};
+use tokio::sync::oneshot;
+use tracing::debug;
+
+use crate::repositories::submissions::SubmissionId;
 
 #[derive(Debug, Copy, Clone, Default)]
 pub struct TestData {
-    visible: bool,
+    pub visible: bool,
 }
 
 impl From<&Test> for TestData {
@@ -26,47 +32,56 @@ pub struct ContextExtended {
 }
 
 pub struct Tester {
-    // language name : test context
+    // language raw name : test context
     contexts: HashMap<String, ContextExtended>,
+    abort_handles: DashMap<SubmissionId, oneshot::Sender<()>>,
 }
 
 impl Tester {
     pub fn new(config: &Config) -> Self {
-        let contexts = config
+        let start = Instant::now();
+        let contexts: HashMap<_, _> = config
             .languages
             .iter()
             .map(|l| {
-                let rules = Rules::new()
+                let compile_rules = Rules::new()
+                    .add_read_only("/tmp")
+                    .add_read_only("/usr")
+                    .add_read_only("/etc")
+                    .add_read_only("/dev")
+                    .add_read_only("/bin");
+                let run_rules = Rules::new()
                     .add_read_only("/usr")
                     .add_read_only("/etc")
                     .add_read_only("/dev")
                     .add_read_only("/bin");
 
+                let groups = config
+                    .packet
+                    .problems
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, p)| {
+                        p.languages
+                            .as_ref()
+                            .is_none_or(|pl| pl.contains(l.raw_name()))
+                    })
+                    .map(move |(i, p)| {
+                        (
+                            i,
+                            p.tests
+                                .iter()
+                                .map(|t| (&t.input, &*t.output, TestData::from(t))),
+                        )
+                    });
+
                 let mut c = TestContext::builder()
                     .run_command(["bash", "-c", l.run_command()])
                     .run_timeout(config.test_runner.timeout)
                     .trim_output(config.test_runner.trim_output)
-                    .test_groups(
-                        config
-                            .packet
-                            .problems
-                            .iter()
-                            .enumerate()
-                            .filter(|(_, p)| {
-                                p.languages
-                                    .as_ref()
-                                    .is_none_or(|pl| pl.contains(l.raw_name()))
-                            })
-                            .map(move |(i, p)| {
-                                (
-                                    i,
-                                    p.tests
-                                        .iter()
-                                        .map(|t| (&t.input, &*t.output, TestData::from(t))),
-                                )
-                            }),
-                    )
-                    .rules(rules);
+                    .test_groups(groups)
+                    .compile_rules(compile_rules)
+                    .run_rules(run_rules);
 
                 if let Some(compile_command) = l.build_command() {
                     c = c.compile_command(["bash", "-c", compile_command])
@@ -81,8 +96,23 @@ impl Tester {
                 )
             })
             .collect();
+        debug!(in = ?start.elapsed(), count = contexts.len(), "Generated all test contexts");
 
-        Self { contexts }
+        Self {
+            contexts,
+            abort_handles: Default::default(),
+        }
+    }
+
+    pub fn add_abort_handle(&self, test: SubmissionId, handle: oneshot::Sender<()>) {
+        self.abort_handles.insert(test, handle);
+    }
+
+    /// Returns whether the test existed and was successfully aborted
+    pub fn abort(&self, test: SubmissionId) -> bool {
+        self.abort_handles
+            .remove(&test)
+            .is_some_and(|(_, x)| x.send(()).is_ok())
     }
 
     pub fn runner(

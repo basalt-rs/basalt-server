@@ -1,11 +1,10 @@
 use crate::{
-    define_id_type,
     repositories::{
         self,
-        submissions::SubmissionHistory,
+        submissions::{SubmissionHistory, SubmissionId},
         users::{QuestionState, Role, User, UserId},
     },
-    server::{tester::TestData, websocket::ConnectionKind, AppState},
+    server::{tester::TestData, AppState},
     services::ws::WebSocketSend,
 };
 use axum::{
@@ -13,6 +12,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use bedrock::scoring::Scorable;
 use erudite::{
     error::CompileError,
     runner::{TestResult, TestResultState},
@@ -24,7 +24,8 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tracing::{debug, error, trace, warn};
+use tokio::sync::oneshot;
+use tracing::{debug, error};
 use utoipa::{IntoParams, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
@@ -175,11 +176,94 @@ pub async fn get_submissions(
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct RunTestsBody {
     question_index: usize,
+    test_only: bool,
     language: String,
     solution: String,
 }
 
-define_id_type!(TestId);
+enum TestWsSend {
+    Error,
+    Complete,
+    Result(TestResult<TestData>),
+}
+
+fn spawn_ws_sender(
+    state: Arc<AppState>,
+    id: SubmissionId,
+    user_id: UserId,
+) -> tokio::sync::mpsc::UnboundedSender<TestWsSend> {
+    let (result_tx, mut result_rx) = tokio::sync::mpsc::unbounded_channel::<TestWsSend>();
+    tokio::spawn(async move {
+        let mut results = Vec::new();
+        while let Some(r) = result_rx.recv().await {
+            tokio::time::sleep(Duration::from_millis(100)).await; // debounce
+            let Some(websocket_sender) = state
+                .websocket
+                .wait_for_connection(user_id, Duration::from_secs(30))
+                .await
+            else {
+                debug!("No WS connection after timeout of 30s");
+                continue;
+            };
+
+            let get_test_results = || async {
+                match repositories::submissions::get_test_results(&state.db, id).await {
+                    Ok(v) => v.into_iter().map(Into::into).collect(),
+                    Err(error) => {
+                        error!(?error, "Error getting test results");
+                        vec![]
+                    }
+                }
+            };
+
+            let mut send = match r {
+                TestWsSend::Error => Some(WebSocketSend::TestsError { id }),
+                TestWsSend::Complete => Some(WebSocketSend::TestsComplete {
+                    id,
+                    results: get_test_results().await,
+                }),
+                TestWsSend::Result(ref r) => {
+                    results.push(r.into());
+                    None
+                }
+            };
+            while let Ok(ref v) = result_rx.try_recv() {
+                match v {
+                    TestWsSend::Error => {
+                        send = Some(WebSocketSend::TestsError { id });
+                    }
+                    TestWsSend::Complete => {
+                        send = Some(WebSocketSend::TestsComplete {
+                            id,
+                            results: get_test_results().await,
+                        });
+                    }
+                    TestWsSend::Result(ref r) => results.push(r.into()),
+                }
+            }
+
+            if let Some(send) = send {
+                if websocket_sender.send(send).is_err() {
+                    debug!("Websocket closed while trying to send test finish");
+                }
+                return;
+            } else if websocket_sender
+                .send(WebSocketSend::TestResults {
+                    id,
+                    results: results.clone(),
+                })
+                .is_err()
+            {
+                debug!("Websocket closed while trying to send test results");
+                // hold onto the results for the next cycle and send them then
+            } else {
+                results.clear();
+            }
+        }
+    });
+
+    result_tx
+}
 
 #[axum::debug_handler]
 #[utoipa::path(
@@ -190,12 +274,14 @@ define_id_type!(TestId);
         (status = 403, description = ""),
     )
 )]
+// TODO: Test spawn error
+// TODO: Better API
+// TODO: Abortion
 pub async fn run_tests(
     user: User,
     State(state): State<Arc<AppState>>,
     Json(body): Json<RunTestsBody>,
-) -> Result<Json<TestId>, StatusCode> {
-    tracing::debug!(?body, "run_tests");
+) -> Result<Json<SubmissionId>, StatusCode> {
     // NOTE: It's not great that we construct a test runner and then throw it await, but we can't
     // move the test runner into the new task, so it's fine (constructing one is really cheap).
     let runner = state.tester.runner(&body.language, body.question_index);
@@ -209,8 +295,9 @@ pub async fn run_tests(
         return Err(StatusCode::BAD_REQUEST);
     };
 
-    let test_id = TestId::new();
-
+    let (abort_tx, abort_rx) = oneshot::channel();
+    let id = SubmissionId::new();
+    state.tester.add_abort_handle(id, abort_tx);
     tokio::spawn(async move {
         let (runner, source_file) = state
             .tester
@@ -219,160 +306,159 @@ pub async fn run_tests(
 
         let compiled = runner
             .file(BorrowedFileContent::string(&body.solution), source_file)
+            .filter_tests(if body.test_only {
+                |t| t.data().visible
+            } else {
+                |_| true
+            })
             .compile()
             .await;
 
-        let compiled = match compiled {
-            Err(CompileError::CompileFail(compile_result)) => {
-                let res = repositories::submissions::create_failed_submission_history(
+        let result_tx = spawn_ws_sender(Arc::clone(&state), id, user.id);
+
+        // NOTE: This exists since the `?` operator calls `.into()` and `()` implements `From` for
+        // any `T`, but we want all errors to be handled, not just disappeared.
+        struct Unit;
+        impl From<()> for Unit {
+            fn from((): ()) -> Self {
+                Self
+            }
+        }
+
+        let result: Result<(), Unit> = async {
+            let other_completions =
+                repositories::submissions::count_other_submissions(&state.db, body.question_index)
+                    .await
+                    .map_err(|error| error!(?error, "Error counting other submissions"))?;
+
+            let previous_attempts = repositories::submissions::count_previous_submissions(
+                &state.db,
+                &user.id,
+                body.question_index,
+            )
+            .await
+            .map_err(|error| error!(?error, "Error counting previous submissions"))?;
+
+            let compiled = match compiled {
+                Err(CompileError::CompileFail(compile_result)) => {
+                    repositories::submissions::create_failed_submission_history(
+                        &state.db,
+                        repositories::submissions::NewSubmissionHistory {
+                            id,
+                            submitter: &user.id,
+                            code: &body.solution,
+                            question_index: body.question_index,
+                            language: &body.language,
+                            compile_result: Some(&compile_result),
+                            test_only: body.test_only,
+                        },
+                    )
+                    .await
+                    .map_err(|error| error!(?error, "Error creating failed submission history"))?;
+
+                    return Err(Unit);
+                }
+                Err(error) => {
+                    error!(?error, "Error spawning compile command");
+                    return Err(Unit);
+                }
+                Ok(compiled) => compiled,
+            };
+
+            let submission = repositories::submissions::create_submission_history(
+                &state.db,
+                repositories::submissions::NewSubmissionHistory {
+                    id,
+                    submitter: &user.id,
+                    code: &body.solution,
+                    question_index: body.question_index,
+                    language: &body.language,
+                    compile_result: compiled.compile_result(),
+                    test_only: body.test_only,
+                },
+            )
+            .await
+            .map_err(|error| error!(?error, "Error adding submission to database"))?;
+
+            let mut handle = compiled.run();
+
+            let start = Instant::now();
+            let mut passed = 0;
+            let mut failed = 0;
+            while let Some(result) = handle
+                .wait_next()
+                .await
+                .map_err(|error| error!(?error, "Error running test"))?
+            {
+                if result.state() == TestResultState::Pass {
+                    passed += 1;
+                } else {
+                    failed += 1;
+                }
+
+                let res = repositories::submissions::create_test_results(
                     &state.db,
-                    repositories::submissions::NewSubmissionHistory {
-                        submitter: &user.id,
-                        code: &body.solution,
-                        question_index: body.question_index,
-                        language: &body.language,
-                        compile_result: Some(&compile_result),
-                    },
+                    &submission.id,
+                    result.index(),
+                    (&result).into(),
                 )
                 .await;
 
-                // TODO: alert user
                 if let Err(error) = res {
-                    error!(?error, "Error creating failed submission history");
-                }
-                return;
-            }
-            Err(error) => {
-                // TODO: alert user
-                error!(?error, "Error spawning compile command");
-                return;
-            }
-            Ok(compiled) => compiled,
-        };
-
-        let res = repositories::submissions::create_submission_history(
-            &state.db,
-            repositories::submissions::NewSubmissionHistory {
-                submitter: &user.id,
-                code: &body.solution,
-                question_index: body.question_index,
-                language: &body.language,
-                compile_result: compiled.compile_result(),
-            },
-        )
-        .await;
-
-        let submission = match res {
-            Ok(h) => h,
-            Err(error) => {
-                // TODO: alert the client somehow (scopeguard-type thing?)
-                error!(?error, "Error adding submission to database");
-                return;
-            }
-        };
-
-        let mut handle = compiled.run();
-
-        let test_count = handle.test_count();
-        let result_tx = {
-            let (result_tx, mut result_rx) =
-                tokio::sync::mpsc::channel::<TestResult<TestData>>(test_count);
-            let state = Arc::clone(&state);
-            let user_id = user.id;
-            tokio::spawn(async move {
-                // it's fairly likely that all tests will finish within one debounce, so let's
-                // allocate all of them
-                let mut results = Vec::with_capacity(test_count);
-                while let Some(r) = result_rx.recv().await {
-                    trace!("Got an item");
-                    tokio::time::sleep(Duration::from_millis(100)).await; // debounce
-                    trace!("Waiting for websocket connection");
-                    let Some(websocket_sender) = state
-                        .websocket
-                        .wait_for_connection(user_id, Duration::from_secs(5))
-                        .await
-                    else {
-                        debug!("No WS connection after timeout of 5s");
-                        // if no connection after five seconds, we can just quit assume that the
-                        // websocket is disconnected and the client will request the results later
-                        return;
-                    };
-
-                    results.push((&r).into());
-                    while let Ok(ref v) = result_rx.try_recv() {
-                        results.push(v.into());
-                    }
-
-                    if websocket_sender
-                        .send(WebSocketSend::TestResults {
-                            id: test_id,
-                            results: results.clone(),
-                        })
-                        .is_err()
-                    {
-                        debug!("Websocket closed while trying to send test results");
-                        return; // we can't do anything else
-                    }
-                    results.clear();
-                }
-            });
-
-            result_tx
-        };
-
-        let start = Instant::now();
-        let mut success = true;
-        loop {
-            let result = match handle.wait_next().await {
-                Ok(None) => break,          // we're done (no more tests)
-                Ok(Some(result)) => result, // we have a result
-                Err(_) => todo!(),          // there was an error spawning the test
-            };
-            tracing::info!(?result, "test result!");
-
-            if result.state() != TestResultState::Pass {
-                success = false;
-            }
-
-            let res = repositories::submissions::create_submission_test_history(
-                &state.db,
-                &submission.id,
-                result.index(),
-                (&result).into(),
-            )
-            .await;
-
-            let test_hist = match res {
-                Ok(h) => h,
-                Err(error) => {
-                    // TODO: alert the client somehow (scopeguard-type thing?)
                     error!(?error, "Error adding submission test to database");
-                    // TODO: complain about this error
                     if let Err(error) = submission.fail(&state.db).await {
                         error!(?error, "Error updating submission to failed in database");
                     }
-                    return;
+                    return Err(Unit);
+                };
+
+                let _ = result_tx.send(TestWsSend::Result(result));
+            }
+
+            let elapsed = start.elapsed();
+            let score = state.config.score(
+                body.question_index,
+                bedrock::scoring::EvaluationContext {
+                    num_completions: other_completions,
+                    num_attempts: previous_attempts,
+                    passed_tests: passed,
+                    failed_tests: failed,
+                    number_tests: passed + failed,
+                },
+            );
+            let score = match score {
+                Ok(score) => score,
+                Err(error) => {
+                    error!(?error, "Error calculating score of submission");
+                    if let Err(error) = submission.fail(&state.db).await {
+                        error!(?error, "Error updating submission to failed in database");
+                    }
+                    return Err(Unit);
                 }
             };
 
-            // if the result_rx is dropped, we don't really care
-            let _ = result_tx.send(result).await;
+            submission
+                .finish(&state.db, score, failed == 0, elapsed)
+                .await
+                .map_err(|error| error!(?error, "Error updating submission in database"))?;
+
+            Ok::<(), Unit>(())
         }
+        .await;
 
-        let elapsed = start.elapsed();
-        let res = submission.finish(&state.db, 0.0, success, elapsed).await;
-
-        let submission = match res {
-            Ok(h) => h,
-            Err(error) => {
-                // TODO: alert the client somehow (scopeguard-type thing?)
-                error!(?error, "Error updating submission in database");
-                return;
+        match result {
+            Ok(_) => {
+                let _ = result_tx.send(TestWsSend::Complete);
             }
-        };
+            Err(_) => {
+                let _ = result_tx.send(TestWsSend::Error);
+            }
+        }
+        // ensure that we don't try to use the sender after we've sent Complete or Error
+        drop(result_tx);
     });
 
-    Ok(Json(test_id))
+    Ok(Json(id))
 }
 
 pub fn router() -> OpenApiRouter<Arc<AppState>> {

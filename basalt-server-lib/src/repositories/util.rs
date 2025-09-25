@@ -12,7 +12,6 @@ use utoipa::ToSchema;
 macro_rules! define_id_type {
     ($name: ident) => {
         #[derive(
-            ::derive_more::Debug,
             ::derive_more::From,
             ::derive_more::Into,
             ::utoipa::ToSchema,
@@ -45,6 +44,14 @@ macro_rules! define_id_type {
         impl std::fmt::Display for $name {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(f, "{}", self.as_str())
+            }
+        }
+
+        impl std::fmt::Debug for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.debug_tuple(stringify!($name))
+                    .field(&self.as_str())
+                    .finish()
             }
         }
 

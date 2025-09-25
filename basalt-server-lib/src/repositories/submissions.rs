@@ -45,6 +45,7 @@ pub struct SubmissionHistory {
     pub compile_stdout: String,
     pub compile_stderr: String,
     pub compile_exit_status: i64,
+    pub test_only: bool,
     // The remaining data will be updated after the tests have finished running
     pub state: SubmissionState,
     pub score: f64,
@@ -54,11 +55,13 @@ pub struct SubmissionHistory {
 }
 
 pub struct NewSubmissionHistory<'a> {
+    pub id: SubmissionId,
     pub submitter: &'a UserId,
     pub code: &'a str,
     pub question_index: usize,
     pub language: &'a str,
     pub compile_result: Option<&'a CompileResult>,
+    pub test_only: bool,
 }
 
 define_sqlx_enum! {
@@ -72,7 +75,7 @@ define_sqlx_enum! {
 
 /// History of tests that have been run on submissions
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct SubmissionTestHistory {
+pub struct TestResults {
     pub submission: SubmissionId,
     pub test_index: i64, // _really_ should be usize, but sqlx doesn't like that
     pub result: TestResultState,
@@ -84,7 +87,7 @@ pub struct SubmissionTestHistory {
 }
 
 /// History of tests that have been run on submissions
-pub struct NewSubmissionTestHistory<'a> {
+pub struct NewTestResults<'a> {
     result: TestResultState,
     stdout: Cow<'a, str>,
     stderr: Cow<'a, str>,
@@ -92,7 +95,7 @@ pub struct NewSubmissionTestHistory<'a> {
     time_taken: WrappedDuration,
 }
 
-impl<'a, T> From<&'a TestResult<T>> for NewSubmissionTestHistory<'a> {
+impl<'a, T> From<&'a TestResult<T>> for NewTestResults<'a> {
     fn from(value: &'a TestResult<T>) -> Self {
         Self {
             result: value.state().into(),
@@ -112,14 +115,14 @@ pub struct PartialSubmissionHistory(SubmissionHistory);
 
 impl PartialSubmissionHistory {
     pub async fn fail(
-        &self,
+        self,
         db: impl Executor<'_, Database = Sqlite>,
     ) -> anyhow::Result<SubmissionHistory> {
         sqlx::query_as!(SubmissionHistory, r#"
             UPDATE submission_history
                 SET state = ?
             WHERE id = ?
-            RETURNING id, submitter, time, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, state, score, success, time_taken"#,
+            RETURNING id, submitter, time, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, test_only, state, score, success, time_taken"#,
             SubmissionState::Failed,
             self.id,
         )
@@ -136,7 +139,7 @@ impl PartialSubmissionHistory {
             UPDATE submission_history
                 SET state = ?
             WHERE id = ?
-            RETURNING id, submitter, time, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, state, score, success, time_taken"#,
+            RETURNING id, submitter, time, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, test_only, state, score, success, time_taken"#,
             SubmissionState::Cancelled,
             self.id,
         )
@@ -160,7 +163,7 @@ impl PartialSubmissionHistory {
                 success = ?,
                 time_taken = ?
             WHERE id = ?
-            RETURNING id, submitter, time, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, state, score, success, time_taken"#,
+            RETURNING id, submitter, time, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, test_only, state, score, success, time_taken"#,
             SubmissionState::Finished,
             score,
             success,
@@ -173,11 +176,28 @@ impl PartialSubmissionHistory {
     }
 }
 
+pub async fn get_test_results<'a>(
+    db: impl Executor<'_, Database = Sqlite>,
+    id: SubmissionId,
+) -> anyhow::Result<Vec<TestResults>> {
+    sqlx::query_as!(
+        TestResults,
+        r#"
+            SELECT * FROM test_results
+            WHERE submission = ?
+            ORDER BY test_index
+            "#,
+        id,
+    )
+    .fetch_all(db)
+    .await
+    .context("Failed to create submission history")
+}
+
 pub async fn create_failed_submission_history<'a>(
     db: impl Executor<'_, Database = Sqlite>,
     new: NewSubmissionHistory<'a>,
-) -> anyhow::Result<PartialSubmissionHistory> {
-    let id = SubmissionId::new();
+) -> anyhow::Result<SubmissionHistory> {
     let question_index = new.question_index as i64;
     let compile_result: CompileResultState = new.compile_result.map(|r| r.state()).into();
     let compile_stdout = new
@@ -194,29 +214,29 @@ pub async fn create_failed_submission_history<'a>(
         .unwrap_or_default() as i64;
 
     let hist = sqlx::query_as!(SubmissionHistory, r#"
-            INSERT INTO submission_history (id, submitter, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, state)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            RETURNING id, submitter, time, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, state, score, success, time_taken"#,
-            id,
+            INSERT INTO submission_history (id, submitter, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, test_only, state)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id, submitter, time, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, test_only, state, score, success, time_taken"#,
+            new.id,
             new.submitter,
             new.code,
             question_index,
             new.language,
             compile_result, compile_stdout, compile_stderr, compile_exit_status,
+            new.test_only,
             SubmissionState::Failed,
         )
         .fetch_one(db)
         .await
         .context("Failed to create submission history")?;
 
-    Ok(PartialSubmissionHistory(hist))
+    Ok(hist)
 }
 
 pub async fn create_submission_history<'a>(
     db: impl Executor<'_, Database = Sqlite>,
     new: NewSubmissionHistory<'a>,
 ) -> anyhow::Result<PartialSubmissionHistory> {
-    let id = SubmissionId::new();
     let question_index = new.question_index as i64;
     let compile_result: CompileResultState = new.compile_result.map(|r| r.state()).into();
     let compile_stdout = new
@@ -233,16 +253,17 @@ pub async fn create_submission_history<'a>(
         .unwrap_or_default() as i64;
 
     let hist = sqlx::query_as!(SubmissionHistory, r#"
-            INSERT INTO submission_history (id, submitter, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            RETURNING id, submitter, time, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, state, score, success, time_taken"#,
-            id,
+            INSERT INTO submission_history (id, submitter, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, test_only)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id, submitter, time, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, test_only, state, score, success, time_taken"#,
+            new.id,
             new.submitter,
             new.code,
             question_index,
             new.language,
             compile_result,
-            compile_stdout, compile_stderr, compile_exit_status
+            compile_stdout, compile_stderr, compile_exit_status,
+            new.test_only,
         )
         .fetch_one(db)
         .await
@@ -251,16 +272,16 @@ pub async fn create_submission_history<'a>(
     Ok(PartialSubmissionHistory(hist))
 }
 
-pub async fn create_submission_test_history<'a>(
+pub async fn create_test_results<'a>(
     db: impl Executor<'_, Database = Sqlite>,
     submission: &SubmissionId,
     test_index: usize,
-    new: NewSubmissionTestHistory<'a>,
-) -> anyhow::Result<SubmissionTestHistory> {
+    new: NewTestResults<'a>,
+) -> anyhow::Result<TestResults> {
     let test_index = test_index as i64;
 
     sqlx::query_as!(
-        SubmissionTestHistory,
+        TestResults,
         r#"
             INSERT INTO test_results (submission, test_index, result, stdout, stderr, exit_status, time_taken)
             VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -284,7 +305,13 @@ pub async fn count_other_submissions<'a>(
 ) -> anyhow::Result<u32> {
     let question_index = question_index as i64;
     let attempts = sqlx::query_scalar!(
-        "SELECT COUNT(submitter) FROM submission_history WHERE question_index = ? AND success = TRUE AND time < CURRENT_TIMESTAMP",
+        r#"
+        SELECT COUNT(submitter) FROM submission_history
+        WHERE question_index = ?
+            AND test_only = FALSE
+            AND success = TRUE
+            AND time < CURRENT_TIMESTAMP
+        "#,
         question_index
     )
     .fetch_one(db)
@@ -301,9 +328,16 @@ pub async fn count_previous_submissions<'a>(
 ) -> anyhow::Result<u32> {
     let question_index = question_index as i64;
     let attempts = sqlx::query_scalar!(
-        "SELECT COUNT(*) FROM submission_history WHERE submitter = ? AND question_index = ?",
+        r#"
+        SELECT COUNT(id) FROM submission_history
+        WHERE question_index = ?
+            AND submitter = ?
+            AND test_only = FALSE
+            AND success = FALSE
+            AND time < CURRENT_TIMESTAMP
+        "#,
+        question_index,
         submitter,
-        question_index
     )
     .fetch_one(db)
     .await
@@ -384,28 +418,6 @@ pub async fn get_attempts(
     .context("while querying the user's score")
 }
 
-pub async fn add_test(
-    db: impl SqliteExecutor<'_>,
-    user_id: &UserId,
-    question_index: usize,
-) -> anyhow::Result<()> {
-    let question_index = question_index as i64;
-    let id = SubmissionId::new();
-    sqlx::query!(
-        r#"
-        INSERT INTO test_runs (id, user_id, question_index)
-        VALUES (?, ?, ?)
-        "#,
-        id,
-        user_id,
-        question_index,
-    )
-    .execute(db)
-    .await
-    .context("while adding the user's test")?;
-    Ok(())
-}
-
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct TestCount {
     pub question_index: i64,
@@ -414,17 +426,17 @@ pub struct TestCount {
 
 pub async fn count_tests(
     db: impl SqliteExecutor<'_>,
-    user_id: &UserId,
+    submitter: &UserId,
 ) -> anyhow::Result<Vec<TestCount>> {
     sqlx::query_as!(
         TestCount,
         r#"
             SELECT question_index, count(id) as count
-            FROM test_runs
-            WHERE user_id = ?
+            FROM submission_history
+            WHERE submitter = ? AND test_only = TRUE
             GROUP BY question_index;
         "#,
-        user_id,
+        submitter,
     )
     .fetch_all(db)
     .await
@@ -442,7 +454,7 @@ pub async fn get_submissions(
         SubmissionHistory,
         r#"
         SELECT * FROM submission_history
-        WHERE submitter = ? AND question_index = ?
+        WHERE submitter = ? AND question_index = ? AND test_only = FALSE
         ORDER BY time DESC;
         "#,
         user_id,
@@ -471,11 +483,13 @@ mod tests {
         let history = create_submission_history(
             &sql,
             NewSubmissionHistory {
+                id: SubmissionId::new(),
                 submitter: &user.id,
                 code: "this is some code",
                 question_index: 42,
                 language: "java",
                 compile_result: None,
+                test_only: false,
             },
         )
         .await
@@ -497,21 +511,23 @@ mod tests {
         let history = create_submission_history(
             &sql,
             NewSubmissionHistory {
+                id: SubmissionId::new(),
                 submitter: &user.id,
                 code: "this is some code",
                 question_index: 42,
                 language: "java",
                 compile_result: None,
+                test_only: false,
             },
         )
         .await
         .unwrap();
 
-        let test = create_submission_test_history(
+        let test = create_test_results(
             &sql,
             &history.id,
             42,
-            NewSubmissionTestHistory {
+            NewTestResults {
                 result: TestResultState::TimedOut,
                 stdout: "stdout".into(),
                 stderr: "stderr".into(),
@@ -545,6 +561,8 @@ mod tests {
             let history = create_submission_history(
                 &sql,
                 NewSubmissionHistory {
+                    id: SubmissionId::new(),
+                    test_only: false,
                     submitter: &user.id,
                     code: "",
                     question_index: 1,
@@ -556,11 +574,11 @@ mod tests {
             .unwrap();
 
             for i in 0..5 {
-                create_submission_test_history(
+                create_test_results(
                     &sql,
                     &history.id,
                     i,
-                    NewSubmissionTestHistory {
+                    NewTestResults {
                         result: TestResultState::Pass,
                         stdout: "".into(),
                         stderr: "".into(),
@@ -575,7 +593,7 @@ mod tests {
 
         tokio::time::sleep(Duration::from_secs(1)).await;
 
-        let n = count_other_submissions(&sql.db, 1).await.unwrap();
+        let n = count_other_submissions(&sql, 1).await.unwrap();
         assert_eq!(n, 5);
 
         drop(f)
@@ -588,8 +606,10 @@ mod tests {
         let user = dummy_user(&sql, "dummy_user", "foobar", Role::Competitor).await;
         for _ in 0..5 {
             create_submission_history(
-                &sql.db,
+                &sql,
                 NewSubmissionHistory {
+                    id: SubmissionId::new(),
+                    test_only: false,
                     submitter: &user.id,
                     code: "",
                     question_index: 1,
@@ -603,9 +623,7 @@ mod tests {
 
         tokio::time::sleep(Duration::from_secs(1)).await;
 
-        let n = count_previous_submissions(&sql.db, &user.id, 1)
-            .await
-            .unwrap();
+        let n = count_previous_submissions(&sql, &user.id, 1).await.unwrap();
         assert_eq!(n, 5);
 
         drop(f)
@@ -620,6 +638,8 @@ mod tests {
             create_submission_history(
                 &sql,
                 NewSubmissionHistory {
+                    id: SubmissionId::new(),
+                    test_only: false,
                     submitter: &user.id,
                     code: "",
                     question_index: i,
@@ -631,7 +651,7 @@ mod tests {
             .unwrap();
         }
 
-        let n = get_user_score(&sql.db, &user.id).await.unwrap();
+        let n = get_user_score(&sql, &user.id).await.unwrap();
         assert_eq!(n, 42. * 5.);
 
         drop(f)
@@ -646,6 +666,8 @@ mod tests {
             create_submission_history(
                 &sql,
                 NewSubmissionHistory {
+                    id: SubmissionId::new(),
+                    test_only: false,
                     submitter: &user.id,
                     code: "not-latest",
                     question_index: i,
@@ -663,11 +685,14 @@ mod tests {
             create_submission_history(
                 &sql,
                 NewSubmissionHistory {
+                    id: SubmissionId::new(),
+                    test_only: false,
                     submitter: &user.id,
                     code: "latest",
                     question_index: i,
                     language: "java",
                     compile_result: None,
+                    test_only: false,
                 },
             )
             .await
