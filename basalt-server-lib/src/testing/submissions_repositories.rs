@@ -1,11 +1,13 @@
+use std::time::Duration;
+
 use sqlx::SqliteExecutor;
 
 use crate::repositories::{
-    submissions::{create_submission_history, SubmissionHistory},
+    submissions::{create_submission_history, SubmissionHistory, SubmissionId},
     users::User,
 };
 pub async fn dummy_submission(
-    db: impl SqliteExecutor<'_>,
+    db: impl SqliteExecutor<'_> + Copy,
     submitter: &User,
     score: f64,
     question_index: usize,
@@ -13,15 +15,18 @@ pub async fn dummy_submission(
     create_submission_history(
         db,
         crate::repositories::submissions::NewSubmissionHistory {
+            id: SubmissionId::new(),
             submitter: &submitter.id,
-            compile_fail: false,
             code: "",
             question_index,
-            score,
-            success: true,
+            compile_result: None,
             language: "java",
+            test_only: false,
         },
     )
+    .await
+    .unwrap()
+    .finish(db, score, true, Duration::from_secs(1))
     .await
     .unwrap()
 }

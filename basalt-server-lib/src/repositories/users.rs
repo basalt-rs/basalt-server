@@ -221,7 +221,7 @@ mod tests {
     #[tokio::test]
     async fn get_nonexistent_user() {
         let (f, sql) = mock_db().await;
-        let response = get_user_by_id(&sql.db, &UserId::new()).await;
+        let response = get_user_by_id(&sql, &UserId::new()).await;
         assert!(response.is_err());
         drop(f)
     }
@@ -230,7 +230,7 @@ mod tests {
     async fn get_existing_user_by_id() {
         let (f, sql) = mock_db().await;
         let dummy_user = create_user(
-            &sql.db,
+            &sql,
             "awesome_user".to_string(),
             Some("Awesome User"),
             "awesome-password".to_string(),
@@ -238,7 +238,7 @@ mod tests {
         )
         .await
         .unwrap();
-        let user = get_user_by_id(&sql.db, &dummy_user.id)
+        let user = get_user_by_id(&sql, &dummy_user.id)
             .await
             .expect("Failed to find user");
         assert_eq!(user.username, dummy_user.username);
@@ -249,20 +249,20 @@ mod tests {
     async fn get_correct_user() {
         let (f, sql) = mock_db().await;
         let dummy_user = crate::testing::users_repositories::dummy_user(
-            &sql.db,
+            &sql,
             "awesome_user".to_string(),
             "awesome-password".to_string(),
             Role::Competitor,
         )
         .await;
         crate::testing::users_repositories::dummy_user(
-            &sql.db,
+            &sql,
             "awesome_user2".to_string(),
             "awesome-password".to_string(),
             Role::Competitor,
         )
         .await;
-        let user = get_user_by_id(&sql.db, &dummy_user.id)
+        let user = get_user_by_id(&sql, &dummy_user.id)
             .await
             .expect("Failed to find user");
         assert_eq!(user.username, dummy_user.username);

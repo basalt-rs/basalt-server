@@ -495,6 +495,11 @@ mod tests {
         .await
         .unwrap();
 
+        let history = history
+            .finish(&sql, 42., false, Duration::from_secs(1))
+            .await
+            .unwrap();
+
         assert_eq!(history.submitter, user.id);
         assert_eq!(history.compile_result, CompileResultState::NoCompile);
         assert_eq!(history.code.as_str(), "this is some code");
@@ -589,6 +594,11 @@ mod tests {
                 .await
                 .unwrap();
             }
+
+            history
+                .finish(&sql, 0.0, true, Duration::from_secs(1))
+                .await
+                .unwrap();
         }
 
         tokio::time::sleep(Duration::from_secs(1)).await;
@@ -617,6 +627,9 @@ mod tests {
                     compile_result: None,
                 },
             )
+            .await
+            .unwrap()
+            .finish(&sql, 0.0, false, Duration::from_secs(1))
             .await
             .unwrap();
         }
@@ -648,6 +661,9 @@ mod tests {
                 },
             )
             .await
+            .unwrap()
+            .finish(&sql, 42., true, Duration::from_secs(1))
+            .await
             .unwrap();
         }
 
@@ -676,6 +692,9 @@ mod tests {
                 },
             )
             .await
+            .unwrap()
+            .finish(&sql, 0.0, true, Duration::from_secs(1))
+            .await
             .unwrap();
         }
 
@@ -692,9 +711,11 @@ mod tests {
                     question_index: i,
                     language: "java",
                     compile_result: None,
-                    test_only: false,
                 },
             )
+            .await
+            .unwrap()
+            .finish(&sql, 0.0, true, Duration::from_secs(1))
             .await
             .unwrap();
         }

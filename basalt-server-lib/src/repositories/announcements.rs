@@ -101,8 +101,8 @@ mod tests {
     #[tokio::test]
     async fn create_announcement() {
         let (f, sql) = mock_db().await;
-        let user = dummy_user(&sql.db, "dummy_user", "foobar", Role::Competitor).await;
-        let announcement = super::create_announcement(&sql.db, &user.id, "hello world")
+        let user = dummy_user(&sql, "dummy_user", "foobar", Role::Competitor).await;
+        let announcement = super::create_announcement(&sql, &user.id, "hello world")
             .await
             .unwrap();
 
@@ -114,15 +114,15 @@ mod tests {
     #[tokio::test]
     async fn get_announcements() {
         let (f, sql) = mock_db().await;
-        let user = dummy_user(&sql.db, "dummy_user", "foobar", Role::Competitor).await;
-        super::create_announcement(&sql.db, &user.id, "foo")
+        let user = dummy_user(&sql, "dummy_user", "foobar", Role::Competitor).await;
+        super::create_announcement(&sql, &user.id, "foo")
             .await
             .unwrap();
-        super::create_announcement(&sql.db, &user.id, "bar")
+        super::create_announcement(&sql, &user.id, "bar")
             .await
             .unwrap();
 
-        let ann = super::get_announcements(&sql.db).await.unwrap();
+        let ann = super::get_announcements(&sql).await.unwrap();
 
         assert!(ann.iter().any(|a| a.message == "foo"));
         assert!(ann.iter().any(|a| a.message == "bar"));
@@ -132,18 +132,18 @@ mod tests {
     #[tokio::test]
     async fn delete_announcement() {
         let (f, sql) = mock_db().await;
-        let user = dummy_user(&sql.db, "dummy_user", "foobar", Role::Competitor).await;
-        let Announcement { id, .. } = super::create_announcement(&sql.db, &user.id, "foo")
+        let user = dummy_user(&sql, "dummy_user", "foobar", Role::Competitor).await;
+        let Announcement { id, .. } = super::create_announcement(&sql, &user.id, "foo")
             .await
             .unwrap();
 
-        let deleted = super::delete_announcement(&sql.db, &id)
+        let deleted = super::delete_announcement(&sql, &id)
             .await
             .unwrap()
             .expect("id is the announcement we just added");
         assert_eq!(deleted.id, id);
 
-        let ann = super::get_announcements(&sql.db).await.unwrap();
+        let ann = super::get_announcements(&sql).await.unwrap();
         assert!(ann.is_empty());
         drop(f)
     }
