@@ -56,7 +56,7 @@ pub struct SubmissionHistory {
 
 pub struct NewSubmissionHistory<'a> {
     pub id: SubmissionId,
-    pub submitter: &'a UserId,
+    pub submitter: UserId,
     pub code: &'a str,
     pub question_index: usize,
     pub language: &'a str,
@@ -74,7 +74,7 @@ define_sqlx_enum! {
 }
 
 /// History of tests that have been run on submissions
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, sqlx::FromRow, ToSchema)]
 pub struct TestResults {
     pub submission: SubmissionId,
     pub test_index: i64, // _really_ should be usize, but sqlx doesn't like that
@@ -111,7 +111,7 @@ impl<'a, T> From<&'a TestResult<T>> for NewTestResults<'a> {
 /// finish)
 #[derive(Clone, Debug, Deref)]
 #[must_use]
-pub struct PartialSubmissionHistory(SubmissionHistory);
+pub struct PartialSubmissionHistory(pub SubmissionHistory);
 
 impl PartialSubmissionHistory {
     pub async fn fail(
@@ -176,7 +176,24 @@ impl PartialSubmissionHistory {
     }
 }
 
-pub async fn get_test_results<'a>(
+pub async fn get_submission(
+    db: impl Executor<'_, Database = Sqlite>,
+    id: SubmissionId,
+) -> anyhow::Result<Option<SubmissionHistory>> {
+    sqlx::query_as!(
+        SubmissionHistory,
+        r#"
+            SELECT * FROM submission_history
+            WHERE id = ?
+            "#,
+        id,
+    )
+    .fetch_optional(db)
+    .await
+    .context("Failed to get submission history")
+}
+
+pub async fn get_test_results(
     db: impl Executor<'_, Database = Sqlite>,
     id: SubmissionId,
 ) -> anyhow::Result<Vec<TestResults>> {

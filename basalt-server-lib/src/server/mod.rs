@@ -57,6 +57,7 @@ impl AppState {
     }
 
     pub fn init_hooks(&mut self) -> JoinSet<()> {
+        #[allow(unused_mut)] // when no-default-features, we don't mutate this
         let mut jset = JoinSet::<()>::new();
 
         #[cfg(feature = "scripting")]

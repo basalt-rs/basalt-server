@@ -1,12 +1,27 @@
-use crate::{extractors::auth::OptionalUser, repositories::users::Role, server::AppState};
-use axum::{extract::State, Json};
+use crate::{
+    extractors::auth::OptionalUser,
+    repositories::{
+        self,
+        submissions::{SubmissionHistory, SubmissionId, TestResults},
+        users::{Role, User},
+    },
+    server::AppState,
+};
+use axum::{
+    extract::State,
+    http::{HeaderMap, HeaderValue, StatusCode},
+    Json,
+};
 use bedrock::{
     language::{Language, LanguageSet, Syntax},
     packet::{Problem, Test},
     Config,
 };
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::OnceCell;
+use tracing::error;
+use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 #[derive(serde::Serialize, utoipa::ToSchema)]
@@ -143,19 +158,291 @@ pub async fn get_specific_question(
     State(state): State<Arc<AppState>>,
     OptionalUser(user): OptionalUser,
     axum::extract::Path(question): axum::extract::Path<usize>,
-) -> Result<Json<&'static QuestionResponse>, axum::http::StatusCode> {
+) -> Result<Json<&'static QuestionResponse>, StatusCode> {
     let show_hidden = user.is_some_and(|u| matches!(u.role, Role::Host));
     get_or_init_questions(&state.config, show_hidden)
         .await
         .get(question)
         .map(Json)
-        .ok_or(axum::http::StatusCode::NOT_FOUND)
+        .ok_or(StatusCode::NOT_FOUND)
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SubmissionBody {
+    language: String,
+    solution: String,
+}
+
+#[utoipa::path(
+    post,
+    path = "/{question_index}/submissions", tag = "questions",
+    request_body = SubmissionBody,
+    responses(
+        (status=OK, body=String, content_type="text/plain", description="The ID of the submission", headers(("Location"))),
+        (status=404, description="Question or language not found"),
+    )
+)]
+#[axum::debug_handler]
+pub async fn create_submission(
+    user: User,
+    axum::extract::Path(question_index): axum::extract::Path<usize>,
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<SubmissionBody>,
+) -> Result<(StatusCode, HeaderMap, String), StatusCode> {
+    if let Some(id) = crate::server::tester::run_test(
+        state,
+        body.language,
+        question_index,
+        body.solution,
+        false,
+        user.id,
+    ) {
+        let location =
+            HeaderValue::from_str(&format!("/questions/{}/submissions/{}", question_index, id))
+                .unwrap();
+        Ok((
+            StatusCode::CREATED,
+            HeaderMap::from_iter([(axum::http::header::LOCATION, location)]),
+            format!("{}", id),
+        ))
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/{question_index}/tests", tag = "questions",
+    request_body = SubmissionBody,
+    responses(
+        (status=OK, body=String, content_type="text/plain", description="The ID of the submission", headers(("Location"))),
+        (status=404, description="Question or language not found"),
+    )
+)]
+#[axum::debug_handler]
+pub async fn create_test(
+    user: User,
+    axum::extract::Path(question_index): axum::extract::Path<usize>,
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<SubmissionBody>,
+) -> Result<(StatusCode, HeaderMap, String), StatusCode> {
+    if let Some(id) = crate::server::tester::run_test(
+        state,
+        body.language,
+        question_index,
+        body.solution,
+        true,
+        user.id,
+    ) {
+        let location =
+            HeaderValue::from_str(&format!("/questions/{}/tests/{}", question_index, id)).unwrap();
+        Ok((
+            StatusCode::CREATED,
+            HeaderMap::from_iter([(axum::http::header::LOCATION, location)]),
+            format!("{}", id),
+        ))
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SubmissionState {
+    #[serde(flatten)]
+    submission_history: SubmissionHistory,
+    test_results: Vec<TestResults>,
+}
+
+#[utoipa::path(
+    get,
+    path = "/{question_index}/submissions/{submission_id}", tag = "questions",
+    responses(
+        (status=OK, body=SubmissionState, content_type="application/json"),
+        (status=404, description="Submission not found"),
+        (status=403, description="Requesting user is not the creator of the submission or a host"),
+    )
+)]
+#[axum::debug_handler]
+pub async fn get_submission(
+    user: User,
+    axum::extract::Path((_, id)): axum::extract::Path<(usize, SubmissionId)>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<SubmissionState>, StatusCode> {
+    let join = tokio::try_join!(
+        repositories::submissions::get_submission(&state.db, id),
+        repositories::submissions::get_test_results(&state.db, id),
+    );
+
+    let (submission, test_results) = match join {
+        Ok(x) => x,
+        Err(error) => {
+            error!(?error, "Error getting submission state");
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    if let Some(submission) = submission {
+        if user.id != submission.submitter && user.role != Role::Host {
+            return Err(StatusCode::FORBIDDEN);
+        }
+
+        if submission.test_only {
+            return Err(StatusCode::NOT_FOUND);
+        }
+
+        Ok(Json(SubmissionState {
+            submission_history: submission,
+            test_results,
+        }))
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/{question_index}/tests/{test_id}", tag = "questions",
+    responses(
+        (status=OK, body=SubmissionState, content_type="application/json"),
+        (status=404, description="Submission not found"),
+        (status=403, description="Requesting user is not the creator of the submission or a host"),
+    )
+)]
+#[axum::debug_handler]
+pub async fn get_test(
+    user: User,
+    axum::extract::Path((_, id)): axum::extract::Path<(usize, SubmissionId)>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<SubmissionState>, StatusCode> {
+    let join = tokio::try_join!(
+        repositories::submissions::get_submission(&state.db, id),
+        repositories::submissions::get_test_results(&state.db, id),
+    );
+
+    let (submission, test_results) = match join {
+        Ok(x) => x,
+        Err(error) => {
+            error!(?error, "Error getting submission state");
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    if let Some(submission) = submission {
+        if user.id != submission.submitter && user.role != Role::Host {
+            return Err(StatusCode::FORBIDDEN);
+        }
+
+        if !submission.test_only {
+            return Err(StatusCode::NOT_FOUND);
+        }
+
+        Ok(Json(SubmissionState {
+            submission_history: submission,
+            test_results,
+        }))
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
+}
+
+#[utoipa::path(
+    delete,
+    path = "/{question_index}/submissions/{submission_id}", tag = "questions",
+    responses(
+        (status=OK),
+        (status=404, description="Submission not found"),
+        (status=403, description="Requesting user is not the creator of the submission or a host"),
+    )
+)]
+#[axum::debug_handler]
+pub async fn abort_submission(
+    user: User,
+    axum::extract::Path((_, id)): axum::extract::Path<(usize, SubmissionId)>,
+    State(state): State<Arc<AppState>>,
+) -> Result<(), StatusCode> {
+    let Some(submission) = repositories::submissions::get_submission(&state.db, id)
+        .await
+        .map_err(|error| {
+            error!(?error, ?id, "Error while getting submission");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+    else {
+        return Err(StatusCode::NOT_FOUND);
+    };
+
+    if submission.test_only {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    if user.id != submission.submitter && user.role != Role::Host {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    if state.tester.abort(id) {
+        Ok(())
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
+}
+
+#[utoipa::path(
+    delete,
+    path = "/{question_index}/tests/{test_id}", tag = "questions",
+    responses(
+        (status=OK),
+        (status=404, description="Submission not found"),
+        (status=403, description="Requesting user is not the creator of the submission or a host"),
+    )
+)]
+#[axum::debug_handler]
+pub async fn abort_test(
+    user: User,
+    axum::extract::Path((_, id)): axum::extract::Path<(usize, SubmissionId)>,
+    State(state): State<Arc<AppState>>,
+) -> Result<(), StatusCode> {
+    let Some(submission) = repositories::submissions::get_submission(&state.db, id)
+        .await
+        .map_err(|error| {
+            error!(?error, ?id, "Error while getting submission");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+    else {
+        return Err(StatusCode::NOT_FOUND);
+    };
+
+    tracing::debug!(?submission, "got submission");
+    if !submission.test_only {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    if user.id != submission.submitter && user.role != Role::Host {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    if state.tester.abort(id) {
+        repositories::submissions::PartialSubmissionHistory(submission)
+            .cancel(&state.db)
+            .await
+            .map_err(|error| {
+                error!(?error, ?id, "Error while marking submission cancelled");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+        Ok(())
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
 }
 
 pub fn router() -> OpenApiRouter<Arc<AppState>> {
     OpenApiRouter::new()
         .routes(routes!(get_all))
         .routes(routes!(get_specific_question))
+        .routes(routes!(create_submission))
+        .routes(routes!(create_test))
+        .routes(routes!(get_submission))
+        .routes(routes!(get_test))
+        .routes(routes!(abort_submission))
+        .routes(routes!(abort_test))
 }
 
 pub fn service() -> axum::Router<Arc<AppState>> {

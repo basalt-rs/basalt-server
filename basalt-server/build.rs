@@ -1,19 +1,8 @@
-use std::{path::Path, sync::Arc};
-
-use anyhow::Context;
-use tokio::fs;
-use utoipa::OpenApi;
-
-use basalt_server_lib::{server::AppState, storage::SqliteLayer};
-
 const SPEC_PATH: &str = "../openapi.yaml";
 
-#[derive(OpenApi)]
-#[openapi()]
-struct ApiDoc;
-
 #[cfg(feature = "doc-gen")]
-async fn gen_docs(path: &Path) -> anyhow::Result<()> {
+async fn gen_docs(path: &std::path::Path) -> anyhow::Result<()> {
+    use anyhow::Context;
     use std::{io::BufRead, process::Stdio};
     use tokio::process::Command;
 
@@ -55,6 +44,11 @@ pub async fn main() -> anyhow::Result<()> {
 
     #[cfg(feature = "doc-gen")]
     {
+        use anyhow::Context;
+        use basalt_server_lib::{server::AppState, storage::SqliteLayer};
+        use std::{path::Path, sync::Arc};
+        use utoipa::OpenApi;
+
         let tempfile = async_tempfile::TempFile::new()
             .await
             .context("Failed to create tempfile")?;
@@ -69,6 +63,10 @@ pub async fn main() -> anyhow::Result<()> {
             None,
         ));
         let router = basalt_server_lib::server::doc_router(dummy_state);
+
+        #[derive(OpenApi)]
+        #[openapi()]
+        struct ApiDoc;
         let content = ApiDoc::openapi()
             .merge_from(router.into_openapi())
             .to_yaml()
@@ -76,7 +74,7 @@ pub async fn main() -> anyhow::Result<()> {
 
         let path = Path::new(SPEC_PATH);
         let write = if path.exists() {
-            let existing = fs::read_to_string(path)
+            let existing = tokio::fs::read_to_string(path)
                 .await
                 .with_context(|| format!("reading existing {} file", SPEC_PATH))?;
             existing != content
@@ -85,7 +83,7 @@ pub async fn main() -> anyhow::Result<()> {
         };
 
         if write {
-            fs::write(path, content)
+            tokio::fs::write(path, content)
                 .await
                 .with_context(|| format!("Writing to {}", SPEC_PATH))?;
 

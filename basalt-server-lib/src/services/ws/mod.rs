@@ -103,6 +103,10 @@ pub enum WebSocketSend {
     TestsError {
         id: SubmissionId,
     },
+    /// Running tests were cancelled
+    TestsCancelled {
+        id: SubmissionId,
+    },
     /// All tests have finished running
     TestsComplete {
         id: SubmissionId,
