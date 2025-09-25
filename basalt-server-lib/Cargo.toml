@@ -25,7 +25,6 @@ dashmap.workspace = true
 derive_more.workspace = true
 directories.workspace = true
 erudite.workspace = true
-lazy_static.workspace = true
 rand.workspace = true
 redact.workspace = true
 scopeguard.workspace = true
