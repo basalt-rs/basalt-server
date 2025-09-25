@@ -501,7 +501,7 @@ mod tests {
             &sql,
             NewSubmissionHistory {
                 id: SubmissionId::new(),
-                submitter: &user.id,
+                submitter: user.id,
                 code: "this is some code",
                 question_index: 42,
                 language: "java",
@@ -534,7 +534,7 @@ mod tests {
             &sql,
             NewSubmissionHistory {
                 id: SubmissionId::new(),
-                submitter: &user.id,
+                submitter: user.id,
                 code: "this is some code",
                 question_index: 42,
                 language: "java",
@@ -585,7 +585,7 @@ mod tests {
                 NewSubmissionHistory {
                     id: SubmissionId::new(),
                     test_only: false,
-                    submitter: &user.id,
+                    submitter: user.id,
                     code: "",
                     question_index: 1,
                     language: "java",
@@ -637,7 +637,7 @@ mod tests {
                 NewSubmissionHistory {
                     id: SubmissionId::new(),
                     test_only: false,
-                    submitter: &user.id,
+                    submitter: user.id,
                     code: "",
                     question_index: 1,
                     language: "java",
@@ -670,7 +670,7 @@ mod tests {
                 NewSubmissionHistory {
                     id: SubmissionId::new(),
                     test_only: false,
-                    submitter: &user.id,
+                    submitter: user.id,
                     code: "",
                     question_index: i,
                     language: "java",
@@ -701,7 +701,7 @@ mod tests {
                 NewSubmissionHistory {
                     id: SubmissionId::new(),
                     test_only: false,
-                    submitter: &user.id,
+                    submitter: user.id,
                     code: "not-latest",
                     question_index: i,
                     language: "java",
@@ -723,7 +723,7 @@ mod tests {
                 NewSubmissionHistory {
                     id: SubmissionId::new(),
                     test_only: false,
-                    submitter: &user.id,
+                    submitter: user.id,
                     code: "latest",
                     question_index: i,
                     language: "java",

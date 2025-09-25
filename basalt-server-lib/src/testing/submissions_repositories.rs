@@ -16,7 +16,7 @@ pub async fn dummy_submission(
         db,
         crate::repositories::submissions::NewSubmissionHistory {
             id: SubmissionId::new(),
-            submitter: &submitter.id,
+            submitter: submitter.id,
             code: "",
             question_index,
             compile_result: None,
