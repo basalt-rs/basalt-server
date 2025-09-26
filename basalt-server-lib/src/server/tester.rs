@@ -17,8 +17,9 @@ use tracing::{debug, error};
 
 use crate::{
     repositories::{self, submissions::SubmissionId, users::UserId},
-    server::AppState,
+    server::{AppState, ServerEvent},
     services::ws::WebSocketSend,
+    utils,
 };
 
 #[derive(Debug, Copy, Clone, Default)]
@@ -364,6 +365,18 @@ pub fn run_test(
                     return Err(Unit);
                 };
 
+                if let Err(err) = (ServerEvent::OnSubmissionEvaluation {
+                    id: submitter,
+                    question_idx: question_index as u32,
+                    question_text: state.config.packet.problems[question_index].title.clone(),
+                    test_results: (&result).into(),
+                    time: utils::utc_now(),
+                }
+                .dispatch(state.clone()))
+                {
+                    tracing::error!("error dispatching submission event: {:?}", err);
+                }
+
                 let _ = result_tx.send(TestWsSend::Result(result));
             }
 
@@ -378,6 +391,7 @@ pub fn run_test(
                     number_tests: passed + failed,
                 },
             );
+
             let score = match score {
                 Ok(score) => score,
                 Err(error) => {
