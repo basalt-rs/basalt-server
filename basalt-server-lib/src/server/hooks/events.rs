@@ -68,15 +68,15 @@ pub enum ServerEvent {
 impl ServerEvent {
     pub fn get_fn_name(&self) -> &'static str {
         match self {
-            ServerEvent::OnComplete { .. } => "onComplete",
-            ServerEvent::OnPause { .. } => "onPause",
-            ServerEvent::OnUnpause { .. } => "onUnpause",
-            ServerEvent::OnTestEvaluation { .. } => "onTestEvaluation",
-            ServerEvent::OnSubmissionEvaluation { .. } => "onSubmissionEvaluation",
-            ServerEvent::OnTeamKick { .. } => "onTeamKick",
-            ServerEvent::OnTeamBan { .. } => "onTeamBan",
-            ServerEvent::OnAnnouncement { .. } => "onAnnouncement",
-            ServerEvent::OnCheckIn { .. } => "onCheckIn",
+            ServerEvent::OnComplete { .. } => "on_complete",
+            ServerEvent::OnPause { .. } => "on_pause",
+            ServerEvent::OnUnpause { .. } => "on_unpause",
+            ServerEvent::OnTestEvaluation { .. } => "on_test_evaluation",
+            ServerEvent::OnSubmissionEvaluation { .. } => "on_submission_evaluation",
+            ServerEvent::OnTeamKick { .. } => "on_team_kick",
+            ServerEvent::OnTeamBan { .. } => "on_team_ban",
+            ServerEvent::OnAnnouncement { .. } => "on_announcement",
+            ServerEvent::OnCheckIn { .. } => "on_check_in",
         }
     }
 

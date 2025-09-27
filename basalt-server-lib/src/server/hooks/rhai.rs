@@ -8,7 +8,7 @@ use crate::server::AppState;
 
 pub struct RhaiHookHandler {
     rx: mpsc::UnboundedReceiver<(ServerEvent, Arc<AppState>)>,
-    ast_cache: HashMap<PathBuf, AST>,
+    asts: Vec<AST>,
     engine: Engine,
 }
 
@@ -23,7 +23,7 @@ impl RhaiHookHandler {
         (
             Self {
                 rx,
-                ast_cache: HashMap::new(),
+                asts: Vec::new(),
                 engine,
             },
             tx,
@@ -39,8 +39,8 @@ impl RhaiHookHandler {
             if let Some((event, state)) = self.rx.recv().await {
                 trace!("rhai handler received event");
                 let state = state.clone();
-                // compile script if needed
-                if self.ast_cache.is_empty() {
+                // on first run, go ahead and compile all scripts
+                if self.asts.is_empty() {
                     // TODO(Jack): Support announcement fn registration (among others)
                     // self.engine.register_fn("announce", func);
                     for h in &state.config.integrations.event_handlers {
@@ -51,14 +51,14 @@ impl RhaiHookHandler {
                             }
                         }
                         if let Ok(ast) = self.engine.compile_file(h.clone()) {
-                            self.ast_cache.insert(h.clone(), ast);
+                            self.asts.push(ast);
                         } else {
                             warn!("Failed to compile rhai script: {:?}", &h);
                         }
                     }
                 }
 
-                for (_, ast) in self.ast_cache.iter() {
+                for ast in self.asts.iter() {
                     let mut scope = Scope::new();
                     let result = self.engine.call_fn::<i64>(
                         &mut scope,
