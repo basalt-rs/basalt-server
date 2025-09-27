@@ -38,8 +38,11 @@ tracing.workspace = true
 utoipa-axum.workspace = true
 utoipa.workspace = true
 chrono = { version = "0.4.40", features = ["serde"] }
-reqwest = { version = "0.11.0", features = ["json"] }
+reqwest = { version = "0.11.0", features = ["json", "blocking"] }
 rhai = { version = "1.23.4", features = ["sync"] }
+rhai-http = "0.5.0"
+rhai-rand = "0.1.6"
+rhai-url = "0.0.5"
 
 [dev-dependencies]
 async-tempfile = { version = "0.6.0", features = ["uuid"] }

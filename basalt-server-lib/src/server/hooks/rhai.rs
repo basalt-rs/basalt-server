@@ -1,5 +1,5 @@
-use rhai::{Engine, EvalAltResult, Scope, AST};
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use rhai::{packages::Package, Dynamic, Engine, EvalAltResult, Map, Scope, AST};
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::mpsc;
 use tracing::{error, info, trace, warn};
 
@@ -19,6 +19,10 @@ impl RhaiHookHandler {
 
         let mut engine = Engine::new();
         engine.register_type::<ServerEvent>();
+
+        rhai_rand::RandomPackage::new().register_into_engine(&mut engine);
+        rhai_url::UrlPackage::new().register_into_engine(&mut engine);
+        rhai_http::HttpPackage::new().register_into_engine(&mut engine);
 
         (
             Self {
@@ -50,32 +54,41 @@ impl RhaiHookHandler {
                                 continue;
                             }
                         }
-                        if let Ok(ast) = self.engine.compile_file(h.clone()) {
-                            self.asts.push(ast);
-                        } else {
-                            warn!("Failed to compile rhai script: {:?}", &h);
+                        match self.engine.compile_file(h.clone()) {
+                            Ok(ast) => self.asts.push(ast),
+                            Err(err) => {
+                                warn!("Failed to compile rhai script \"{:?}\", {}", &h, err)
+                            }
                         }
                     }
                 }
 
                 for ast in self.asts.iter() {
-                    let mut scope = Scope::new();
-                    let result = self.engine.call_fn::<i64>(
-                        &mut scope,
-                        ast,
-                        event.get_fn_name(),
-                        (event.clone(),),
-                    );
+                    let ast = ast.clone();
+                    let event = event.clone();
+                    tokio::task::spawn_blocking(move || {
+                        let mut engine = Engine::new();
+                        rhai_rand::RandomPackage::new().register_into_engine(&mut engine);
+                        rhai_url::UrlPackage::new().register_into_engine(&mut engine);
+                        rhai_http::HttpPackage::new().register_into_engine(&mut engine);
+                        let mut scope = Scope::new();
+                        let result = engine.call_fn::<()>(
+                            &mut scope,
+                            &ast,
+                            event.get_fn_name(),
+                            (event.clone(),),
+                        );
 
-                    match result {
-                        Ok(_) => {}
-                        Err(err) => match *err {
-                            EvalAltResult::ErrorFunctionNotFound(_, _) => {}
-                            e => {
-                                error!("Failed to evaluate handler: {}", e);
-                            }
-                        },
-                    }
+                        match result {
+                            Ok(_) => {}
+                            Err(err) => match *err {
+                                EvalAltResult::ErrorFunctionNotFound(_, _) => {}
+                                e => {
+                                    error!("Failed to evaluate handler: {}", e);
+                                }
+                            },
+                        }
+                    });
                 }
             };
         }
