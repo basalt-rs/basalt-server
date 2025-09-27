@@ -14,14 +14,10 @@ pub async fn init_state_with_hooks(
     webdir: Option<PathBuf>,
 ) -> anyhow::Result<(Arc<AppState>, JoinSet<()>)> {
     let mut dispatchers: Vec<UnboundedSender<(ServerEvent, Arc<AppState>)>> = Vec::new();
-    #[cfg(feature = "scripting")]
-    let (mut hook_handler, hooks_tx) = crate::server::hooks::handlers::EventHookHandler::create();
-    #[cfg(feature = "scripting")]
-    dispatchers.push(hooks_tx);
-    #[cfg(feature = "webhooks")]
+    let (mut rhai_handler, rhai_tx) = crate::server::hooks::rhai::RhaiHookHandler::create();
+    dispatchers.push(rhai_tx);
     let (mut webhook_handler, webhooks_tx) =
         crate::server::hooks::webhooks::EventWebhookHandler::create();
-    #[cfg(feature = "webhooks")]
     dispatchers.push(webhooks_tx);
 
     let mut jset: tokio::task::JoinSet<()> = tokio::task::JoinSet::new();
@@ -30,10 +26,8 @@ pub async fn init_state_with_hooks(
     app_state.init().await?;
     let app_state = Arc::new(app_state);
 
-    #[cfg(feature = "scripting")]
-    jset.spawn(async move { hook_handler.start().await });
+    jset.spawn(async move { rhai_handler.start().await });
 
-    #[cfg(feature = "webhooks")]
     jset.spawn(async move { webhook_handler.start().await });
 
     Ok((app_state, jset))
