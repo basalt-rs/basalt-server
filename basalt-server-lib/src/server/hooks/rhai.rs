@@ -1,5 +1,5 @@
-use rhai::{packages::Package, Dynamic, Engine, EvalAltResult, Map, Scope, AST};
-use std::{collections::HashMap, sync::Arc};
+use rhai::{packages::Package, Engine, EvalAltResult, Scope, AST};
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{error, info, trace, warn};
 
