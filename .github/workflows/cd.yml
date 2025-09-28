@@ -82,11 +82,11 @@ jobs:
             - name: Set up Docker Buildx
               uses: docker/setup-buildx-action@v3
 
-            - name: Build & push ${{ matrix.variant.name }} (${{ matrix.arch }})
+            - name: Build & push (${{ matrix.arch }})
               uses: docker/build-push-action@v6
               with:
                   context: .
-                  file: ./containers/${{ matrix.variant.dockerfile }}
+                  file: ./containers/Dockerfile
                   platforms: ${{ matrix.arch == 'amd64' && 'linux/amd64' || 'linux/arm64' }}
                   push: true
                   tags: ${{ steps.tags.outputs.tags }}
