@@ -5,7 +5,7 @@ WORKDIR /basalt-server
 COPY . .
 
 
-RUN cargo build --release --no-default-features --features full
+RUN cargo build --release
 
 FROM scratch AS base-basalt
 

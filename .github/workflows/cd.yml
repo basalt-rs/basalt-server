@@ -30,15 +30,6 @@ jobs:
         needs: get-version
         strategy:
             matrix:
-                variant:
-                    - dockerfile: Dockerfile
-                      name: full
-                    - dockerfile: scripting.Dockerfile
-                      name: scripting
-                    - dockerfile: webhooks.Dockerfile
-                      name: webhooks
-                    - dockerfile: minimal.Dockerfile
-                      name: minimal
                 arch: [amd64, arm64]
         runs-on: ${{ matrix.arch == 'amd64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
         env:
@@ -53,32 +44,19 @@ jobs:
                   MAJOR=$(echo "$CLEAN_VERSION" | cut -d. -f1)
                   MINOR=$(echo "$CLEAN_VERSION" | cut -d. -f2)
 
-                  VARIANT="${{ matrix.variant.name }}"
-
                   # Initialize empty tag list
                   TAGS=""
 
                   # Check if this is a prerelease
                   if [[ "$CLEAN_VERSION" =~ -(rc|alpha|beta) ]]; then
-                    # Full builds get some unqualified tags
-                    if [[ "$VARIANT" == "full" ]]; then
-                        TAGS="ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$CLEAN_VERSION"
-                    fi
-                    # Pre-release: only full version with suffix
-                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$CLEAN_VERSION-$VARIANT"
+                    # pre-release tags
+                    TAGS="ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$CLEAN_VERSION"
                   else
-                    # Full build gets special, unqualified tags
-                    if [[ "$VARIANT" == "full" ]]; then
-                        TAGS="ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:latest"
-                        TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$CLEAN_VERSION"
-                        TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$MAJOR.$MINOR.X"
-                        TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$MAJOR.X.X"
-                    fi
-                    # All variants get qualified tags
-                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:latest-$VARIANT"
-                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$CLEAN_VERSION-$VARIANT"
-                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$MAJOR.$MINOR.X-$VARIANT"
-                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$MAJOR.X.X-$VARIANT"
+                    # ordinary tags
+                    TAGS="ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:latest"
+                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$CLEAN_VERSION"
+                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$MAJOR.$MINOR.X"
+                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$MAJOR.X.X"
                   fi
 
                   # Remove leading/trailing commas if any
