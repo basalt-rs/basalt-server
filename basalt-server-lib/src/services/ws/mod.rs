@@ -119,17 +119,6 @@ pub enum WebSocketSend {
     },
 }
 
-/// A message that is recieved from the websocket
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
-pub enum WebSocketRecv {}
-
-impl WebSocketRecv {
-    async fn handle(self, _who: &ConnectionKind, _state: Arc<AppState>) -> anyhow::Result<()> {
-        Ok(())
-    }
-}
-
 pub fn router() -> OpenApiRouter<Arc<AppState>> {
     OpenApiRouter::new().routes(routes!(connect::connect_websocket))
 }

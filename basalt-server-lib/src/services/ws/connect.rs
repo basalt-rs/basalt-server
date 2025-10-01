@@ -1,6 +1,6 @@
 use std::{net::SocketAddr, sync::Arc};
 
-use anyhow::{bail, Context};
+use anyhow::bail;
 use axum::{
     extract::{
         ws::{Message, WebSocket},
