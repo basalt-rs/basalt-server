@@ -62,7 +62,7 @@ impl StaticCompetitionInfo {
                 .iter()
                 .map(|l| l.name().to_string())
                 .collect(),
-            packet: state.packed.is_some(),
+            packet: state.packet.is_some(),
         }
     }
 
