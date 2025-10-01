@@ -25,7 +25,10 @@ type Dispatchers = Vec<UnboundedSender<(ServerEvent, Arc<AppState>)>>;
 
 pub struct AppState {
     pub db: RwLock<SqliteLayer>,
+    /// Path to the built web frontend.  If `None`, the frontend is not served.
     pub web_dir: Option<PathBuf>,
+    /// Path to the rendered competition packet PDF.  If `None`, the packet is not served.
+    pub packet: Option<PathBuf>,
     pub websocket: WebSocketManager,
     pub team_manager: TeamManagement,
     pub active_tests: DashSet<(websocket::ConnectionKind, usize)>,
@@ -41,10 +44,12 @@ impl AppState {
         config: Config,
         dispatchers: Dispatchers,
         web_dir: Option<PathBuf>,
+        packet: Option<PathBuf>,
     ) -> Self {
         Self {
             db: RwLock::new(db),
             web_dir,
+            packet,
             websocket: Default::default(),
             team_manager: Default::default(),
             active_tests: Default::default(),
@@ -68,7 +73,7 @@ macro_rules! define_router {
     ($($route: ident),+$(,)?) => {
         pub fn router(initial_state: Arc<AppState>) -> axum::Router {
             let router = Router::new()
-                $(.nest(concat!("/", stringify!($route)), services::$route::service()))+;
+                $(.nest(concat!("/", stringify!($route)), services::$route::service(Arc::clone(&initial_state))))+;
 
                 let router = if let Some(path) = &initial_state.web_dir {
                     router.fallback_service(tower_http::services::ServeDir::new(path))
@@ -99,7 +104,7 @@ macro_rules! define_router {
         #[cfg(feature = "doc-gen")]
         pub fn doc_router(initial_state: Arc<AppState>) -> utoipa_axum::router::OpenApiRouter {
             utoipa_axum::router::OpenApiRouter::new()
-                $(.nest(concat!("/", stringify!($route)), services::$route::router()))+
+                $(.nest(concat!("/", stringify!($route)), services::$route::router(Arc::clone(&initial_state))))+
                 .with_state(initial_state)
                 .layer(tower_http::cors::CorsLayer::permissive())
                 .layer(tower_http::trace::TraceLayer::new_for_http())

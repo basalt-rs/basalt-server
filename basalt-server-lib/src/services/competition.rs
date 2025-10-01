@@ -1,33 +1,43 @@
 use crate::server::AppState;
 use axum::{
     extract::{Query, State},
-    http::{header, StatusCode},
-    response::{AppendHeaders, IntoResponse},
+    http::StatusCode,
     Json,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use time::OffsetDateTime;
 use tokio::sync::OnceCell;
-use tracing::{debug, error};
+use tower_http::services::ServeFile;
+use tracing::error;
 use utoipa::{IntoParams, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
-static PDF: OnceCell<Box<[u8]>> = OnceCell::const_new();
-static INFO: OnceCell<CompetitionInfo> = OnceCell::const_new();
-static RAW_INFO: OnceCell<CompetitionInfo> = OnceCell::const_new();
+static INFO: OnceCell<StaticCompetitionInfo> = OnceCell::const_new();
+static RAW_INFO: OnceCell<StaticCompetitionInfo> = OnceCell::const_new();
 
 #[derive(Serialize, ToSchema)]
-pub struct CompetitionInfo {
+pub struct StaticCompetitionInfo {
+    /// The title of this competition
     title: String,
+    /// The preamble of this competition, if specified in the configuration
+    ///
+    /// This may be either markdown or HTML
     preamble: Option<String>,
+    /// The names of the problems in this competition
     problems: Vec<String>,
+    /// The version of `basalt-server` that the server is running
     #[schema(value_type = String)]
     version: semver::Version,
+    /// Total time limit for this competition
     time_limit_secs: u64,
+    /// All languages supported by this competition
     languages: Vec<String>,
+    /// Whether the server hosts the competition packet PDF
+    packet: bool,
 }
 
-impl CompetitionInfo {
+impl StaticCompetitionInfo {
     pub fn new_with_preamble(state: &AppState, preamble: Option<String>) -> Self {
         Self {
             title: state.config.packet.title.clone(),
@@ -52,6 +62,7 @@ impl CompetitionInfo {
                 .iter()
                 .map(|l| l.name().to_string())
                 .collect(),
+            packet: state.packed.is_some(),
         }
     }
 
@@ -66,8 +77,9 @@ impl CompetitionInfo {
                 .map(|x| x.raw().to_string()),
         )
     }
-    pub fn new(state: &AppState) -> Result<Self, StatusCode> {
-        Ok(Self::new_with_preamble(
+
+    pub fn new(state: &AppState) -> Option<Self> {
+        Some(Self::new_with_preamble(
             state,
             state
                 .config
@@ -78,9 +90,36 @@ impl CompetitionInfo {
                 .transpose()
                 .map_err(|err| {
                     error!("Error compiling preamble: {:?}", err);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?,
+                })
+                .ok()?,
         ))
+    }
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct CompetitionInfo {
+    statik: &'static StaticCompetitionInfo,
+    #[serde(with = "time::serde::rfc3339")]
+    #[schema(value_type = String, format = Date)]
+    server_time: OffsetDateTime,
+}
+
+impl CompetitionInfo {
+    async fn new(state: &AppState, raw_markdown: bool) -> Option<Self> {
+        let statik = if raw_markdown {
+            RAW_INFO
+                .get_or_init(|| async { StaticCompetitionInfo::new_raw(state) })
+                .await
+        } else {
+            INFO.get_or_try_init(|| async { StaticCompetitionInfo::new(state).ok_or(()) })
+                .await
+                .ok()?
+        };
+
+        Some(CompetitionInfo {
+            statik,
+            server_time: OffsetDateTime::now_utc(),
+        })
     }
 }
 
@@ -92,66 +131,33 @@ pub struct InfoQuery {
 }
 
 #[axum::debug_handler]
-#[utoipa::path(get, tag = "competition", path = "/", params(InfoQuery), responses((status = OK, body = CompetitionInfo, content_type = "application/json")))]
+#[utoipa::path(
+    get,
+    tag = "competition", path = "/",
+    params(InfoQuery),
+    responses((status = OK, body = CompetitionInfo, content_type = "application/json"))
+)]
 pub async fn get_info(
     State(state): State<Arc<AppState>>,
     Query(query): Query<InfoQuery>,
-) -> Result<Json<&'static CompetitionInfo>, StatusCode> {
-    if query.raw_markdown {
-        let info = RAW_INFO
-            .get_or_init(|| async { CompetitionInfo::new_raw(&state) })
-            .await;
+) -> Result<Json<CompetitionInfo>, StatusCode> {
+    if let Some(info) = CompetitionInfo::new(&state, query.raw_markdown).await {
+        Ok(Json(info))
+    } else {
+        Err(StatusCode::INTERNAL_SERVER_ERROR)
+    }
+}
 
-        return Ok(Json(info));
+pub fn router(state: Arc<AppState>) -> OpenApiRouter<Arc<AppState>> {
+    let mut router = OpenApiRouter::new().routes(routes!(get_info));
+
+    if let Some(packet) = &state.packet {
+        router = router.nest_service("/packet", ServeFile::new(packet))
     }
 
-    // NOTE: we can't use get_or_init because we need this to give an error
-    let info = match INFO.get() {
-        Some(info) => info,
-        None => {
-            let info = CompetitionInfo::new(&state)?;
-            // if this fails, another thread set the cell, so it's fine
-            let _ = INFO.set(info);
-            INFO.get().unwrap()
-        }
-    };
-    Ok(Json(info))
+    router
 }
 
-#[axum::debug_handler]
-#[utoipa::path(get, tag = "competition", path = "/packet", responses((status = OK, body = Vec<u8>, content_type = "application/pdf")))]
-pub async fn download_packet(
-    State(state): State<Arc<AppState>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    PDF.get_or_try_init(|| async {
-        debug!("Rendering packet PDF");
-        state.config.render_pdf(None).map(Vec::into_boxed_slice)
-    })
-    .await
-    .map(|x| {
-        (
-            AppendHeaders([
-                (header::CONTENT_TYPE, "application/pdf"),
-                (
-                    header::CONTENT_DISPOSITION,
-                    "attachment; filename=\"competition.pdf\"",
-                ),
-            ]),
-            x.as_ref(),
-        )
-    })
-    .map_err(|err| {
-        error!("Error while rendering packet PDF: {:?}", err);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })
-}
-
-pub fn router() -> OpenApiRouter<Arc<AppState>> {
-    OpenApiRouter::new()
-        .routes(routes!(download_packet))
-        .routes(routes!(get_info))
-}
-
-pub fn service() -> axum::Router<Arc<AppState>> {
-    router().split_for_parts().0
+pub fn service(state: Arc<AppState>) -> axum::Router<Arc<AppState>> {
+    router(state).split_for_parts().0
 }

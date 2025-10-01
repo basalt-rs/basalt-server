@@ -65,6 +65,7 @@ pub async fn main() -> anyhow::Result<()> {
         bedrock::Config::default(),
         Vec::new(),
         None,
+        None,
     ));
     let router = basalt_server_lib::server::doc_router(dummy_state);
     let content = ApiDoc::openapi()
