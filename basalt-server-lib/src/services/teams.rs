@@ -258,15 +258,15 @@ async fn patch_team(
     Ok(Json(new))
 }
 
-pub fn router() -> OpenApiRouter<Arc<AppState>> {
+pub fn router(_state: Arc<AppState>) -> OpenApiRouter<Arc<AppState>> {
     OpenApiRouter::new()
         .routes(routes!(get_teams))
         .routes(routes!(add_team))
         .routes(routes!(patch_team))
 }
 
-pub fn service() -> axum::Router<Arc<AppState>> {
-    router().split_for_parts().0
+pub fn service(state: Arc<AppState>) -> axum::Router<Arc<AppState>> {
+    router(state).split_for_parts().0
 }
 
 #[cfg(test)]
@@ -302,7 +302,7 @@ mod tests {
         )
         .await;
 
-        let mut appstate = AppState::new(sql, cfg, Vec::new(), None);
+        let mut appstate = AppState::new(sql, cfg, Vec::new(), None, None);
         appstate.init().await.unwrap();
         let Json(TeamsListResponse(teams)) = get_teams(State(Arc::new(appstate))).await.unwrap();
 

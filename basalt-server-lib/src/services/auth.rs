@@ -168,13 +168,13 @@ async fn me(State(_state): State<Arc<AppState>>, user: User) -> Result<Json<User
     Ok(Json(user))
 }
 
-pub fn router() -> OpenApiRouter<Arc<AppState>> {
+pub fn router(_state: Arc<AppState>) -> OpenApiRouter<Arc<AppState>> {
     OpenApiRouter::new()
         .routes(routes!(login))
         .routes(routes!(logout))
         .routes(routes!(me))
 }
 
-pub fn service() -> axum::Router<Arc<AppState>> {
-    router().split_for_parts().0
+pub fn service(state: Arc<AppState>) -> axum::Router<Arc<AppState>> {
+    router(state).split_for_parts().0
 }

@@ -27,6 +27,10 @@ pub struct RunArgs {
     /// is disabled.
     #[arg(long, short)]
     web_dir: Option<PathBuf>,
+    /// Path to the competition packet to be served at `/competition/packet` -- if not specified,
+    /// the endpoint is disabled.
+    #[arg(long)]
+    packet: Option<PathBuf>,
 }
 
 fn default_name() -> String {
@@ -80,7 +84,7 @@ pub async fn handle(args: RunArgs) -> anyhow::Result<()> {
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     // expands to create hooks if needed and provide to app_state's dispatcher service
-    let (app_state, jset) = init_state_with_hooks(db, config, args.web_dir).await?;
+    let (app_state, jset) = init_state_with_hooks(db, config, args.web_dir, args.packet).await?;
     axum::serve(
         listener,
         server::router(app_state).into_make_service_with_connect_info::<SocketAddr>(),

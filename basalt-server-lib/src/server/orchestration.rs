@@ -12,6 +12,7 @@ pub async fn init_state_with_hooks(
     db: SqliteLayer,
     cfg: Config,
     webdir: Option<PathBuf>,
+    packet: Option<PathBuf>,
 ) -> anyhow::Result<(Arc<AppState>, JoinSet<()>)> {
     let mut dispatchers: Vec<UnboundedSender<(ServerEvent, Arc<AppState>)>> = Vec::new();
     #[cfg(feature = "scripting")]
@@ -26,7 +27,7 @@ pub async fn init_state_with_hooks(
 
     let mut jset: tokio::task::JoinSet<()> = tokio::task::JoinSet::new();
 
-    let mut app_state = AppState::new(db, cfg, dispatchers, webdir);
+    let mut app_state = AppState::new(db, cfg, dispatchers, webdir, packet);
     app_state.init().await?;
     let app_state = Arc::new(app_state);
 
