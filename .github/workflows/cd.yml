@@ -1,0 +1,114 @@
+permissions:
+    contents: read
+    packages: write
+
+on:
+    workflow_dispatch:
+    push:
+        tags:
+            - "v[0-9]+.[0-9]+.[0-9]+.?*"
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+    cancel-in-progress: true
+
+name: delivery
+
+jobs:
+    get-version:
+        runs-on: ubuntu-latest
+        outputs:
+            version: ${{ steps.extract.outputs.version }}
+        steps:
+            - name: Extract version from ref
+              id: extract
+              run: |
+                  VERSION="${GITHUB_REF_NAME#v}"
+                  echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    build:
+        needs: get-version
+        strategy:
+            matrix:
+                variant:
+                    - dockerfile: Dockerfile
+                      name: full
+                    - dockerfile: scripting.Dockerfile
+                      name: scripting
+                    - dockerfile: webhooks.Dockerfile
+                      name: webhooks
+                    - dockerfile: minimal.Dockerfile
+                      name: minimal
+                arch: [amd64, arm64]
+        runs-on: ${{ matrix.arch == 'amd64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
+        env:
+            VERSION: ${{ needs.get-version.outputs.version }}
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Compute tags
+              id: tags
+              run: |
+                  CLEAN_VERSION="${VERSION#v}"   # strip leading 'v' if present
+                  MAJOR=$(echo "$CLEAN_VERSION" | cut -d. -f1)
+                  MINOR=$(echo "$CLEAN_VERSION" | cut -d. -f2)
+
+                  VARIANT="${{ matrix.variant.name }}"
+
+                  # Initialize empty tag list
+                  TAGS=""
+
+                  # Check if this is a prerelease
+                  if [[ "$CLEAN_VERSION" =~ -(rc|alpha|beta) ]]; then
+                    # Full builds get some unqualified tags
+                    if [[ "$VARIANT" == "full" ]]; then
+                        TAGS="ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$CLEAN_VERSION"
+                    fi
+                    # Pre-release: only full version with suffix
+                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$CLEAN_VERSION-$VARIANT"
+                  else
+                    # Full build gets special, unqualified tags
+                    if [[ "$VARIANT" == "full" ]]; then
+                        TAGS="ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:latest"
+                        TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$CLEAN_VERSION"
+                        TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$MAJOR.$MINOR.X"
+                        TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$MAJOR.X.X"
+                    fi
+                    # All variants get qualified tags
+                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:latest-$VARIANT"
+                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$CLEAN_VERSION-$VARIANT"
+                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$MAJOR.$MINOR.X-$VARIANT"
+                    TAGS="$TAGS,ghcr.io/${GITHUB_REPOSITORY_OWNER}/basalt-server:$MAJOR.X.X-$VARIANT"
+                  fi
+
+                  # Remove leading/trailing commas if any
+                  TAGS=$(echo "$TAGS" | sed 's/^,//;s/,$//')
+
+                  # Reverse list (I want "latest" to be last)
+                  TAGS="$(echo "$TAGS" | tr ',' '\n' | tac | paste -sd "," -)"
+
+                  echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
+            - name: Show computed tags
+              run: |
+                  echo "Computed tags for inspection:"
+                  echo "${{ steps.tags.outputs.tags }}" | tr ',' '\n'
+
+            - name: Log in to GHCR
+              uses: docker/login-action@v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: Build & push ${{ matrix.variant.name }} (${{ matrix.arch }})
+              uses: docker/build-push-action@v6
+              with:
+                  context: .
+                  file: ./containers/${{ matrix.variant.dockerfile }}
+                  platforms: ${{ matrix.arch == 'amd64' && 'linux/amd64' || 'linux/arm64' }}
+                  push: true
+                  tags: ${{ steps.tags.outputs.tags }}

@@ -1,10 +1,11 @@
 use crate::{
-    extractors::auth::{AuthUser, HostUser},
+    extractors::auth::HostUser,
     repositories::{
         self,
         announcements::{Announcement, AnnouncementId},
     },
-    server::AppState,
+    server::{hooks::events::ServerEvent, AppState},
+    utils,
 };
 use axum::{
     extract::{Path, State},
@@ -54,13 +55,12 @@ pub struct NewAnnouncement {
 )]
 pub async fn new(
     State(state): State<Arc<AppState>>,
-    HostUser(AuthUser { user, .. }): HostUser,
+    HostUser(user): HostUser,
     Json(NewAnnouncement { message }): Json<NewAnnouncement>,
 ) -> Result<Json<Announcement>, StatusCode> {
     let sql = state.db.read().await;
 
-    let new =
-        repositories::announcements::create_announcement(&sql.db, &user.username, &message).await;
+    let new = repositories::announcements::create_announcement(&sql.db, &user.id, &message).await;
     drop(sql);
     match new {
         Ok(new) => {
@@ -69,6 +69,15 @@ pub async fn new(
                 .broadcast(super::ws::WebSocketSend::Broadcast {
                     broadcast: super::ws::Broadcast::NewAnnouncement(new.clone()),
                 });
+            if let Err(err) = (ServerEvent::OnAnnouncement {
+                announcer: user.id.clone(),
+                announcement: message,
+                time: utils::utc_now(),
+            }
+            .dispatch(state.clone()))
+            {
+                tracing::error!("Error dispatching announcement event: {:?}", err);
+            }
             Ok(Json(new))
         }
         Err(err) => {

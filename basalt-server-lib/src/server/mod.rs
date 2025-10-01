@@ -5,14 +5,23 @@ use dashmap::DashSet;
 use rand::{distributions::Alphanumeric, Rng};
 use std::{path::PathBuf, sync::Arc};
 use teams::TeamManagement;
-use tokio::sync::RwLock;
+use tokio::sync::{mpsc::UnboundedSender, RwLock};
 use websocket::WebSocketManager;
 
 pub mod clock;
+pub mod hooks;
+pub mod orchestration;
 pub mod teams;
 pub mod websocket;
 
-use crate::{services, storage::SqliteLayer};
+use crate::{
+    repositories::{self, users::Role},
+    server::hooks::events::ServerEvent,
+    services,
+    storage::SqliteLayer,
+};
+
+type Dispatchers = Vec<UnboundedSender<(ServerEvent, Arc<AppState>)>>;
 
 pub struct AppState {
     pub db: RwLock<SqliteLayer>,
@@ -23,20 +32,35 @@ pub struct AppState {
     pub active_submissions: DashSet<(websocket::ConnectionKind, usize)>,
     pub config: Config,
     pub clock: RwLock<ClockInfo>,
+    pub dispatchers: Dispatchers,
 }
 
 impl AppState {
-    pub fn new(db: SqliteLayer, config: Config, web_dir: Option<PathBuf>) -> Self {
+    pub fn new(
+        db: SqliteLayer,
+        config: Config,
+        dispatchers: Dispatchers,
+        web_dir: Option<PathBuf>,
+    ) -> Self {
         Self {
             db: RwLock::new(db),
             web_dir,
             websocket: Default::default(),
-            team_manager: TeamManagement::from_config(&config),
+            team_manager: Default::default(),
             active_tests: Default::default(),
             active_submissions: Default::default(),
+            dispatchers,
             config,
             clock: Default::default(),
         }
+    }
+
+    pub async fn init(&mut self) -> anyhow::Result<()> {
+        let sql = self.db.read().await;
+        let users = repositories::users::get_users_with_role(&sql.db, Role::Competitor).await?;
+        self.team_manager
+            .insert_many(users.into_iter().map(|u| u.id));
+        Ok(())
     }
 }
 

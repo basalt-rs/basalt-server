@@ -1,11 +1,12 @@
 port = 80
+web_client = true
 
 [setup]
 # import = "./setup.toml"
 
 # install = { import = "./install.sh" }
 install = '''
-dnf install opam
+dnf install opam -y
 '''
 
 # init = { import = "./init.sh" }
@@ -17,7 +18,7 @@ eval $(opam env)
 [test_runner]
 # import = "./test-runner.toml"
 
-timeout_ms = 60_000
+timeout = "60s"
 trim_output = true
 max_memory = { compile = 128, run = 64 }
 max_file_size = 8192
@@ -38,6 +39,10 @@ password = "pwd1"
 [[accounts.competitors]]
 name = "team2"
 password = "pwd1"
+
+[integrations]
+event_handlers = "./samples/event-handlers.js"
+webhooks = "http://localhost:8081/events"
 
 # Specify information about the packet itself
 [packet]

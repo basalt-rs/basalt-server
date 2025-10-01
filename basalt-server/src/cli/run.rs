@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{net::SocketAddr, path::PathBuf};
 
 use anyhow::Context;
 use clap::Parser;
@@ -6,7 +6,7 @@ use rand::distributions::Distribution;
 use tracing::info;
 
 use basalt_server_lib::{
-    server::{self, AppState},
+    server::{self, orchestration::init_state_with_hooks},
     storage::SqliteLayer,
 };
 
@@ -79,12 +79,15 @@ pub async fn handle(args: RunArgs) -> anyhow::Result<()> {
     info!(?addr, "Serving via HTTP");
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
+    // expands to create hooks if needed and provide to app_state's dispatcher service
+    let (app_state, jset) = init_state_with_hooks(db, config, args.web_dir).await?;
     axum::serve(
         listener,
-        server::router(Arc::new(AppState::new(db, config, args.web_dir)))
-            .into_make_service_with_connect_info::<SocketAddr>(),
+        server::router(app_state).into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await?;
+    // wait for any dispatcher tasks to complete
+    jset.join_all().await;
 
     Ok(())
 }

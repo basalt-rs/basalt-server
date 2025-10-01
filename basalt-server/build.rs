@@ -63,6 +63,7 @@ pub async fn main() -> anyhow::Result<()> {
     let dummy_state = Arc::new(AppState::new(
         sqlite_layer,
         bedrock::Config::default(),
+        Vec::new(),
         None,
     ));
     let router = basalt_server_lib::server::doc_router(dummy_state);

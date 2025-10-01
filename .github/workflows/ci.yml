@@ -22,7 +22,7 @@ concurrency:
 name: check
 jobs:
     fmt:
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-2vcpu-ubuntu-2404
         name: stable / fmt
         steps:
             - uses: actions/checkout@v4
@@ -35,7 +35,7 @@ jobs:
             - name: cargo fmt --check
               run: cargo fmt --check
     clippy:
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-4vcpu-ubuntu-2404
         name: ${{ matrix.toolchain }} / clippy
         permissions:
             contents: read
@@ -64,13 +64,11 @@ jobs:
                   reporter: "github-pr-check"
                   github_token: ${{ secrets.GITHUB_TOKEN }}
     dependencies:
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-2vcpu-ubuntu-2404
         name: stable / machete
         permissions:
             contents: read
             checks: write
-        strategy:
-            fail-fast: false
         steps:
             - uses: actions/checkout@v4
               with:
@@ -79,12 +77,12 @@ jobs:
               uses: bnjbvr/cargo-machete@main
     msrv:
         # check that we can build using the minimal rust version that is specified by this crate
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-2vcpu-ubuntu-2404
         # we use a matrix here just because env can't be used in job names
         # https://docs.github.com/en/actions/learn-github-actions/contexts#context-availability
         strategy:
             matrix:
-                msrv: ["1.81"]
+                msrv: ["1.85"]
         name: ubuntu / ${{ matrix.msrv }}
         steps:
             - uses: actions/checkout@v4
@@ -102,11 +100,8 @@ jobs:
               run: cargo check
 
     test:
+        # runs-on: blacksmith-2vcpu-ubuntu-2404
         runs-on: ubuntu-latest
-        strategy:
-            matrix:
-                # Get early warning of new lints which are regularly introduced in beta channels.
-                toolchain: [stable, beta]
 
         steps:
             - uses: actions/checkout@v4
@@ -118,6 +113,71 @@ jobs:
                   sudo apt-get install protobuf-compiler
             - uses: dtolnay/rust-toolchain@master
               with:
-                  toolchain: ${{ matrix.toolchain }}
+                  toolchain: stable
             - run: cargo test
               name: Run cargo test
+
+    actionlint:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - name: Download actionlint
+              id: get_actionlint
+              run: bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+              shell: bash
+            - name: Check workflow files
+              run: |
+                  echo "::add-matcher::.github/actionlint-matcher.json"
+                  bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+                  ./actionlint -color
+              shell: bash
+
+    push-containers:
+        runs-on: blacksmith-4vcpu-ubuntu-2404
+        if: github.event_name == 'pull_request'
+        needs: [test, clippy]
+        permissions:
+            contents: read
+            packages: write
+        strategy:
+            matrix:
+                include:
+                    - dockerfile: Dockerfile
+                      tags:
+                          - ghcr.io/${{ github.repository_owner }}/basalt-server:dev-pr-${{ github.event.pull_request.number }}
+                          - ghcr.io/${{ github.repository_owner }}/basalt-server:dev-pr-${{ github.event.pull_request.number }}-full
+                    - dockerfile: scripting.Dockerfile
+                      tags:
+                          - ghcr.io/${{ github.repository_owner }}/basalt-server:dev-pr-${{ github.event.pull_request.number }}-scripting
+                    - dockerfile: webhooks.Dockerfile
+                      tags:
+                          - ghcr.io/${{ github.repository_owner }}/basalt-server:dev-pr-${{ github.event.pull_request.number }}-webhooks
+                    - dockerfile: minimal.Dockerfile
+                      tags:
+                          - ghcr.io/${{ github.repository_owner }}/basalt-server:dev-pr-${{ github.event.pull_request.number }}-minimal
+        steps:
+            - uses: actions/checkout@v4
+            # - name: Set up QEMU (for ARM builds)
+            #   uses: docker/setup-qemu-action@v3
+            - name: Setup Docker Builder
+              uses: useblacksmith/setup-docker-builder@v1
+            - name: Log in to GHCR
+              uses: docker/login-action@v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            # Use QEMU to build images for both amd64 and arm64
+            - name: Build and push Docker image
+              # uses: docker/build-push-action@v6
+              uses: useblacksmith/build-push-action@v2
+              with:
+                  context: .
+                  file: ./containers/${{ matrix.dockerfile }}
+                  # platforms: linux/amd64,linux/arm64
+                  platforms: linux/amd64
+                  push: true
+                  # tags: ghcr.io/${{ github.repository_owner }}/basalt-server-${{ matrix.tagSuffix }}:pr-${{ github.event.pull_request.number }}
+                  tags: |
+                      ${{ join(matrix.tags, ',') }}

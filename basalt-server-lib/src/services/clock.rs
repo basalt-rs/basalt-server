@@ -2,12 +2,12 @@ use std::{sync::Arc, time::Duration};
 
 use axum::{extract::State, http::StatusCode, Json};
 use bedrock::{Game, PointsSettings};
-use tracing::trace;
+use tracing::{error, trace};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
-    extractors::auth::{AuthUser, OptionalAuthUser},
-    server::AppState,
+    extractors::auth::{HostUser, OptionalUser},
+    server::{hooks::events::ServerEvent, AppState},
     services::ws::{Broadcast, WebSocketSend},
 };
 
@@ -36,7 +36,7 @@ struct ClockStatusResponse {
 )]
 async fn patch_clock(
     State(state): State<Arc<AppState>>,
-    _: AuthUser,
+    auth: HostUser,
     Json(update): Json<UpdateClockRequest>,
 ) -> Result<Json<ClockStatusResponse>, StatusCode> {
     let time_limit = match &state.config.game {
@@ -52,6 +52,16 @@ async fn patch_clock(
         match update {
             UpdateClockRequest::PauseUpdate { is_paused: true } => {
                 let affected = clock.pause();
+                if affected {
+                    if let Err(err) = (ServerEvent::OnPause {
+                        paused_by: auth.id.clone(),
+                        time: chrono::offset::Local::now().to_utc(),
+                    }
+                    .dispatch(state.clone()))
+                    {
+                        error!("Failed to dispatch pause event: {:?}", err);
+                    };
+                }
                 (
                     ClockStatusResponse {
                         is_paused: true,
@@ -66,6 +76,16 @@ async fn patch_clock(
             }
             UpdateClockRequest::PauseUpdate { is_paused: false } => {
                 let affected = clock.unpause();
+                if affected {
+                    if let Err(err) = (ServerEvent::OnUnpause {
+                        unpaused_by: auth.id.clone(),
+                        time: chrono::offset::Local::now().to_utc(),
+                    }
+                    .dispatch(state.clone()))
+                    {
+                        error!("Failed to dispatch pause event: {:?}", err);
+                    };
+                }
                 let time_left_in_seconds = current_time.time_left(time_limit).as_secs();
                 (
                     ClockStatusResponse {
@@ -102,7 +122,7 @@ async fn patch_clock(
     )
 )]
 async fn get_clock(
-    OptionalAuthUser(_): OptionalAuthUser,
+    OptionalUser(_): OptionalUser,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ClockStatusResponse>, StatusCode> {
     trace!("user getting clock");
