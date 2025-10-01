@@ -6,6 +6,7 @@ use rand::{distributions::Alphanumeric, Rng};
 use std::{path::PathBuf, sync::Arc};
 use teams::TeamManagement;
 use tokio::sync::{mpsc::UnboundedSender, RwLock};
+use tower_http::services::{ServeDir, ServeFile};
 use websocket::WebSocketManager;
 
 pub mod clock;
@@ -71,7 +72,10 @@ macro_rules! define_router {
                 $(.nest(concat!("/", stringify!($route)), services::$route::service()))+;
 
                 let router = if let Some(path) = &initial_state.web_dir {
-                    router.fallback_service(tower_http::services::ServeDir::new(path))
+                    router.fallback_service(
+                        ServeDir::new(path)
+                            .fallback(ServeFile::new(path.join("404.html")))
+                    )
                 } else {
                     router
                 };
