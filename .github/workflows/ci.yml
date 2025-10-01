@@ -4,7 +4,6 @@
 # - clippy: checks that the code does not contain any clippy warnings
 # - doc: checks that the code can be documented without errors
 # - hack: check combinations of feature flags
-# - msrv: check that the msrv specified in the crate is correct
 permissions:
     contents: read
 # This configuration allows maintainers of this repo to create a branch and pull request based on

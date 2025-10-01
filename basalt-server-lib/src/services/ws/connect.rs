@@ -11,7 +11,6 @@ use axum::{
 };
 use tracing::{debug, error, trace, warn};
 
-use super::WebSocketRecv;
 use crate::{
     extractors::auth::AuthError,
     repositories,
@@ -107,33 +106,23 @@ async fn handle_socket(
                     return Ok(());
                 },
                 Some(Ok(msg)) => {
-                    handle_message(msg, &mut ws, &who, Arc::clone(&state)).await?;
+                    handle_message(msg, &mut ws).await?;
                 }
             }
         }
     }
 }
 
-async fn handle_message(
-    msg: Message,
-    ws: &mut WebSocket,
-    who: &ConnectionKind,
-    state: Arc<AppState>,
-) -> anyhow::Result<()> {
+async fn handle_message(msg: Message, ws: &mut WebSocket) -> anyhow::Result<()> {
     match msg {
-        Message::Text(bytes) => match serde_json::from_str::<WebSocketRecv>(bytes.as_str()) {
-            Ok(msg) => {
-                trace!(?msg, "Receiving websocket message");
-                msg.handle(who, state)
-                    .await
-                    .context("handling websocket message")?;
-            }
-            Err(error) => {
-                debug!(?error, "Ignoring invalid websocket message");
-            }
-        },
-        Message::Binary(_) => {
-            warn!("Ignoring unexpected binary message");
+        Message::Text(bytes) => {
+            debug!(
+                message = bytes.as_str(),
+                "Ignoring unexpected websocket message"
+            );
+        }
+        Message::Binary(message) => {
+            warn!(?message, "Ignoring unexpected binary message");
         }
         Message::Ping(bytes) => {
             ws.send(Message::Pong(bytes)).await?;
