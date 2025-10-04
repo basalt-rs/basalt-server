@@ -179,6 +179,7 @@ pub struct SubmissionBody {
     request_body = SubmissionBody,
     responses(
         (status=OK, body=String, content_type="text/plain", description="The ID of the submission", headers(("Location"))),
+        (status=400, description="Competition is paused"),
         (status=404, description="Question or language not found"),
     )
 )]
@@ -189,6 +190,10 @@ pub async fn create_submission(
     State(state): State<Arc<AppState>>,
     Json(body): Json<SubmissionBody>,
 ) -> Result<(StatusCode, HeaderMap, String), StatusCode> {
+    if state.is_paused().await {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
     if let Some(id) = crate::server::tester::run_test(
         state,
         body.language,
@@ -216,6 +221,7 @@ pub async fn create_submission(
     request_body = SubmissionBody,
     responses(
         (status=OK, body=String, content_type="text/plain", description="The ID of the submission", headers(("Location"))),
+        (status=400, description="Competition is paused"),
         (status=404, description="Question or language not found"),
     )
 )]
@@ -226,6 +232,10 @@ pub async fn create_test(
     State(state): State<Arc<AppState>>,
     Json(body): Json<SubmissionBody>,
 ) -> Result<(StatusCode, HeaderMap, String), StatusCode> {
+    if state.is_paused().await {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
     if let Some(id) = crate::server::tester::run_test(
         state,
         body.language,
@@ -258,8 +268,9 @@ pub struct SubmissionState {
     path = "/{question_index}/submissions/{submission_id}", tag = "questions",
     responses(
         (status=OK, body=SubmissionState, content_type="application/json"),
-        (status=404, description="Submission not found"),
+        (status=400, description="Competition is paused"),
         (status=403, description="Requesting user is not the creator of the submission or a host"),
+        (status=404, description="Submission not found"),
     )
 )]
 #[axum::debug_handler]
@@ -268,6 +279,10 @@ pub async fn get_submission(
     axum::extract::Path((_, id)): axum::extract::Path<(usize, SubmissionId)>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<SubmissionState>, StatusCode> {
+    if state.is_paused().await {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
     let join = tokio::try_join!(
         repositories::submissions::get_submission(&state.db, id),
         repositories::submissions::get_test_results(&state.db, id),
@@ -304,8 +319,9 @@ pub async fn get_submission(
     path = "/{question_index}/tests/{test_id}", tag = "questions",
     responses(
         (status=OK, body=SubmissionState, content_type="application/json"),
-        (status=404, description="Submission not found"),
+        (status=400, description="Competition is paused"),
         (status=403, description="Requesting user is not the creator of the submission or a host"),
+        (status=404, description="Submission not found"),
     )
 )]
 #[axum::debug_handler]
@@ -314,6 +330,10 @@ pub async fn get_test(
     axum::extract::Path((_, id)): axum::extract::Path<(usize, SubmissionId)>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<SubmissionState>, StatusCode> {
+    if state.is_paused().await {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
     let join = tokio::try_join!(
         repositories::submissions::get_submission(&state.db, id),
         repositories::submissions::get_test_results(&state.db, id),
@@ -350,8 +370,9 @@ pub async fn get_test(
     path = "/{question_index}/submissions/{submission_id}", tag = "questions",
     responses(
         (status=OK),
-        (status=404, description="Submission not found"),
+        (status=400, description="Competition is paused"),
         (status=403, description="Requesting user is not the creator of the submission or a host"),
+        (status=404, description="Submission not found"),
     )
 )]
 #[axum::debug_handler]
@@ -360,6 +381,10 @@ pub async fn abort_submission(
     axum::extract::Path((_, id)): axum::extract::Path<(usize, SubmissionId)>,
     State(state): State<Arc<AppState>>,
 ) -> Result<(), StatusCode> {
+    if state.is_paused().await {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
     let Some(submission) = repositories::submissions::get_submission(&state.db, id)
         .await
         .map_err(|error| {
@@ -390,8 +415,9 @@ pub async fn abort_submission(
     path = "/{question_index}/tests/{test_id}", tag = "questions",
     responses(
         (status=OK),
-        (status=404, description="Submission not found"),
+        (status=400, description="Competition is paused"),
         (status=403, description="Requesting user is not the creator of the submission or a host"),
+        (status=404, description="Submission not found"),
     )
 )]
 #[axum::debug_handler]
@@ -400,6 +426,10 @@ pub async fn abort_test(
     axum::extract::Path((_, id)): axum::extract::Path<(usize, SubmissionId)>,
     State(state): State<Arc<AppState>>,
 ) -> Result<(), StatusCode> {
+    if state.is_paused().await {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
     let Some(submission) = repositories::submissions::get_submission(&state.db, id)
         .await
         .map_err(|error| {

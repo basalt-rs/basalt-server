@@ -34,6 +34,7 @@ impl ClockInfo {
         self.pause_time = self.pause_time.or(Some(Instant::now()));
         affected
     }
+
     pub fn unpause(&mut self) -> bool {
         let affected = self.pause_time.is_some();
         if let Some(pause_time) = self.pause_time {
@@ -42,6 +43,11 @@ impl ClockInfo {
         }
         affected
     }
+
+    pub fn is_paused(&self) -> bool {
+        self.pause_time.is_some()
+    }
+
     pub fn current_time(&self) -> anyhow::Result<CurrentTime> {
         match self.pause_time {
             Some(pause_time) => Ok(CurrentTime {
