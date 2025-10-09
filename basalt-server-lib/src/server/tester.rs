@@ -141,6 +141,7 @@ enum TestWsSend {
     Error,
     Complete,
     Cancelled,
+    CompileFailed,
     Result(TestResult<TestData>),
 }
 
@@ -164,22 +165,40 @@ fn spawn_ws_sender(
             };
 
             let get_test_results = || async {
-                match repositories::submissions::get_test_results(&state.db, id).await {
+                let results = match repositories::submissions::get_test_results(&state.db, id).await
+                {
                     Ok(v) => v.into_iter().map(Into::into).collect(),
                     Err(error) => {
                         error!(?error, "Error getting test results");
-                        vec![]
+                        return Err(());
                     }
-                }
+                };
+                let history = match repositories::submissions::get_submission(&state.db, id).await {
+                    Ok(Some(v)) => v,
+                    Ok(None) => return Err(()),
+                    Err(error) => {
+                        error!(?error, "Error getting test results");
+                        return Err(());
+                    }
+                };
+                Ok::<_, ()>((results, history))
             };
 
             let mut send = match r {
                 TestWsSend::Error => Some(WebSocketSend::TestsError { id }),
                 TestWsSend::Cancelled => Some(WebSocketSend::TestsCancelled { id }),
-                TestWsSend::Complete => Some(WebSocketSend::TestsComplete {
-                    id,
-                    results: get_test_results().await,
-                }),
+                TestWsSend::CompileFailed => {
+                    let Ok((_, history)) = get_test_results().await else {
+                        return;
+                    };
+                    Some(WebSocketSend::TestsCompileFail { history })
+                }
+                TestWsSend::Complete => {
+                    let Ok((results, history)) = get_test_results().await else {
+                        return;
+                    };
+                    Some(WebSocketSend::TestsComplete { results, history })
+                }
                 TestWsSend::Result(ref r) => {
                     results.push(r.into());
                     None
@@ -193,11 +212,18 @@ fn spawn_ws_sender(
                     TestWsSend::Cancelled => {
                         send = Some(WebSocketSend::TestsCancelled { id });
                     }
+                    TestWsSend::CompileFailed => {
+                        let Ok((_, history)) = get_test_results().await else {
+                            return;
+                        };
+                        send = Some(WebSocketSend::TestsCompileFail { history });
+                    }
                     TestWsSend::Complete => {
-                        send = Some(WebSocketSend::TestsComplete {
-                            id,
-                            results: get_test_results().await,
-                        });
+                        // We're ignoring the error here as there's not really anything we can do.
+                        let Ok((results, history)) = get_test_results().await else {
+                            return;
+                        };
+                        send = Some(WebSocketSend::TestsComplete { results, history });
                     }
                     TestWsSend::Result(ref r) => results.push(r.into()),
                 }
@@ -278,6 +304,10 @@ pub fn run_test(
             }
         }
 
+        // returns Result<bool, Unit>:
+        //     Ok(true)  - We're done with the test and have already sent the feedback on the websocket
+        //     Ok(false) - We're done with the test and TestComplete should be sent on ws
+        //     Err(_)    - There was an error in the test, TestError should be sent on ws
         let result = async {
             let other_completions =
                 repositories::submissions::count_other_submissions(&state.db, question_index)
@@ -309,7 +339,9 @@ pub fn run_test(
                     .await
                     .map_err(|error| error!(?error, "Error creating failed submission history"))?;
 
-                    return Err(Unit);
+                    let _ = result_tx.send(TestWsSend::CompileFailed);
+                    // true because we've handled the end message
+                    return Ok(true);
                 }
                 Err(error) => {
                     error!(?error, "Error spawning compile command");
@@ -334,6 +366,7 @@ pub fn run_test(
             .map_err(|error| error!(?error, "Error adding submission to database"))?;
 
             let mut handle = compiled.run();
+            dbg!(handle.test_count(), test_only);
 
             let start = Instant::now();
             let mut passed = 0;
@@ -377,7 +410,9 @@ pub fn run_test(
                     tracing::error!("error dispatching submission event: {:?}", err);
                 }
 
-                let _ = result_tx.send(TestWsSend::Result(result));
+                if result.data().expect("we have not taken the data").visible {
+                    let _ = result_tx.send(TestWsSend::Result(result));
+                }
             }
 
             let elapsed = start.elapsed();
@@ -408,17 +443,29 @@ pub fn run_test(
                 .await
                 .map_err(|error| error!(?error, "Error updating submission in database"))?;
 
-            Ok::<(), Unit>(())
+            Ok::<_, Unit>(true)
         };
 
         tokio::select! {
             result = result => {
                 match result {
-                    Ok(_) => {
+                    Ok(true) => {
+                        // we've already sent the ending message
+
+                        // ensure that we don't try to use the sender after we've finished test
+                        drop(result_tx);
+                    }
+                    Ok(false) => {
                         let _ = result_tx.send(TestWsSend::Complete);
+
+                        // ensure that we don't try to use the sender after we've sent Complete
+                        drop(result_tx);
                     }
                     Err(_) => {
                         let _ = result_tx.send(TestWsSend::Error);
+
+                        // ensure that we don't try to use the sender after we've sent Error
+                        drop(result_tx);
                     }
                 }
             }
@@ -426,9 +473,6 @@ pub fn run_test(
                 let _ = result_tx.send(TestWsSend::Cancelled);
             }
         };
-
-        // ensure that we don't try to use the sender after we've sent Complete or Error
-        drop(result_tx);
     });
 
     Some(id)

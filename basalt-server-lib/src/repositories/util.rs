@@ -202,6 +202,7 @@ macro_rules! define_sqlx_enum {
             PartialEq,
             Hash,
         )]
+        #[serde(rename_all = "kebab-case")]
         #[repr(i64)]
         $(#[$($attr)+])*
         pub enum $name {
@@ -238,9 +239,32 @@ macro_rules! define_sqlx_enum {
     }
 }
 
-#[derive(Clone, Debug, From, Into, Deref, DerefMut, Deserialize, Serialize, ToSchema)]
-#[serde(transparent)]
+#[derive(Clone, Debug, From, Into, Deref, DerefMut, ToSchema)]
+/// Wrapped duration type that allows us to implement sqlx/serde/utoipa traits
+///
+/// Note: the (de)serialisation of this type uses milliseconds, so any sub-millisecond precision is
+/// lost.
 pub struct WrappedDuration(Duration);
+
+impl<'de> Deserialize<'de> for WrappedDuration {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(Self(Duration::from_millis(Deserialize::deserialize(
+            deserializer,
+        )?)))
+    }
+}
+
+impl Serialize for WrappedDuration {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.as_millis().serialize(serializer)
+    }
+}
 
 impl From<i64> for WrappedDuration {
     fn from(value: i64) -> Self {

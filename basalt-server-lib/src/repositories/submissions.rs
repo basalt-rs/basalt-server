@@ -32,6 +32,7 @@ define_sqlx_enum! {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, sqlx::FromRow, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct SubmissionHistory {
     pub id: SubmissionId,
     pub submitter: UserId,

@@ -13,7 +13,7 @@ use crate::{
         users::{Role, User, UserLogin},
     },
     server::{hooks::events::ServerEvent, teams::TeamWithScore, AppState},
-    services::ws::{Broadcast, WebSocketSend},
+    services::ws::Broadcast,
 };
 
 #[derive(serde::Deserialize, utoipa::ToSchema)]
@@ -79,15 +79,15 @@ async fn login(
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
 
-        state.websocket.broadcast(WebSocketSend::Broadcast {
-            broadcast: Broadcast::TeamConnected(TeamWithScore {
+        state
+            .websocket
+            .broadcast(Broadcast::TeamConnected(TeamWithScore {
                 score,
                 id: user.id,
                 name: user.username,
                 display_name: user.display_name,
                 team_info: team,
-            }),
-        });
+            }));
     }
 
     let role = user.role;
@@ -131,15 +131,13 @@ async fn logout(
 
         state
             .websocket
-            .broadcast(crate::services::ws::WebSocketSend::Broadcast {
-                broadcast: crate::services::ws::Broadcast::TeamDisconnected(TeamWithScore {
-                    score,
-                    id: user.id,
-                    name: user.username,
-                    display_name: user.display_name,
-                    team_info: team,
-                }),
-            });
+            .broadcast(Broadcast::TeamDisconnected(TeamWithScore {
+                score,
+                id: user.id,
+                name: user.username,
+                display_name: user.display_name,
+                team_info: team,
+            }));
     }
 
     Ok(())

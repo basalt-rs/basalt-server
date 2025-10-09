@@ -8,7 +8,7 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 use crate::{
     extractors::auth::{HostUser, OptionalUser},
     server::{hooks::events::ServerEvent, AppState},
-    services::ws::{Broadcast, WebSocketSend},
+    services::ws::Broadcast,
 };
 
 #[derive(serde::Deserialize, utoipa::ToSchema)]
@@ -105,9 +105,7 @@ async fn patch_clock(
     };
 
     if let Some(broadcast) = broadcast {
-        state
-            .websocket
-            .broadcast(WebSocketSend::Broadcast { broadcast });
+        state.websocket.broadcast(broadcast);
     }
 
     Ok(Json(response))

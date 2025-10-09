@@ -24,7 +24,7 @@ use crate::{
         teams::{TeamFull, TeamWithScore},
         AppState,
     },
-    services::ws::{Broadcast, TeamUpdate, WebSocketSend},
+    services::ws::{Broadcast, TeamUpdate},
     utils::OneOrMany,
 };
 
@@ -148,22 +148,17 @@ async fn add_team(
 
     state.team_manager.insert_many(users.iter().map(|u| u.id));
 
-    state.websocket.broadcast(WebSocketSend::Broadcast {
-        broadcast: Broadcast::TeamUpdate {
-            teams: users
-                .iter()
-                .map(|user| TeamUpdate {
-                    id: user.id,
-                    name: user.username.clone(),
-                    display_name: user.display_name.clone(),
-                    new_score: 0.,
-                    new_states: vec![
-                        QuestionState::NotAttempted;
-                        state.config.packet.problems.len()
-                    ],
-                })
-                .collect(),
-        },
+    state.websocket.broadcast(Broadcast::TeamUpdate {
+        teams: users
+            .iter()
+            .map(|user| TeamUpdate {
+                id: user.id,
+                name: user.username.clone(),
+                display_name: user.display_name.clone(),
+                new_score: 0.,
+                new_states: vec![QuestionState::NotAttempted; state.config.packet.problems.len()],
+            })
+            .collect(),
     });
 
     Ok(Json(users.into()))
@@ -243,12 +238,10 @@ async fn patch_team(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    state.websocket.broadcast(WebSocketSend::Broadcast {
-        broadcast: Broadcast::TeamRename {
-            id: new.id,
-            name: new.username.clone(),
-            display_name: new.display_name.clone(),
-        },
+    state.websocket.broadcast(Broadcast::TeamRename {
+        id: new.id,
+        name: new.username.clone(),
+        display_name: new.display_name.clone(),
     });
 
     Ok(Json(new))

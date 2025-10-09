@@ -17,6 +17,8 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
+use super::ws::Broadcast;
+
 #[axum::debug_handler]
 #[utoipa::path(
     get,
@@ -63,9 +65,7 @@ pub async fn new(
         Ok(new) => {
             state
                 .websocket
-                .broadcast(super::ws::WebSocketSend::Broadcast {
-                    broadcast: super::ws::Broadcast::NewAnnouncement(new.clone()),
-                });
+                .broadcast(Broadcast::NewAnnouncement(new.clone()));
             if let Err(err) = (ServerEvent::OnAnnouncement {
                 announcer: user.id,
                 announcement: message,
@@ -105,9 +105,7 @@ pub async fn delete(
         Ok(Some(del)) => {
             state
                 .websocket
-                .broadcast(super::ws::WebSocketSend::Broadcast {
-                    broadcast: super::ws::Broadcast::DeleteAnnouncement { id },
-                });
+                .broadcast(Broadcast::DeleteAnnouncement { id });
             Ok(Json(del))
         }
         Ok(None) => Err(StatusCode::NOT_FOUND),

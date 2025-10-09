@@ -189,7 +189,7 @@ pub async fn create_submission(
     axum::extract::Path(question_index): axum::extract::Path<usize>,
     State(state): State<Arc<AppState>>,
     Json(body): Json<SubmissionBody>,
-) -> Result<(StatusCode, HeaderMap, String), StatusCode> {
+) -> Result<(StatusCode, HeaderMap, Json<String>), StatusCode> {
     if state.is_paused().await {
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -208,7 +208,7 @@ pub async fn create_submission(
         Ok((
             StatusCode::CREATED,
             HeaderMap::from_iter([(axum::http::header::LOCATION, location)]),
-            format!("{}", id),
+            Json(format!("{}", id)),
         ))
     } else {
         Err(StatusCode::NOT_FOUND)
@@ -231,7 +231,7 @@ pub async fn create_test(
     axum::extract::Path(question_index): axum::extract::Path<usize>,
     State(state): State<Arc<AppState>>,
     Json(body): Json<SubmissionBody>,
-) -> Result<(StatusCode, HeaderMap, String), StatusCode> {
+) -> Result<(StatusCode, HeaderMap, Json<String>), StatusCode> {
     if state.is_paused().await {
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -249,7 +249,7 @@ pub async fn create_test(
         Ok((
             StatusCode::CREATED,
             HeaderMap::from_iter([(axum::http::header::LOCATION, location)]),
-            format!("{}", id),
+            Json(format!("{}", id)),
         ))
     } else {
         Err(StatusCode::NOT_FOUND)

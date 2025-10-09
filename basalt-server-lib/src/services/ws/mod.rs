@@ -6,7 +6,9 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 use crate::{
     repositories::{
         announcements::{Announcement, AnnouncementId},
-        submissions::{SubmissionId, TestResultState, TestResults as DbTestResults},
+        submissions::{
+            SubmissionHistory, SubmissionId, TestResultState, TestResults as DbTestResults,
+        },
         users::{QuestionState, UserId},
     },
     server::{teams::TeamWithScore, tester::TestData, websocket::ConnectionKind, AppState},
@@ -92,31 +94,38 @@ impl From<&TestResult<TestData>> for TestResultSend {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum WebSocketSend {
-    Broadcast {
-        broadcast: Broadcast,
-    },
-    Error {
-        id: Option<usize>,
-        message: String,
-    },
-    /// An error occurred while running tests
-    TestsError {
-        id: SubmissionId,
-    },
-    /// Running tests were cancelled
-    TestsCancelled {
-        id: SubmissionId,
-    },
-    /// All tests have finished running
-    TestsComplete {
-        id: SubmissionId,
-        results: Vec<TestResultSend>,
-    },
     /// One of more tests has finished
     TestResults {
         id: SubmissionId,
         results: Vec<TestResultSend>,
     },
+    /// Running tests were cancelled
+    ///
+    /// No further updates for this test will be sent
+    TestsCancelled { id: SubmissionId },
+    /// An error occurred while running tests
+    ///
+    /// No further updates for this test will be sent
+    TestsError { id: SubmissionId },
+    /// Running tests failed to compile
+    ///
+    /// No further updates for this test will be sent
+    TestsCompileFail {
+        // NOTE: id comes from `history`.
+        #[serde(flatten)]
+        history: SubmissionHistory,
+    },
+    /// All tests have finished running
+    ///
+    /// No further updates for this test will be sent
+    TestsComplete {
+        // NOTE: id comes from `history`.
+        results: Vec<TestResultSend>,
+        #[serde(flatten)]
+        history: SubmissionHistory,
+    },
+    #[serde(untagged)]
+    Broadcast(Broadcast),
 }
 
 pub fn router() -> OpenApiRouter<Arc<AppState>> {

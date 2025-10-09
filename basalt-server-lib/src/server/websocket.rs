@@ -3,7 +3,11 @@ use std::{net::SocketAddr, time::Duration};
 use dashmap::DashMap;
 use tokio::sync::{mpsc, oneshot};
 
-use crate::{define_id_type, repositories::users::UserId, services::ws::WebSocketSend};
+use crate::{
+    define_id_type,
+    repositories::users::UserId,
+    services::ws::{Broadcast, WebSocketSend},
+};
 
 define_id_type!(LeaderboardId);
 
@@ -56,9 +60,10 @@ pub struct WebSocketManager {
 }
 
 impl WebSocketManager {
-    pub fn broadcast(&self, broadcast: WebSocketSend) {
+    pub fn broadcast(&self, broadcast: Broadcast) {
+        let ws = WebSocketSend::Broadcast(broadcast);
         self.active_connections.retain(|key, conn| {
-            match conn.send(broadcast.clone()) {
+            match conn.send(ws.clone()) {
                 Ok(()) => true,
                 Err(_) => {
                     tracing::warn!(?key, "Socket discovered to be closed when sending broadcast. Removing from active connections...");
