@@ -557,11 +557,6 @@ pub fn run_test(
                 },
             );
 
-            let new_state = Arc::clone(&state);
-            tokio::spawn(async move {
-                let _ = broadcast_team_update(&new_state, submitter).await;
-            });
-
             let score = match score {
                 Ok(score) => score,
                 Err(error) => {
@@ -608,6 +603,8 @@ pub fn run_test(
                 let _ = result_tx.send(TestWsSend::Cancelled);
             }
         };
+
+        let _ = broadcast_team_update(&state, submitter).await;
     });
 
     Some(CreatedSubmission { id, cases })
