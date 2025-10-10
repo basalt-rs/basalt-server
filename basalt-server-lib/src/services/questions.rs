@@ -5,7 +5,7 @@ use crate::{
         submissions::{SubmissionHistory, SubmissionId, TestResults},
         users::{Role, User},
     },
-    server::AppState,
+    server::{tester::CreatedSubmission, AppState},
 };
 use axum::{
     extract::State,
@@ -189,12 +189,12 @@ pub async fn create_submission(
     axum::extract::Path(question_index): axum::extract::Path<usize>,
     State(state): State<Arc<AppState>>,
     Json(body): Json<SubmissionBody>,
-) -> Result<(StatusCode, HeaderMap, Json<String>), StatusCode> {
+) -> Result<(StatusCode, HeaderMap, Json<CreatedSubmission>), StatusCode> {
     if state.is_paused().await {
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    if let Some(id) = crate::server::tester::run_test(
+    if let Some(created) = crate::server::tester::run_test(
         state,
         body.language,
         question_index,
@@ -202,13 +202,15 @@ pub async fn create_submission(
         false,
         user.id,
     ) {
-        let location =
-            HeaderValue::from_str(&format!("/questions/{}/submissions/{}", question_index, id))
-                .unwrap();
+        let location = HeaderValue::from_str(&format!(
+            "/questions/{}/submissions/{}",
+            question_index, created.id
+        ))
+        .unwrap();
         Ok((
             StatusCode::CREATED,
             HeaderMap::from_iter([(axum::http::header::LOCATION, location)]),
-            Json(format!("{}", id)),
+            Json(created),
         ))
     } else {
         Err(StatusCode::NOT_FOUND)
@@ -231,12 +233,12 @@ pub async fn create_test(
     axum::extract::Path(question_index): axum::extract::Path<usize>,
     State(state): State<Arc<AppState>>,
     Json(body): Json<SubmissionBody>,
-) -> Result<(StatusCode, HeaderMap, Json<String>), StatusCode> {
+) -> Result<(StatusCode, HeaderMap, Json<CreatedSubmission>), StatusCode> {
     if state.is_paused().await {
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    if let Some(id) = crate::server::tester::run_test(
+    if let Some(created) = crate::server::tester::run_test(
         state,
         body.language,
         question_index,
@@ -244,12 +246,15 @@ pub async fn create_test(
         true,
         user.id,
     ) {
-        let location =
-            HeaderValue::from_str(&format!("/questions/{}/tests/{}", question_index, id)).unwrap();
+        let location = HeaderValue::from_str(&format!(
+            "/questions/{}/tests/{}",
+            question_index, created.id
+        ))
+        .unwrap();
         Ok((
             StatusCode::CREATED,
             HeaderMap::from_iter([(axum::http::header::LOCATION, location)]),
-            Json(format!("{}", id)),
+            Json(created),
         ))
     } else {
         Err(StatusCode::NOT_FOUND)

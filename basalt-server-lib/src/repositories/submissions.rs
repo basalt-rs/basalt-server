@@ -51,6 +51,8 @@ pub struct SubmissionHistory {
     pub state: SubmissionState,
     pub score: f64,
     pub success: bool, // effectively tests.all(state = Pass)
+    pub passed: i64,
+    pub failed: i64,
     // NOTE: This is stored as a `u64` cast as an `i64`.  Keep that in mind while doing operations on this data in queries.
     pub time_taken: WrappedDuration,
 }
@@ -123,7 +125,7 @@ impl PartialSubmissionHistory {
             UPDATE submission_history
                 SET state = ?
             WHERE id = ?
-            RETURNING id, submitter, time, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, test_only, state, score, success, time_taken"#,
+            RETURNING id, submitter, time, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, test_only, state, score, passed, failed, success, time_taken"#,
             SubmissionState::Failed,
             self.id,
         )
@@ -140,7 +142,7 @@ impl PartialSubmissionHistory {
             UPDATE submission_history
                 SET state = ?
             WHERE id = ?
-            RETURNING id, submitter, time, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, test_only, state, score, success, time_taken"#,
+            RETURNING id, submitter, time, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, test_only, state, score, passed, failed, success, time_taken"#,
             SubmissionState::Cancelled,
             self.id,
         )
@@ -154,21 +156,29 @@ impl PartialSubmissionHistory {
         db: impl Executor<'_, Database = Sqlite>,
         score: f64,
         success: bool,
+        passed: u32,
+        failed: u32,
         time_taken: Duration,
     ) -> anyhow::Result<SubmissionHistory> {
         let time_taken = WrappedDuration::from(time_taken);
+        let passed: i64 = passed.into();
+        let failed: i64 = failed.into();
         sqlx::query_as!(SubmissionHistory, r#"
             UPDATE submission_history
                 SET state = ?,
                 score = ?,
                 success = ?,
-                time_taken = ?
+                time_taken = ?,
+                passed = ?,
+                failed = ?
             WHERE id = ?
-            RETURNING id, submitter, time, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, test_only, state, score, success, time_taken"#,
+            RETURNING id, submitter, time, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, test_only, state, score, passed, failed, success, time_taken"#,
             SubmissionState::Finished,
             score,
             success,
             time_taken,
+            passed,
+            failed,
             self.id,
         )
         .fetch_one(db)
@@ -234,7 +244,7 @@ pub async fn create_failed_submission_history<'a>(
     let hist = sqlx::query_as!(SubmissionHistory, r#"
             INSERT INTO submission_history (id, submitter, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, test_only, state)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            RETURNING id, submitter, time, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, test_only, state, score, success, time_taken"#,
+            RETURNING id, submitter, time, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, test_only, state, score, passed, failed, success, time_taken"#,
             new.id,
             new.submitter,
             new.code,
@@ -273,7 +283,7 @@ pub async fn create_submission_history<'a>(
     let hist = sqlx::query_as!(SubmissionHistory, r#"
             INSERT INTO submission_history (id, submitter, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, test_only)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            RETURNING id, submitter, time, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, test_only, state, score, success, time_taken"#,
+            RETURNING id, submitter, time, code, question_index, language, compile_result, compile_stdout, compile_stderr, compile_exit_status, test_only, state, score, passed, failed, success, time_taken"#,
             new.id,
             new.submitter,
             new.code,
@@ -399,6 +409,7 @@ pub async fn get_latest_submissions(
                 SELECT question_index, MAX(time) AS latest
                 FROM submission_history
                 WHERE submitter = ?
+                    AND test_only = FALSE
                 GROUP BY question_index
             ) t ON h.question_index = t.question_index AND h.time = t.latest
             WHERE h.submitter = ?;
@@ -459,6 +470,24 @@ pub async fn count_tests(
     .fetch_all(db)
     .await
     .context("while querying the user's test runs")
+}
+
+pub async fn count_test_cases(
+    db: impl SqliteExecutor<'_>,
+    submission_id: &SubmissionId,
+) -> anyhow::Result<u32> {
+    sqlx::query_scalar!(
+        r#"
+            SELECT count(*) as count
+            FROM test_results
+            WHERE submission = ?
+        "#,
+        submission_id,
+    )
+    .fetch_one(db)
+    .await
+    .context("while querying the user's test runs")
+    .map(|x| x as u32)
 }
 
 pub async fn get_submissions(

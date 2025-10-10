@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS submission_history (
   -- The remaining data will be updated after the tests have finished running
   state INTEGER NOT NULL DEFAULT 0, -- SubmissionState
   score FLOAT NOT NULL DEFAULT 0.0,
+  passed INTEGER NOT NULL DEFAULT 0, -- Number of test cases passed
+  failed INTEGER NOT NULL DEFAULT 0, -- Number of test cases failed
   success BOOLEAN NOT NULL DEFAULT false,
   time_taken INTEGER NOT NULL DEFAULT 0 -- NOTE: This is stored as a `u64` cast as an `i64`.  Keep that in mind while doing operations on this data in queries.
 );

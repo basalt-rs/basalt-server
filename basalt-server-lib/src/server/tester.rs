@@ -12,13 +12,19 @@ use erudite::{
     runner::{TestResult, TestResultState, TestRunner},
     BorrowedFileContent, Rules, TestContext,
 };
+use serde::Serialize;
 use tokio::sync::oneshot;
 use tracing::{debug, error};
+use utoipa::ToSchema;
 
 use crate::{
-    repositories::{self, submissions::SubmissionId, users::UserId},
+    repositories::{
+        self,
+        submissions::SubmissionId,
+        users::{QuestionState, UserId},
+    },
     server::{AppState, ServerEvent},
-    services::ws::WebSocketSend,
+    services::ws::{Broadcast, Results, TeamUpdate, WebSocketSend},
     utils,
 };
 
@@ -54,7 +60,7 @@ impl Tester {
             .iter()
             .map(|l| {
                 let compile_rules = Rules::new()
-                    .add_read_only("/tmp")
+                    .add_read_write("/tmp")
                     .add_read_only("/usr")
                     .add_read_only("/etc")
                     .add_read_only("/dev")
@@ -149,10 +155,16 @@ fn spawn_ws_sender(
     state: Arc<AppState>,
     id: SubmissionId,
     user_id: UserId,
+    question_index: usize,
+    test_only: bool,
 ) -> tokio::sync::mpsc::UnboundedSender<TestWsSend> {
     let (result_tx, mut result_rx) = tokio::sync::mpsc::unbounded_channel::<TestWsSend>();
     tokio::spawn(async move {
-        let mut results = Vec::new();
+        let mut results = if test_only {
+            Results::Test(Vec::new())
+        } else {
+            Results::Submission(Vec::new())
+        };
         while let Some(r) = result_rx.recv().await {
             tokio::time::sleep(Duration::from_millis(100)).await; // debounce
             let Some(websocket_sender) = state
@@ -167,7 +179,13 @@ fn spawn_ws_sender(
             let get_test_results = || async {
                 let results = match repositories::submissions::get_test_results(&state.db, id).await
                 {
-                    Ok(v) => v.into_iter().map(Into::into).collect(),
+                    Ok(v) => {
+                        if test_only {
+                            Results::tests(v)
+                        } else {
+                            Results::submissions(v)
+                        }
+                    }
                     Err(error) => {
                         error!(?error, "Error getting test results");
                         return Err(());
@@ -184,6 +202,21 @@ fn spawn_ws_sender(
                 Ok::<_, ()>((results, history))
             };
 
+            let get_remaining_attempts = || async {
+                if let Some(max_attempts) = state.config.max_submissions {
+                    let previous_attempts = repositories::submissions::count_previous_submissions(
+                        &state.db,
+                        &user_id,
+                        question_index,
+                    )
+                    .await
+                    .map_err(|error| error!(?error, "Error counting previous submissions"))?;
+                    Ok(Some(max_attempts.get() - previous_attempts))
+                } else {
+                    Ok::<_, ()>(None)
+                }
+            };
+
             let mut send = match r {
                 TestWsSend::Error => Some(WebSocketSend::TestsError { id }),
                 TestWsSend::Cancelled => Some(WebSocketSend::TestsCancelled { id }),
@@ -197,10 +230,19 @@ fn spawn_ws_sender(
                     let Ok((results, history)) = get_test_results().await else {
                         return;
                     };
-                    Some(WebSocketSend::TestsComplete { results, history })
+
+                    let Ok(remaining_attempts) = get_remaining_attempts().await else {
+                        return;
+                    };
+
+                    Some(WebSocketSend::TestsComplete {
+                        results,
+                        history,
+                        remaining_attempts,
+                    })
                 }
                 TestWsSend::Result(ref r) => {
-                    results.push(r.into());
+                    results.push(r);
                     None
                 }
             };
@@ -223,9 +265,18 @@ fn spawn_ws_sender(
                         let Ok((results, history)) = get_test_results().await else {
                             return;
                         };
-                        send = Some(WebSocketSend::TestsComplete { results, history });
+
+                        let Ok(remaining_attempts) = get_remaining_attempts().await else {
+                            return;
+                        };
+
+                        send = Some(WebSocketSend::TestsComplete {
+                            results,
+                            history,
+                            remaining_attempts,
+                        });
                     }
-                    TestWsSend::Result(ref r) => results.push(r.into()),
+                    TestWsSend::Result(ref r) => results.push(r),
                 }
             }
 
@@ -234,22 +285,78 @@ fn spawn_ws_sender(
                     debug!("Websocket closed while trying to send test finish");
                 }
                 return;
-            } else if websocket_sender
-                .send(WebSocketSend::TestResults {
+            } else {
+                let send = WebSocketSend::TestResults {
                     id,
                     results: results.clone(),
-                })
-                .is_err()
-            {
-                debug!("Websocket closed while trying to send test results");
-                // hold onto the results for the next cycle and send them then
-            } else {
-                results.clear();
+                };
+
+                if websocket_sender.send(send).is_err() {
+                    debug!("Websocket closed while trying to send test results");
+                    // hold onto the results for the next cycle and send them then
+                } else {
+                    results.clear();
+                }
             }
         }
     });
 
     result_tx
+}
+
+async fn broadcast_team_update(state: &AppState, user_id: UserId) -> Result<(), ()> {
+    let submissions = repositories::submissions::get_latest_submissions(&state.db, &user_id)
+        .await
+        .map_err(|error| error!(?error, "Error getting user submissions"))?;
+
+    let mut states = vec![QuestionState::NotAttempted; state.config.packet.problems.len()];
+    for s in submissions {
+        states[s.question_index as usize] = if s.success {
+            QuestionState::Pass
+        } else {
+            QuestionState::Fail
+        }
+    }
+
+    match repositories::submissions::count_tests(&state.db, &user_id).await {
+        Ok(counts) => {
+            for c in counts {
+                if states[c.question_index as usize] == QuestionState::NotAttempted && c.count > 0 {
+                    states[c.question_index as usize] = QuestionState::InProgress;
+                }
+            }
+        }
+        Err(err) => {
+            tracing::error!("Error while getting attempts: {}", err);
+        }
+    }
+
+    let new_score = repositories::submissions::get_user_score(&state.db, &user_id)
+        .await
+        .map_err(|error| error!(?error, "Error getting user score"))?;
+
+    let user = repositories::users::get_user_by_id(&state.db, &user_id)
+        .await
+        .map_err(|error| error!(?error, "Error getting user submissions"))?;
+
+    state.websocket.broadcast(Broadcast::TeamUpdate {
+        teams: vec![TeamUpdate {
+            id: user_id,
+            name: user.username.clone(),
+            display_name: user.display_name.clone(),
+            new_score,
+            new_states: states,
+        }],
+    });
+
+    Ok(())
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CreatedSubmission {
+    pub id: SubmissionId,
+    /// The total number of test cases that will be tested by this submission
+    pub cases: u32,
 }
 
 pub fn run_test(
@@ -259,7 +366,7 @@ pub fn run_test(
     code: String,
     test_only: bool,
     submitter: UserId,
-) -> Option<SubmissionId> {
+) -> Option<CreatedSubmission> {
     // NOTE: It's not great that we construct a test runner and then throw it await, but we can't
     // move the test runner into the new task, so it's fine (constructing one is really cheap).
     let runner = state.tester.runner(&language, question_index);
@@ -271,6 +378,11 @@ pub fn run_test(
         );
         return None;
     };
+    let cases = state.config.packet.problems[question_index]
+        .tests
+        .iter()
+        .filter(|x| !test_only || x.visible)
+        .count() as u32;
 
     let (abort_tx, abort_rx) = oneshot::channel();
     let id = SubmissionId::new();
@@ -293,7 +405,8 @@ pub fn run_test(
             .compile()
             .await;
 
-        let result_tx = spawn_ws_sender(Arc::clone(&state), id, submitter);
+        let result_tx =
+            spawn_ws_sender(Arc::clone(&state), id, submitter, question_index, test_only);
 
         // NOTE: This exists since the `?` operator calls `.into()` and `()` implements `From` for
         // any `T`, but we want all errors to be handled, not just disappeared.
@@ -366,7 +479,6 @@ pub fn run_test(
             .map_err(|error| error!(?error, "Error adding submission to database"))?;
 
             let mut handle = compiled.run();
-            dbg!(handle.test_count(), test_only);
 
             let start = Instant::now();
             let mut passed = 0;
@@ -410,9 +522,7 @@ pub fn run_test(
                     tracing::error!("error dispatching submission event: {:?}", err);
                 }
 
-                if result.data().expect("we have not taken the data").visible {
-                    let _ = result_tx.send(TestWsSend::Result(result));
-                }
+                let _ = result_tx.send(TestWsSend::Result(result));
             }
 
             let elapsed = start.elapsed();
@@ -427,6 +537,8 @@ pub fn run_test(
                 },
             );
 
+            let _ = broadcast_team_update(&state, submitter).await;
+
             let score = match score {
                 Ok(score) => score,
                 Err(error) => {
@@ -439,11 +551,11 @@ pub fn run_test(
             };
 
             submission
-                .finish(&state.db, score, failed == 0, elapsed)
+                .finish(&state.db, score, failed == 0, passed, failed, elapsed)
                 .await
                 .map_err(|error| error!(?error, "Error updating submission in database"))?;
 
-            Ok::<_, Unit>(true)
+            Ok::<_, Unit>(false)
         };
 
         tokio::select! {
@@ -475,5 +587,5 @@ pub fn run_test(
         };
     });
 
-    Some(id)
+    Some(CreatedSubmission { id, cases })
 }

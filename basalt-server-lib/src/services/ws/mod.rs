@@ -90,15 +90,77 @@ impl From<&TestResult<TestData>> for TestResultSend {
     }
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubmissionResultSend {
+    index: usize,
+    state: TestResultState,
+    // milliseconds
+    time_taken: u64,
+}
+
+impl From<DbTestResults> for SubmissionResultSend {
+    fn from(value: DbTestResults) -> Self {
+        Self {
+            index: value.test_index as _,
+            state: value.result,
+            time_taken: value.time_taken.as_millis() as u64,
+        }
+    }
+}
+
+impl From<&TestResult<TestData>> for SubmissionResultSend {
+    fn from(value: &TestResult<TestData>) -> Self {
+        Self {
+            index: value.index(),
+            state: value.state().into(),
+            time_taken: value.time_taken().as_millis() as u64,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(untagged)]
+pub enum Results {
+    Test(Vec<TestResultSend>),
+    Submission(Vec<SubmissionResultSend>),
+}
+
+impl Results {
+    pub fn push(&mut self, test: &TestResult<TestData>) {
+        match self {
+            Results::Test(x) => x.push(test.into()),
+            Results::Submission(x) => x.push(test.into()),
+        }
+    }
+
+    pub fn clear(&mut self) {
+        match self {
+            Results::Test(x) => x.clear(),
+            Results::Submission(x) => x.clear(),
+        }
+    }
+
+    pub fn tests(tests: impl IntoIterator<Item = impl Into<TestResultSend>>) -> Self {
+        Self::Test(tests.into_iter().map(Into::into).collect())
+    }
+
+    pub fn submissions(tests: impl IntoIterator<Item = impl Into<SubmissionResultSend>>) -> Self {
+        Self::Submission(tests.into_iter().map(Into::into).collect())
+    }
+}
+
 /// A message that is sent from the server onto the websocket
 #[derive(Debug, Clone, Serialize)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
+#[serde(
+    tag = "kind",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase"
+)]
 pub enum WebSocketSend {
     /// One of more tests has finished
-    TestResults {
-        id: SubmissionId,
-        results: Vec<TestResultSend>,
-    },
+    #[serde(rename = "test-results")]
+    TestResults { id: SubmissionId, results: Results },
     /// Running tests were cancelled
     ///
     /// No further updates for this test will be sent
@@ -120,9 +182,10 @@ pub enum WebSocketSend {
     /// No further updates for this test will be sent
     TestsComplete {
         // NOTE: id comes from `history`.
-        results: Vec<TestResultSend>,
         #[serde(flatten)]
         history: SubmissionHistory,
+        results: Results,
+        remaining_attempts: Option<u32>,
     },
     #[serde(untagged)]
     Broadcast(Broadcast),
