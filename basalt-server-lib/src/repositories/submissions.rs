@@ -543,7 +543,7 @@ mod tests {
         .unwrap();
 
         let history = history
-            .finish(&sql, 42., false, Duration::from_secs(1))
+            .finish(&sql, 42., false, 1, 0, Duration::from_secs(1))
             .await
             .unwrap();
 
@@ -643,7 +643,7 @@ mod tests {
             }
 
             history
-                .finish(&sql, 0.0, true, Duration::from_secs(1))
+                .finish(&sql, 0.0, true, 1, 0, Duration::from_secs(1))
                 .await
                 .unwrap();
         }
@@ -676,7 +676,7 @@ mod tests {
             )
             .await
             .unwrap()
-            .finish(&sql, 0.0, false, Duration::from_secs(1))
+            .finish(&sql, 0.0, false, 1, 0, Duration::from_secs(1))
             .await
             .unwrap();
         }
@@ -709,7 +709,7 @@ mod tests {
             )
             .await
             .unwrap()
-            .finish(&sql, 42., true, Duration::from_secs(1))
+            .finish(&sql, 42., true, 1, 0, Duration::from_secs(1))
             .await
             .unwrap();
         }
@@ -740,7 +740,7 @@ mod tests {
             )
             .await
             .unwrap()
-            .finish(&sql, 0.0, true, Duration::from_secs(1))
+            .finish(&sql, 0.0, true, 1, 0, Duration::from_secs(1))
             .await
             .unwrap();
         }
@@ -762,7 +762,7 @@ mod tests {
             )
             .await
             .unwrap()
-            .finish(&sql, 0.0, true, Duration::from_secs(1))
+            .finish(&sql, 0.0, true, 1, 0, Duration::from_secs(1))
             .await
             .unwrap();
         }

@@ -7,8 +7,7 @@ use crate::{
     repositories::{
         announcements::{Announcement, AnnouncementId},
         submissions::{
-            CompileResultState, SubmissionHistory, SubmissionId, TestResultState,
-            TestResults as DbTestResults,
+            SubmissionHistory, SubmissionId, TestResultState, TestResults as DbTestResults,
         },
         users::{QuestionState, UserId},
     },
@@ -51,12 +50,6 @@ pub enum Broadcast {
     TeamUpdate {
         teams: Vec<TeamUpdate>,
     },
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TestsCompiled {
-    index: usize,
 }
 
 #[derive(Clone, Debug, Serialize)]

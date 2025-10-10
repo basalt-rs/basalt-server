@@ -26,7 +26,7 @@ pub async fn dummy_submission(
     )
     .await
     .unwrap()
-    .finish(db, score, true, Duration::from_secs(1))
+    .finish(db, score, true, 1, 0, Duration::from_secs(1))
     .await
     .unwrap()
 }

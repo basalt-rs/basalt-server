@@ -45,6 +45,10 @@ pub struct ConnectedClient {
 }
 
 impl ConnectedClient {
+    #[allow(
+        clippy::result_large_err,
+        reason = "We want to be consistent with the mpsc API"
+    )]
     pub fn send(
         &self,
         message: WebSocketSend,
