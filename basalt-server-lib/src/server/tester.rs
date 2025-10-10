@@ -148,6 +148,7 @@ enum TestWsSend {
     Complete,
     Cancelled,
     CompileFailed,
+    Compiled { stdout: String, stderr: String },
     Result(TestResult<TestData>),
 }
 
@@ -241,12 +242,17 @@ fn spawn_ws_sender(
                         remaining_attempts,
                     })
                 }
+                TestWsSend::Compiled { stdout, stderr } => {
+                    let _ =
+                        websocket_sender.send(WebSocketSend::TestsCompiled { id, stdout, stderr });
+                    None
+                }
                 TestWsSend::Result(ref r) => {
                     results.push(r);
                     None
                 }
             };
-            while let Ok(ref v) = result_rx.try_recv() {
+            while let Ok(v) = result_rx.try_recv() {
                 match v {
                     TestWsSend::Error => {
                         send = Some(WebSocketSend::TestsError { id });
@@ -276,6 +282,13 @@ fn spawn_ws_sender(
                             remaining_attempts,
                         });
                     }
+                    TestWsSend::Compiled { stdout, stderr } => {
+                        let _ = websocket_sender.send(WebSocketSend::TestsCompiled {
+                            id,
+                            stdout,
+                            stderr,
+                        });
+                    }
                     TestWsSend::Result(ref r) => results.push(r),
                 }
             }
@@ -285,7 +298,7 @@ fn spawn_ws_sender(
                     debug!("Websocket closed while trying to send test finish");
                 }
                 return;
-            } else {
+            } else if !results.is_empty() {
                 let send = WebSocketSend::TestResults {
                     id,
                     results: results.clone(),
@@ -463,6 +476,13 @@ pub fn run_test(
                 Ok(compiled) => compiled,
             };
 
+            if let Some(compile_result) = compiled.compile_result() {
+                let _ = result_tx.send(TestWsSend::Compiled {
+                    stdout: compile_result.stdout().to_str_lossy().into_owned(),
+                    stderr: compile_result.stderr().to_str_lossy().into_owned(),
+                });
+            }
+
             let submission = repositories::submissions::create_submission_history(
                 &state.db,
                 repositories::submissions::NewSubmissionHistory {
@@ -537,7 +557,10 @@ pub fn run_test(
                 },
             );
 
-            let _ = broadcast_team_update(&state, submitter).await;
+            let new_state = Arc::clone(&state);
+            tokio::spawn(async move {
+                let _ = broadcast_team_update(&new_state, submitter).await;
+            });
 
             let score = match score {
                 Ok(score) => score,

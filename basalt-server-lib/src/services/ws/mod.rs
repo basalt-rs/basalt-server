@@ -7,7 +7,8 @@ use crate::{
     repositories::{
         announcements::{Announcement, AnnouncementId},
         submissions::{
-            SubmissionHistory, SubmissionId, TestResultState, TestResults as DbTestResults,
+            CompileResultState, SubmissionHistory, SubmissionId, TestResultState,
+            TestResults as DbTestResults,
         },
         users::{QuestionState, UserId},
     },
@@ -50,6 +51,12 @@ pub enum Broadcast {
     TeamUpdate {
         teams: Vec<TeamUpdate>,
     },
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestsCompiled {
+    index: usize,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -127,6 +134,14 @@ pub enum Results {
 }
 
 impl Results {
+    pub fn tests(tests: impl IntoIterator<Item = impl Into<TestResultSend>>) -> Self {
+        Self::Test(tests.into_iter().map(Into::into).collect())
+    }
+
+    pub fn submissions(tests: impl IntoIterator<Item = impl Into<SubmissionResultSend>>) -> Self {
+        Self::Submission(tests.into_iter().map(Into::into).collect())
+    }
+
     pub fn push(&mut self, test: &TestResult<TestData>) {
         match self {
             Results::Test(x) => x.push(test.into()),
@@ -141,12 +156,11 @@ impl Results {
         }
     }
 
-    pub fn tests(tests: impl IntoIterator<Item = impl Into<TestResultSend>>) -> Self {
-        Self::Test(tests.into_iter().map(Into::into).collect())
-    }
-
-    pub fn submissions(tests: impl IntoIterator<Item = impl Into<SubmissionResultSend>>) -> Self {
-        Self::Submission(tests.into_iter().map(Into::into).collect())
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Results::Test(x) => x.is_empty(),
+            Results::Submission(x) => x.is_empty(),
+        }
     }
 }
 
@@ -159,8 +173,13 @@ impl Results {
 )]
 pub enum WebSocketSend {
     /// One of more tests has finished
-    #[serde(rename = "test-results")]
     TestResults { id: SubmissionId, results: Results },
+    /// Tests have finished compiling
+    TestsCompiled {
+        id: SubmissionId,
+        stdout: String,
+        stderr: String,
+    },
     /// Running tests were cancelled
     ///
     /// No further updates for this test will be sent
