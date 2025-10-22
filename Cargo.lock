@@ -2280,8 +2280,9 @@ checksum = "31ae425815400e5ed474178a7a22e275a9687086a12ca63ec793ff292d8fdae8"
 
 [[package]]
 name = "erudite"
-version = "0.1.0"
-source = "git+https://github.com/basalt-rs/erudite.git?rev=85883832#85883832b006f735123702c4b0d44ef307ef75f7"
+version = "1.0.0-rc.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2652b5c76d789d1777a87060497f1ca7e838539abd5c7e591782d11512a489a"
 dependencies = [
  "concat-idents",
  "derive_more",
