@@ -125,7 +125,8 @@ pub async fn get_submissions_state(
 }
 
 #[derive(Deserialize, IntoParams)]
-pub struct SubmissionsParams {
+#[into_params(parameter_in = Query)]
+pub struct SubmissionsQueryParams {
     user_id: Option<UserId>,
     question_index: usize,
 }
@@ -133,7 +134,7 @@ pub struct SubmissionsParams {
 #[axum::debug_handler]
 #[utoipa::path(
     get, path = "/submissions", tag = "testing",
-    params(SubmissionsParams),
+    params(SubmissionsQueryParams),
     responses(
         (status = OK, body = Vec<SubmissionHistory>, content_type = "application/json"),
         (status = 403, description = "User does not have permission to view the submissions for this user"),
@@ -141,7 +142,7 @@ pub struct SubmissionsParams {
 )]
 pub async fn get_submissions(
     user: User,
-    params: Query<SubmissionsParams>,
+    params: Query<SubmissionsQueryParams>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<SubmissionHistory>>, StatusCode> {
     let user_id = params.user_id.as_ref().unwrap_or(&user.id);

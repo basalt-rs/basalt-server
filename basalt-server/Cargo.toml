@@ -3,6 +3,7 @@ name = "basalt-server"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
+description = "Basalt server competition runtime"
 
 [features]
 doc-gen = []
