@@ -17,13 +17,7 @@ impl Default for ClockInfo {
     fn default() -> Self {
         Self {
             start_time: Instant::now(),
-            pause_time: {
-                if std::env::var("BASALT_UNPAUSED").is_ok_and(|paused| paused == "1") {
-                    None
-                } else {
-                    Some(Instant::now())
-                }
-            },
+            pause_time: Some(Instant::now()),
             total_time_paused: Default::default(),
         }
     }

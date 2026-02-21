@@ -282,7 +282,6 @@ impl From<i64> for WrappedDuration {
     }
 }
 
-// This is awful
 impl sqlx::Type<sqlx::Sqlite> for WrappedDuration {
     fn type_info() -> <sqlx::Sqlite as sqlx::Database>::TypeInfo {
         <i64 as sqlx::Type<sqlx::Sqlite>>::type_info()
