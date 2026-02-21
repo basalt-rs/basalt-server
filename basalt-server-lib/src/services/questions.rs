@@ -206,7 +206,7 @@ pub async fn create_submission(
             "/questions/{}/submissions/{}",
             question_index, created.id
         ))
-        .unwrap();
+        .expect("String is visible ASCII codes");
         Ok((
             StatusCode::CREATED,
             HeaderMap::from_iter([(axum::http::header::LOCATION, location)]),
@@ -250,7 +250,7 @@ pub async fn create_test(
             "/questions/{}/tests/{}",
             question_index, created.id
         ))
-        .unwrap();
+        .expect("String is visible ASCII codes");
         Ok((
             StatusCode::CREATED,
             HeaderMap::from_iter([(axum::http::header::LOCATION, location)]),
