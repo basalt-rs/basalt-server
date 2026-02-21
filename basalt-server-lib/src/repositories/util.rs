@@ -1,13 +1,23 @@
-use std::time::Duration;
+use std::{error::Error, time::Duration};
 
 use derive_more::{Deref, DerefMut, From, Into};
 use serde::{Deserialize, Serialize};
 use sqlx::{sqlite::SqliteTypeInfo, Decode, Encode};
 use utoipa::ToSchema;
 
-/// Define a type to be used as an ID (wraps a string)
+#[derive(Debug, derive_more::Display)]
+#[display("Invalid id string length, expected {}, got {}", expected, actual)]
+pub struct InvalidIdLength {
+    pub expected: usize,
+    pub actual: usize,
+}
+
+impl Error for InvalidIdLength {}
+
+/// Define a type to be used as a randomly generated unique ID
 ///
-/// Adds a `new` method that creates a random id using
+/// Defines a tuple struct holding a single array of fixed length that should be used as a unqiue
+/// identifier.  See macro implementation for more detail
 #[macro_export]
 macro_rules! define_id_type {
     ($name: ident) => {
@@ -30,7 +40,8 @@ macro_rules! define_id_type {
             pub fn new() -> Self {
                 use rand::{distributions::Alphanumeric, Rng};
                 let mut it = rand::thread_rng().sample_iter(Alphanumeric);
-                let buf: [u8; Self::LEN] = std::array::from_fn(|_| it.next().unwrap());
+                let buf: [u8; Self::LEN] =
+                    std::array::from_fn(|_| it.next().expect("This is an infinite iterator"));
                 Self(buf)
             }
 
@@ -55,21 +66,31 @@ macro_rules! define_id_type {
             }
         }
 
-        impl From<&str> for $name {
-            fn from(value: &str) -> Self {
-                assert!(value.len() == Self::LEN);
-                Self(
-                    value
-                        .as_bytes()
-                        .try_into()
-                        .expect("if value.len() == Self::LEN, then this works"),
-                )
+        impl std::str::FromStr for $name {
+            type Err = crate::repositories::util::InvalidIdLength;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                s.as_bytes()
+                    .try_into()
+                    .map_err(|_| crate::repositories::util::InvalidIdLength {
+                        expected: Self::LEN,
+                        actual: s.len(),
+                    })
+                    .map(Self)
             }
         }
 
+        /// Parse an ID from a string. This implementation exists to satisfy `sqlx` and must never
+        /// be called manually.  If a string needs to be parsed, prefer the [`FromStr`]
+        /// implementation.
+        ///
+        /// [`FromStr`]: std::str::FromStr
         impl From<String> for $name {
             fn from(value: String) -> Self {
-                Self::from(value.as_str())
+                value.parse().expect(concat!(
+                    "Invalid value pased to From<String> on ",
+                    stringify!($name),
+                ))
             }
         }
 
@@ -79,14 +100,7 @@ macro_rules! define_id_type {
                 D: serde::Deserializer<'de>,
             {
                 let s: &str = <&str>::deserialize(deserializer)?;
-                if s.len() != Self::LEN {
-                    return Err(serde::de::Error::custom(format!(
-                        "Invalid string length, got {}, expected {}",
-                        s.len(),
-                        Self::LEN
-                    )));
-                }
-                Ok(Self::from(s))
+                s.parse().map_err(serde::de::Error::custom)
             }
         }
 
@@ -123,19 +137,7 @@ macro_rules! define_id_type {
                 value: <sqlx::Sqlite as sqlx::Database>::ValueRef<'r>,
             ) -> Result<Self, sqlx::error::BoxDynError> {
                 let s = <&str as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;
-                if s.len() != Self::LEN {
-                    Err(format!(
-                        "Invalid length of string.  Got {}, expected {}",
-                        s.len(),
-                        Self::LEN
-                    ))?
-                }
-
-                Ok(Self(
-                    s.as_bytes()
-                        .try_into()
-                        .expect("if value.len() == Self::LEN, then this works"),
-                ))
+                Ok(s.parse()?)
             }
         }
     };
@@ -144,7 +146,15 @@ macro_rules! define_id_type {
 /// Define a new enum that works with sqlx via integer serialisation
 ///
 /// If parentheses are provided after the name, it will be used as a mapper from the type in
-/// parens, see submissions repo.
+/// parens, see submissions repo. (see implementatio for details)
+///
+/// The following traits get implemented for the generated struct:
+/// - [`serde::Serialize`]/[`serde::Deserialize`] (using kebab-case)
+/// - [`sqlx::Type`]
+/// - [`utoipa::ToSchema`]
+/// - Debug, Clone, Copy, Eq, PartialEq, Hash
+/// - From<i64>, Into<i64>, From<i32>, Into<i32>
+/// - From<$type> if specified as `Foo($type)`
 #[macro_export]
 macro_rules! define_sqlx_enum {
     // define_sqlx_enum! {
@@ -292,20 +302,10 @@ impl<'q> Encode<'q, sqlx::Sqlite> for WrappedDuration {
             .0
             .as_nanos()
             .try_into()
-            .map_err(|e| {
-                // NOTE: we're just panicing here, since u64::MAX nanos is more than 500 years,
-                // which we can just assume is a duration that will not show up.
-                format!(
-                    "Max duration: {:?}, got {:?}: {:?}",
-                    Duration::from_nanos(u64::MAX),
-                    self.0,
-                    e
-                )
-            })
-            .unwrap();
-        // NOTE: This cast is bad as it will do weird things like u64::MAX -> -1, but that's a
-        // fine, as long as we cast it back when we actually need to read the value.
-        <i64 as Encode<sqlx::Sqlite>>::encode(nanos as i64, args)
+            .expect("Duration must not exceed 500 years (u64::max nanos)");
+        // NOTE: This `cast_signed` is bad as it will do weird things like u64::MAX -> -1, but
+        // that's fine, as long as we cast it back when we actually need to read the value.
+        <i64 as Encode<sqlx::Sqlite>>::encode(nanos.cast_signed(), args)
     }
 }
 
@@ -313,8 +313,8 @@ impl<'r> Decode<'r, sqlx::Sqlite> for WrappedDuration {
     fn decode(
         value: <sqlx::Sqlite as sqlx::Database>::ValueRef<'r>,
     ) -> Result<Self, sqlx::error::BoxDynError> {
-        // NOTE: This i64 -> u64 cast is the opposite of the one in `encode_by_ref`
-        let nanos = <i64 as Decode<sqlx::Sqlite>>::decode(value)? as u64;
+        // NOTE: This `cast_unsigned` is to reverse that from `encode_by_ref`
+        let nanos = <i64 as Decode<sqlx::Sqlite>>::decode(value)?.cast_unsigned();
         Ok(WrappedDuration(Duration::from_nanos(nanos)))
     }
 }

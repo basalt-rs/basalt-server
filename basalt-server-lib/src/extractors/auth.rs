@@ -65,7 +65,10 @@ async fn extract(
 
     state.team_manager.check_in(&user.id);
 
-    Ok(Some(UserWithSession(user, session_id.to_string().into())))
+    Ok(Some(UserWithSession(
+        user,
+        session_id.parse().map_err(|_| AuthError::InvalidToken)?,
+    )))
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug, Deserialize, Serialize)]
