@@ -67,12 +67,12 @@ macro_rules! define_id_type {
         }
 
         impl std::str::FromStr for $name {
-            type Err = crate::repositories::util::InvalidIdLength;
+            type Err = $crate::repositories::util::InvalidIdLength;
 
             fn from_str(s: &str) -> Result<Self, Self::Err> {
                 s.as_bytes()
                     .try_into()
-                    .map_err(|_| crate::repositories::util::InvalidIdLength {
+                    .map_err(|_| $crate::repositories::util::InvalidIdLength {
                         expected: Self::LEN,
                         actual: s.len(),
                     })
