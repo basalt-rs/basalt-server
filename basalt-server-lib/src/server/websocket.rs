@@ -41,7 +41,7 @@ impl ConnectionKind {
 
 #[derive(Debug, Clone)]
 pub struct ConnectedClient {
-    send: mpsc::UnboundedSender<WebSocketSend>,
+    tx: mpsc::UnboundedSender<WebSocketSend>,
 }
 
 impl ConnectedClient {
@@ -53,7 +53,7 @@ impl ConnectedClient {
         &self,
         message: WebSocketSend,
     ) -> Result<(), tokio::sync::mpsc::error::SendError<WebSocketSend>> {
-        self.send.send(message)
+        self.tx.send(message)
     }
 }
 
@@ -83,7 +83,7 @@ impl WebSocketManager {
 
     pub fn add_connection(&self, who: ConnectionKind) -> mpsc::UnboundedReceiver<WebSocketSend> {
         let (tx, rx) = mpsc::unbounded_channel();
-        let connected = ConnectedClient { send: tx };
+        let connected = ConnectedClient { tx };
         // If this is a user, alert anybody waiting
         if let ConnectionKind::User { ref user } = who {
             if let Some((_, senders)) = self.waiting_connections.remove(user) {
