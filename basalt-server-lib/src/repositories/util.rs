@@ -21,124 +21,132 @@ impl Error for InvalidIdLength {}
 #[macro_export]
 macro_rules! define_id_type {
     ($name: ident) => {
-        #[derive(
-            ::derive_more::From,
-            ::derive_more::Into,
-            ::utoipa::ToSchema,
-            Clone,
-            Copy,
-            PartialEq,
-            Eq,
-            Hash,
-        )]
-        pub struct $name([u8; $name::LEN]);
+        ident_str::ident_str! {
+            #mod_name = concat!(stringify!($name), "_MODULE") =>
+            // This is wrapped in a module so that we don't expose the inner type of the id
+            #[allow(non_snake_case)]
+            mod #mod_name {
+                #[derive(
+                    ::derive_more::From,
+                    ::derive_more::Into,
+                    ::utoipa::ToSchema,
+                    Clone,
+                    Copy,
+                    PartialEq,
+                    Eq,
+                    Hash,
+                )]
+                pub struct $name([u8; $name::LEN]);
 
-        impl $name {
-            const LEN: usize = 20;
+                impl $name {
+                    const LEN: usize = 20;
 
-            #[allow(clippy::new_without_default)] // default is kind of bad here as new generates a random string
-            pub fn new() -> Self {
-                use rand::{distributions::Alphanumeric, Rng};
-                let mut it = rand::thread_rng().sample_iter(Alphanumeric);
-                let buf: [u8; Self::LEN] =
-                    std::array::from_fn(|_| it.next().expect("This is an infinite iterator"));
-                Self(buf)
+                    #[allow(clippy::new_without_default)] // default is kind of bad here as new generates a random string
+                    pub fn new() -> Self {
+                        use rand::{distributions::Alphanumeric, Rng};
+                        let mut it = rand::thread_rng().sample_iter(Alphanumeric);
+                        let buf: [u8; Self::LEN] =
+                            std::array::from_fn(|_| it.next().expect("This is an infinite iterator"));
+                        Self(buf)
+                    }
+
+                    fn as_str(&self) -> &str {
+                        // SAFETY: we define this as an array of alphanumeric characters, so it's already
+                        // utf-8
+                        unsafe { str::from_utf8_unchecked(&self.0) }
+                    }
+                }
+
+                impl std::fmt::Display for $name {
+                    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(f, "{}", self.as_str())
+                    }
+                }
+
+                impl std::fmt::Debug for $name {
+                    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        f.debug_tuple(stringify!($name))
+                            .field(&self.as_str())
+                            .finish()
+                    }
+                }
+
+                impl std::str::FromStr for $name {
+                    type Err = $crate::repositories::util::InvalidIdLength;
+
+                    fn from_str(s: &str) -> Result<Self, Self::Err> {
+                        s.as_bytes()
+                            .try_into()
+                            .map_err(|_| $crate::repositories::util::InvalidIdLength {
+                                expected: Self::LEN,
+                                actual: s.len(),
+                            })
+                            .map(Self)
+                    }
+                }
+
+                /// Parse an ID from a string. This implementation exists to satisfy `sqlx` and must never
+                /// be called manually.  If a string needs to be parsed, prefer the [`FromStr`]
+                /// implementation.
+                ///
+                /// [`FromStr`]: std::str::FromStr
+                impl From<String> for $name {
+                    fn from(value: String) -> Self {
+                        value.parse().expect(concat!(
+                            "Invalid value pased to From<String> on ",
+                            stringify!($name),
+                        ))
+                    }
+                }
+
+                impl<'de> serde::Deserialize<'de> for $name {
+                    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+                    where
+                        D: serde::Deserializer<'de>,
+                    {
+                        let s: &str = <&str>::deserialize(deserializer)?;
+                        s.parse().map_err(serde::de::Error::custom)
+                    }
+                }
+
+                impl serde::Serialize for $name {
+                    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+                    where
+                        S: serde::Serializer,
+                    {
+                        self.as_str().serialize(serializer)
+                    }
+                }
+
+                impl sqlx::Type<sqlx::Sqlite> for $name {
+                    fn type_info() -> <sqlx::Sqlite as sqlx::Database>::TypeInfo {
+                        <&str as sqlx::Type<sqlx::Sqlite>>::type_info()
+                    }
+
+                    fn compatible(ty: &sqlx::sqlite::SqliteTypeInfo) -> bool {
+                        <&str as sqlx::Type<sqlx::Sqlite>>::compatible(ty)
+                    }
+                }
+
+                impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for $name {
+                    fn encode_by_ref(
+                        &self,
+                        args: &mut <sqlx::Sqlite as sqlx::Database>::ArgumentBuffer<'q>,
+                    ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
+                        <String as sqlx::Encode<sqlx::Sqlite>>::encode(self.as_str().to_string(), args)
+                    }
+                }
+
+                impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for $name {
+                    fn decode(
+                        value: <sqlx::Sqlite as sqlx::Database>::ValueRef<'r>,
+                    ) -> Result<Self, sqlx::error::BoxDynError> {
+                        let s = <&str as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;
+                        Ok(s.parse()?)
+                    }
+                }
             }
-
-            fn as_str(&self) -> &str {
-                // SAFETY: we define this as an array of alphanumeric characters, so it's already
-                // utf-8
-                unsafe { str::from_utf8_unchecked(&self.0) }
-            }
-        }
-
-        impl std::fmt::Display for $name {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "{}", self.as_str())
-            }
-        }
-
-        impl std::fmt::Debug for $name {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.debug_tuple(stringify!($name))
-                    .field(&self.as_str())
-                    .finish()
-            }
-        }
-
-        impl std::str::FromStr for $name {
-            type Err = $crate::repositories::util::InvalidIdLength;
-
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
-                s.as_bytes()
-                    .try_into()
-                    .map_err(|_| $crate::repositories::util::InvalidIdLength {
-                        expected: Self::LEN,
-                        actual: s.len(),
-                    })
-                    .map(Self)
-            }
-        }
-
-        /// Parse an ID from a string. This implementation exists to satisfy `sqlx` and must never
-        /// be called manually.  If a string needs to be parsed, prefer the [`FromStr`]
-        /// implementation.
-        ///
-        /// [`FromStr`]: std::str::FromStr
-        impl From<String> for $name {
-            fn from(value: String) -> Self {
-                value.parse().expect(concat!(
-                    "Invalid value pased to From<String> on ",
-                    stringify!($name),
-                ))
-            }
-        }
-
-        impl<'de> serde::Deserialize<'de> for $name {
-            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-            where
-                D: serde::Deserializer<'de>,
-            {
-                let s: &str = <&str>::deserialize(deserializer)?;
-                s.parse().map_err(serde::de::Error::custom)
-            }
-        }
-
-        impl serde::Serialize for $name {
-            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-            where
-                S: serde::Serializer,
-            {
-                self.as_str().serialize(serializer)
-            }
-        }
-
-        impl sqlx::Type<sqlx::Sqlite> for $name {
-            fn type_info() -> <sqlx::Sqlite as sqlx::Database>::TypeInfo {
-                <&str as sqlx::Type<sqlx::Sqlite>>::type_info()
-            }
-
-            fn compatible(ty: &sqlx::sqlite::SqliteTypeInfo) -> bool {
-                <&str as sqlx::Type<sqlx::Sqlite>>::compatible(ty)
-            }
-        }
-
-        impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for $name {
-            fn encode_by_ref(
-                &self,
-                args: &mut <sqlx::Sqlite as sqlx::Database>::ArgumentBuffer<'q>,
-            ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
-                <String as sqlx::Encode<sqlx::Sqlite>>::encode(self.as_str().to_string(), args)
-            }
-        }
-
-        impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for $name {
-            fn decode(
-                value: <sqlx::Sqlite as sqlx::Database>::ValueRef<'r>,
-            ) -> Result<Self, sqlx::error::BoxDynError> {
-                let s = <&str as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;
-                Ok(s.parse()?)
-            }
+            pub use #mod_name::$name;
         }
     };
 }
