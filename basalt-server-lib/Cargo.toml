@@ -47,6 +47,7 @@ futures = "0.3.31"
 
 [dev-dependencies]
 async-tempfile = { version = "0.6.0", features = ["uuid"] }
+tracing-subscriber.workspace = true
 
 [build-dependencies]
 tokio = { version = "1.43.0", features = ["full"] }

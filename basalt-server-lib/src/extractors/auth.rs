@@ -122,6 +122,12 @@ impl FromRequestParts<Arc<AppState>> for OptionalUser {
     }
 }
 
+impl From<User> for OptionalUser {
+    fn from(value: User) -> Self {
+        OptionalUser(Some(value))
+    }
+}
+
 #[derive(Debug, derive_more::From, derive_more::Deref)]
 #[repr(transparent)]
 pub struct HostUser(pub User);

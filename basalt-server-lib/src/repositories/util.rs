@@ -249,7 +249,7 @@ macro_rules! define_sqlx_enum {
     }
 }
 
-#[derive(Clone, Debug, From, Into, Deref, DerefMut, ToSchema)]
+#[derive(Clone, Debug, From, Into, Deref, DerefMut, ToSchema, PartialEq, Eq, Hash)]
 /// Wrapped duration type that allows us to implement sqlx/serde/utoipa traits
 ///
 /// Note: the (de)serialisation of this type uses milliseconds, so any sub-millisecond precision is

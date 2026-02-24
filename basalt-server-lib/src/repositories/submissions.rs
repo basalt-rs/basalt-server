@@ -31,7 +31,7 @@ define_sqlx_enum! {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, sqlx::FromRow, ToSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, sqlx::FromRow, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SubmissionHistory {
     pub id: SubmissionId,
@@ -77,7 +77,7 @@ define_sqlx_enum! {
 }
 
 /// History of tests that have been run on submissions
-#[derive(Clone, Debug, Serialize, Deserialize, sqlx::FromRow, ToSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, sqlx::FromRow, ToSchema)]
 pub struct TestResults {
     pub submission: SubmissionId,
     pub test_index: i64, // _really_ should be usize, but sqlx doesn't like that
@@ -91,11 +91,11 @@ pub struct TestResults {
 
 /// History of tests that have been run on submissions
 pub struct NewTestResults<'a> {
-    result: TestResultState,
-    stdout: Cow<'a, str>,
-    stderr: Cow<'a, str>,
-    exit_status: i32,
-    time_taken: WrappedDuration,
+    pub result: TestResultState,
+    pub stdout: Cow<'a, str>,
+    pub stderr: Cow<'a, str>,
+    pub exit_status: i32,
+    pub time_taken: WrappedDuration,
 }
 
 impl<'a, T> From<&'a TestResult<T>> for NewTestResults<'a> {

@@ -372,7 +372,7 @@ pub struct CreatedSubmission {
     pub cases: u32,
 }
 
-pub fn run_test(
+pub async fn run_test(
     state: Arc<AppState>,
     language: String,
     question_index: usize,
@@ -397,6 +397,7 @@ pub fn run_test(
         .filter(|x| !test_only || x.visible)
         .count() as u32;
 
+    let (setup_tx, setup_rx) = oneshot::channel();
     let (abort_tx, abort_rx) = oneshot::channel();
     let id = SubmissionId::new();
     state.tester.add_abort_handle(id, abort_tx);
@@ -497,6 +498,8 @@ pub fn run_test(
             )
             .await
             .map_err(|error| error!(?error, "Error adding submission to database"))?;
+
+            let _ = setup_tx.send(());
 
             let mut handle = compiled.run();
 
@@ -606,6 +609,7 @@ pub fn run_test(
 
         let _ = broadcast_team_update(&state, submitter).await;
     });
+    let _ = setup_rx.await;
 
     Some(CreatedSubmission { id, cases })
 }

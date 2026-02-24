@@ -24,14 +24,14 @@ use tracing::error;
 use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
-#[derive(serde::Serialize, utoipa::ToSchema)]
+#[derive(Debug, PartialEq, Eq, serde::Serialize, utoipa::ToSchema)]
 pub struct TestResponse {
     pub input: String,
     pub output: String,
     pub visible: bool,
 }
 
-#[derive(serde::Serialize, utoipa::ToSchema)]
+#[derive(Debug, PartialEq, Eq, serde::Serialize, utoipa::ToSchema)]
 pub struct LanguageSyntax {
     name: String,
     #[schema(value_type = String)]
@@ -57,7 +57,7 @@ impl From<&Language> for LanguageSyntax {
     }
 }
 
-#[derive(serde::Serialize, utoipa::ToSchema)]
+#[derive(Debug, PartialEq, Eq, serde::Serialize, utoipa::ToSchema)]
 pub struct QuestionResponse {
     languages: Vec<LanguageSyntax>,
     title: String,
@@ -202,7 +202,9 @@ pub async fn create_submission(
         body.solution,
         false,
         user.id,
-    ) {
+    )
+    .await
+    {
         let location = HeaderValue::from_str(&format!(
             "/questions/{}/submissions/{}",
             question_index, created.id
@@ -247,7 +249,9 @@ pub async fn create_test(
         body.solution,
         true,
         user.id,
-    ) {
+    )
+    .await
+    {
         let location = HeaderValue::from_str(&format!(
             "/questions/{}/tests/{}",
             question_index, created.id
@@ -414,6 +418,13 @@ pub async fn abort_submission(
     }
 
     if state.tester.abort(id) {
+        repositories::submissions::PartialSubmissionHistory(submission)
+            .cancel(&state.db)
+            .await
+            .map_err(|error| {
+                error!(?error, ?id, "Error while marking submission cancelled");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
         Ok(())
     } else {
         Err(StatusCode::NOT_FOUND)
@@ -488,4 +499,1268 @@ pub fn router() -> OpenApiRouter<Arc<AppState>> {
 
 pub fn service() -> axum::Router<Arc<AppState>> {
     router().split_for_parts().0
+}
+
+#[cfg(test)]
+mod test {
+    use std::time::Duration;
+
+    use crate::{
+        db_user, mock_state,
+        repositories::submissions::{NewTestResults, SubmissionState, TestResultState},
+        testing::setup_test_logger,
+        user,
+    };
+    use bedrock::{
+        language::{BuiltInLanguage, Version},
+        packet::Packet,
+    };
+
+    use super::*;
+
+    macro_rules! double_problem_packet {
+        () => {
+            Packet {
+                title: "".into(),
+                preamble: None,
+                problems: vec![
+                    Problem {
+                        languages: None,
+                        title: "problem1".into(),
+                        description: None,
+                        tests: vec![
+                            Test {
+                                input: "input1a".into(),
+                                output: "output1a".into(),
+                                visible: true,
+                            },
+                            Test {
+                                input: "input1b".into(),
+                                output: "output1b".into(),
+                                visible: false,
+                            },
+                        ],
+                        points: Some(10),
+                    }
+                    .into(),
+                    Problem {
+                        languages: None,
+                        title: "problem2".into(),
+                        description: None,
+                        tests: vec![
+                            Test {
+                                input: "input2a".into(),
+                                output: "output2a".into(),
+                                visible: false,
+                            },
+                            Test {
+                                input: "input2b".into(),
+                                output: "output2b".into(),
+                                visible: true,
+                            },
+                        ],
+                        points: Some(10),
+                    }
+                    .into(),
+                ],
+            }
+            .into()
+        };
+    }
+
+    macro_rules! rust_language_set {
+        () => {{
+            let mut set = LanguageSet::new();
+            set.insert(Language::BuiltIn {
+                language: BuiltInLanguage::Rust,
+                version: Version::Latest,
+            });
+            set.into()
+        }};
+    }
+    macro_rules! sleep_language_set {
+        () => {{
+            let mut set = LanguageSet::new();
+            set.insert(Language::Custom {
+                raw_name: "sleep".into(),
+                name: "sleep".into(),
+                build: None,
+                run: "sleep 10s".into(),
+                source_file: "foo.sleep".into(),
+                syntax: Default::default(),
+            });
+            set.into()
+        }};
+    }
+
+    macro_rules! create_submission {
+        ($db: expr, $submitter: expr, $test_only: literal) => {{
+            let history = repositories::submissions::create_submission_history(
+                $db,
+                repositories::submissions::NewSubmissionHistory {
+                    id: SubmissionId::new(),
+                    submitter: $submitter,
+                    code: "fn main() {}",
+                    question_index: 0,
+                    language: "rust",
+                    compile_result: None,
+                    test_only: $test_only,
+                },
+            )
+            .await
+            .unwrap()
+            .finish($db, 10., true, 2, 2, Duration::from_secs(1))
+            .await
+            .unwrap();
+
+            repositories::submissions::create_test_results(
+                $db,
+                &history.id,
+                0,
+                NewTestResults {
+                    result: TestResultState::Pass,
+                    stdout: "stdout".into(),
+                    stderr: "stderr".into(),
+                    exit_status: 0,
+                    time_taken: Duration::from_secs(1).into(),
+                },
+            )
+            .await
+            .unwrap();
+            history
+        }};
+    }
+
+    #[tokio::test]
+    async fn get_all_questions_competitor() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                ..Config::default()
+            }
+        );
+
+        let Json(value) = get_all(user!("foobar", Competitor), State(state)).await;
+
+        assert_eq!(
+            value,
+            vec![
+                QuestionResponse {
+                    languages: vec![],
+                    title: "problem1".into(),
+                    description: None,
+                    tests: vec![TestResponse {
+                        input: "input1a".into(),
+                        output: "output1a".into(),
+                        visible: true,
+                    }],
+                    points: Some(10)
+                },
+                QuestionResponse {
+                    languages: vec![],
+                    title: "problem2".into(),
+                    description: None,
+                    tests: vec![TestResponse {
+                        input: "input2b".into(),
+                        output: "output2b".into(),
+                        visible: true,
+                    }],
+                    points: Some(10)
+                }
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn get_all_questions_host() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                ..Config::default()
+            }
+        );
+        let Json(value) = get_all(user!("foobar", Host), State(state)).await;
+
+        assert_eq!(
+            value,
+            vec![
+                QuestionResponse {
+                    languages: vec![],
+                    title: "problem1".into(),
+                    description: None,
+                    tests: vec![
+                        TestResponse {
+                            input: "input1a".into(),
+                            output: "output1a".into(),
+                            visible: true,
+                        },
+                        TestResponse {
+                            input: "input1b".into(),
+                            output: "output1b".into(),
+                            visible: false,
+                        },
+                    ],
+                    points: Some(10)
+                },
+                QuestionResponse {
+                    languages: vec![],
+                    title: "problem2".into(),
+                    description: None,
+                    tests: vec![
+                        TestResponse {
+                            input: "input2a".into(),
+                            output: "output2a".into(),
+                            visible: false,
+                        },
+                        TestResponse {
+                            input: "input2b".into(),
+                            output: "output2b".into(),
+                            visible: true,
+                        },
+                    ],
+                    points: Some(10)
+                }
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn get_specific_question_host() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                ..Config::default()
+            }
+        );
+
+        let Json(value) =
+            get_specific_question(State(state), user!("foobar", Host), axum::extract::Path(1))
+                .await
+                .unwrap();
+
+        assert_eq!(
+            *value,
+            QuestionResponse {
+                languages: vec![],
+                title: "problem2".into(),
+                description: None,
+                tests: vec![
+                    TestResponse {
+                        input: "input2a".into(),
+                        output: "output2a".into(),
+                        visible: false,
+                    },
+                    TestResponse {
+                        input: "input2b".into(),
+                        output: "output2b".into(),
+                        visible: true,
+                    },
+                ],
+                points: Some(10)
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn get_specific_question_competitor() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                ..Config::default()
+            }
+        );
+
+        let Json(value) = get_specific_question(
+            State(state),
+            user!("foobar", Competitor),
+            axum::extract::Path(1),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            *value,
+            QuestionResponse {
+                languages: vec![],
+                title: "problem2".into(),
+                description: None,
+                tests: vec![TestResponse {
+                    input: "input2b".into(),
+                    output: "output2b".into(),
+                    visible: true,
+                }],
+                points: Some(10)
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn get_specific_question_404() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                ..Config::default()
+            }
+        );
+
+        let code = get_specific_question(
+            State(state),
+            user!("foobar", Competitor),
+            axum::extract::Path(42),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(code, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn create_submission_valid() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: rust_language_set!(),
+                ..Config::default()
+            }
+        );
+
+        let user = db_user!(&state.db, "foobar", Competitor);
+
+        state.clock.write().await.unpause();
+
+        const SOLUTION: &str = r#"
+            fn main() {}
+        "#;
+
+        let (status, header, Json(created)) = create_submission(
+            user,
+            axum::extract::Path(0),
+            State(state),
+            Json(SubmissionBody {
+                language: "rust".into(),
+                solution: SOLUTION.into(),
+            }),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(status, StatusCode::CREATED);
+        assert!(header.contains_key(axum::http::header::LOCATION));
+        assert_eq!(
+            header[axum::http::header::LOCATION].to_str().unwrap(),
+            format!("/questions/0/submissions/{}", created.id)
+        );
+        assert!(matches!(created, CreatedSubmission { id: _, cases: 2 }));
+    }
+
+    #[tokio::test]
+    async fn create_submission_404() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: rust_language_set!(),
+                ..Config::default()
+            }
+        );
+
+        state.clock.write().await.unpause();
+
+        const SOLUTION: &str = r#"
+            fn main() {}
+        "#;
+
+        let code = create_submission(
+            user!("foobar", Competitor),
+            axum::extract::Path(42),
+            State(state),
+            Json(SubmissionBody {
+                language: "rust".into(),
+                solution: SOLUTION.into(),
+            }),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(code, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn create_submission_paused() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: rust_language_set!(),
+                ..Config::default()
+            }
+        );
+
+        state.clock.write().await.pause();
+
+        const SOLUTION: &str = r#"
+            fn main() {}
+        "#;
+
+        let code = create_submission(
+            user!("foobar", Competitor),
+            axum::extract::Path(0),
+            State(state),
+            Json(SubmissionBody {
+                language: "rust".into(),
+                solution: SOLUTION.into(),
+            }),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(code, StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn create_test_valid() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: rust_language_set!(),
+                ..Config::default()
+            }
+        );
+
+        let user = db_user!(&state.db, "foobar", Competitor);
+
+        state.clock.write().await.unpause();
+
+        const SOLUTION: &str = r#"
+            fn main() {}
+        "#;
+
+        let (status, header, Json(created)) = create_test(
+            user,
+            axum::extract::Path(0),
+            State(state),
+            Json(SubmissionBody {
+                language: "rust".into(),
+                solution: SOLUTION.into(),
+            }),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(status, StatusCode::CREATED);
+        assert!(header.contains_key(axum::http::header::LOCATION));
+        assert_eq!(
+            header[axum::http::header::LOCATION].to_str().unwrap(),
+            format!("/questions/0/tests/{}", created.id)
+        );
+        assert!(matches!(created, CreatedSubmission { id: _, cases: 1 }));
+    }
+
+    #[tokio::test]
+    async fn create_test_404() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: rust_language_set!(),
+                ..Config::default()
+            }
+        );
+
+        state.clock.write().await.unpause();
+
+        const SOLUTION: &str = r#"
+            fn main() {}
+        "#;
+
+        let code = create_test(
+            user!("foobar", Competitor),
+            axum::extract::Path(42),
+            State(state),
+            Json(SubmissionBody {
+                language: "rust".into(),
+                solution: SOLUTION.into(),
+            }),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(code, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn create_test_paused() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: rust_language_set!(),
+                ..Config::default()
+            }
+        );
+
+        state.clock.write().await.pause();
+
+        const SOLUTION: &str = r#"
+            fn main() {}
+        "#;
+
+        let code = create_test(
+            user!("foobar", Competitor),
+            axum::extract::Path(0),
+            State(state),
+            Json(SubmissionBody {
+                language: "rust".into(),
+                solution: SOLUTION.into(),
+            }),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(code, StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn get_submission_valid() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: rust_language_set!(),
+                ..Config::default()
+            }
+        );
+
+        let user = db_user!(&state.db, "foobar", Competitor);
+        let history = create_submission!(&state.db, user.id, false);
+        state.clock.write().await.unpause();
+
+        let Json(state) = get_submission(user, axum::extract::Path((0, history.id)), State(state))
+            .await
+            .unwrap();
+
+        assert_eq!(state.submission_history, history);
+        assert_eq!(
+            state.test_results,
+            vec![TestResults {
+                submission: history.id,
+                test_index: 0,
+                result: TestResultState::Pass,
+                stdout: "stdout".into(),
+                stderr: "stderr".into(),
+                exit_status: 0,
+                time_taken: Duration::from_secs(1).into(),
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn get_submission_404() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: rust_language_set!(),
+                ..Config::default()
+            }
+        );
+
+        let submission_id = SubmissionId::new();
+        state.clock.write().await.unpause();
+
+        let code = get_submission(
+            user!("foobar", Competitor),
+            axum::extract::Path((0, submission_id)),
+            State(state),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(code, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn get_submission_test() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: rust_language_set!(),
+                ..Config::default()
+            }
+        );
+
+        let user = db_user!(&state.db, "foobar", Competitor);
+        let history = create_submission!(&state.db, user.id, true);
+
+        state.clock.write().await.unpause();
+
+        let code = get_submission(user, axum::extract::Path((0, history.id)), State(state))
+            .await
+            .unwrap_err();
+
+        assert_eq!(code, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn get_submission_other_user() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: rust_language_set!(),
+                ..Config::default()
+            }
+        );
+
+        let user = db_user!(&state.db, "foobar", Competitor);
+        let history = create_submission!(&state.db, user.id, false);
+
+        state.clock.write().await.unpause();
+
+        let code = get_submission(
+            user!("not_foobar", Competitor),
+            axum::extract::Path((0, history.id)),
+            State(state),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(code, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn get_submission_other_user_host() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: rust_language_set!(),
+                ..Config::default()
+            }
+        );
+
+        let user = db_user!(&state.db, "foobar", Competitor);
+        let history = create_submission!(&state.db, user.id, false);
+
+        state.clock.write().await.unpause();
+
+        let Json(state) = get_submission(
+            user!("not_foobar", Host),
+            axum::extract::Path((0, history.id)),
+            State(state),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(state.submission_history, history);
+        assert_eq!(
+            state.test_results,
+            vec![TestResults {
+                submission: history.id,
+                test_index: 0,
+                result: TestResultState::Pass,
+                stdout: "stdout".into(),
+                stderr: "stderr".into(),
+                exit_status: 0,
+                time_taken: Duration::from_secs(1).into(),
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn get_test_valid() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: rust_language_set!(),
+                ..Config::default()
+            }
+        );
+
+        let user = db_user!(&state.db, "foobar", Competitor);
+        let history = create_submission!(&state.db, user.id, true);
+
+        state.clock.write().await.unpause();
+
+        let Json(state) = get_test(user, axum::extract::Path((0, history.id)), State(state))
+            .await
+            .unwrap();
+
+        assert_eq!(state.submission_history, history);
+        assert_eq!(
+            state.test_results,
+            vec![TestResults {
+                submission: history.id,
+                test_index: 0,
+                result: TestResultState::Pass,
+                stdout: "stdout".into(),
+                stderr: "stderr".into(),
+                exit_status: 0,
+                time_taken: Duration::from_secs(1).into(),
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn get_test_404() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: rust_language_set!(),
+                ..Config::default()
+            }
+        );
+
+        let submission_id = SubmissionId::new();
+        state.clock.write().await.unpause();
+
+        let code = get_test(
+            user!("foobar", Competitor),
+            axum::extract::Path((0, submission_id)),
+            State(state),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(code, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn get_test_submission() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: rust_language_set!(),
+                ..Config::default()
+            }
+        );
+
+        let user = db_user!(&state.db, "foobar", Competitor);
+        let history = create_submission!(&state.db, user.id, false);
+
+        state.clock.write().await.unpause();
+
+        let code = get_test(user, axum::extract::Path((0, history.id)), State(state))
+            .await
+            .unwrap_err();
+
+        assert_eq!(code, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn get_test_other_user() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: rust_language_set!(),
+                ..Config::default()
+            }
+        );
+
+        let user = db_user!(&state.db, "foobar", Competitor);
+        let history = create_submission!(&state.db, user.id, true);
+
+        state.clock.write().await.unpause();
+
+        let code = get_test(
+            user!("not_foobar", Competitor),
+            axum::extract::Path((0, history.id)),
+            State(state),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(code, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn get_test_other_user_host() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: rust_language_set!(),
+                ..Config::default()
+            }
+        );
+
+        let user = db_user!(&state.db, "foobar", Competitor);
+        let history = create_submission!(&state.db, user.id, true);
+
+        state.clock.write().await.unpause();
+
+        let Json(state) = get_test(
+            user!("not_foobar", Host),
+            axum::extract::Path((0, history.id)),
+            State(state),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(state.submission_history, history);
+        assert_eq!(
+            state.test_results,
+            vec![TestResults {
+                submission: history.id,
+                test_index: 0,
+                result: TestResultState::Pass,
+                stdout: "stdout".into(),
+                stderr: "stderr".into(),
+                exit_status: 0,
+                time_taken: Duration::from_secs(1).into(),
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn abort_submission_valid() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: sleep_language_set!(),
+                ..Config::default()
+            }
+        );
+        state.clock.write().await.unpause();
+
+        let user = db_user!(&state.db, "foobar", Competitor);
+
+        let (_, _, Json(submission)) = create_submission(
+            user.clone(),
+            axum::extract::Path(0),
+            State(Arc::clone(&state)),
+            Json(SubmissionBody {
+                language: "sleep".into(),
+                solution: "".into(),
+            }),
+        )
+        .await
+        .unwrap();
+
+        abort_submission(
+            user,
+            axum::extract::Path((0, submission.id)),
+            State(Arc::clone(&state)),
+        )
+        .await
+        .unwrap();
+
+        // sleep to ensure the abort gets completed
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let submission = repositories::submissions::get_submission(&state.db, submission.id)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(submission.state, SubmissionState::Cancelled);
+    }
+
+    #[tokio::test]
+    async fn abort_submission_404() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: sleep_language_set!(),
+                ..Config::default()
+            }
+        );
+        state.clock.write().await.unpause();
+
+        let user = db_user!(&state.db, "foobar", Competitor);
+
+        let code = abort_submission(
+            user,
+            axum::extract::Path((0, SubmissionId::new())),
+            State(Arc::clone(&state)),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(code, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn abort_submission_test() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: sleep_language_set!(),
+                ..Config::default()
+            }
+        );
+        state.clock.write().await.unpause();
+
+        let user = db_user!(&state.db, "foobar", Competitor);
+
+        let (_, _, Json(submission)) = create_test(
+            user.clone(),
+            axum::extract::Path(0),
+            State(Arc::clone(&state)),
+            Json(SubmissionBody {
+                language: "sleep".into(),
+                solution: "".into(),
+            }),
+        )
+        .await
+        .unwrap();
+
+        let code = abort_submission(
+            user,
+            axum::extract::Path((0, submission.id)),
+            State(Arc::clone(&state)),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(code, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn abort_submission_other_user() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: sleep_language_set!(),
+                ..Config::default()
+            }
+        );
+        state.clock.write().await.unpause();
+
+        let user = db_user!(&state.db, "foobar", Competitor);
+
+        let (_, _, Json(submission)) = create_submission(
+            user.clone(),
+            axum::extract::Path(0),
+            State(Arc::clone(&state)),
+            Json(SubmissionBody {
+                language: "sleep".into(),
+                solution: "".into(),
+            }),
+        )
+        .await
+        .unwrap();
+
+        let code = abort_submission(
+            user!("not_foobar", Competitor),
+            axum::extract::Path((0, submission.id)),
+            State(Arc::clone(&state)),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(code, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn abort_submission_other_user_host() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: sleep_language_set!(),
+                ..Config::default()
+            }
+        );
+        state.clock.write().await.unpause();
+
+        let user = db_user!(&state.db, "foobar", Competitor);
+
+        let (_, _, Json(submission)) = create_submission(
+            user.clone(),
+            axum::extract::Path(0),
+            State(Arc::clone(&state)),
+            Json(SubmissionBody {
+                language: "sleep".into(),
+                solution: "".into(),
+            }),
+        )
+        .await
+        .unwrap();
+
+        abort_submission(
+            user!("not_foobar", Host),
+            axum::extract::Path((0, submission.id)),
+            State(Arc::clone(&state)),
+        )
+        .await
+        .unwrap();
+
+        // sleep to ensure the abort gets completed
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let submission = repositories::submissions::get_submission(&state.db, submission.id)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(submission.state, SubmissionState::Cancelled);
+    }
+
+    #[tokio::test]
+    async fn abort_test_valid() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: sleep_language_set!(),
+                ..Config::default()
+            }
+        );
+        state.clock.write().await.unpause();
+
+        let user = db_user!(&state.db, "foobar", Competitor);
+
+        let (_, _, Json(submission)) = create_test(
+            user.clone(),
+            axum::extract::Path(0),
+            State(Arc::clone(&state)),
+            Json(SubmissionBody {
+                language: "sleep".into(),
+                solution: "".into(),
+            }),
+        )
+        .await
+        .unwrap();
+
+        abort_test(
+            user,
+            axum::extract::Path((0, submission.id)),
+            State(Arc::clone(&state)),
+        )
+        .await
+        .unwrap();
+
+        // sleep to ensure the abort gets completed
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let submission = repositories::submissions::get_submission(&state.db, submission.id)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(submission.state, SubmissionState::Cancelled);
+    }
+
+    #[tokio::test]
+    async fn abort_test_404() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: sleep_language_set!(),
+                ..Config::default()
+            }
+        );
+        state.clock.write().await.unpause();
+
+        let user = db_user!(&state.db, "foobar", Competitor);
+
+        let code = abort_test(
+            user,
+            axum::extract::Path((0, SubmissionId::new())),
+            State(Arc::clone(&state)),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(code, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn abort_test_submission() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: sleep_language_set!(),
+                ..Config::default()
+            }
+        );
+        state.clock.write().await.unpause();
+
+        let user = db_user!(&state.db, "foobar", Competitor);
+
+        let (_, _, Json(submission)) = create_submission(
+            user.clone(),
+            axum::extract::Path(0),
+            State(Arc::clone(&state)),
+            Json(SubmissionBody {
+                language: "sleep".into(),
+                solution: "".into(),
+            }),
+        )
+        .await
+        .unwrap();
+
+        let code = abort_test(
+            user,
+            axum::extract::Path((0, submission.id)),
+            State(Arc::clone(&state)),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(code, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn abort_test_other_user() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: sleep_language_set!(),
+                ..Config::default()
+            }
+        );
+        state.clock.write().await.unpause();
+
+        let user = db_user!(&state.db, "foobar", Competitor);
+
+        let (_, _, Json(submission)) = create_test(
+            user,
+            axum::extract::Path(0),
+            State(Arc::clone(&state)),
+            Json(SubmissionBody {
+                language: "sleep".into(),
+                solution: "".into(),
+            }),
+        )
+        .await
+        .unwrap();
+
+        let code = abort_test(
+            user!("not_foobar", Competitor),
+            axum::extract::Path((0, submission.id)),
+            State(Arc::clone(&state)),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(code, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn abort_test_other_user_host() {
+        setup_test_logger();
+
+        mock_state!(
+            let state;
+            Config {
+                packet: double_problem_packet!(),
+                languages: sleep_language_set!(),
+                ..Config::default()
+            }
+        );
+        state.clock.write().await.unpause();
+
+        let user = db_user!(&state.db, "foobar", Competitor);
+
+        let (_, _, Json(submission)) = create_test(
+            user,
+            axum::extract::Path(0),
+            State(Arc::clone(&state)),
+            Json(SubmissionBody {
+                language: "sleep".into(),
+                solution: "".into(),
+            }),
+        )
+        .await
+        .unwrap();
+
+        abort_test(
+            user!("not_foobar", Host),
+            axum::extract::Path((0, submission.id)),
+            State(Arc::clone(&state)),
+        )
+        .await
+        .unwrap();
+
+        // sleep to ensure the abort gets completed
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let submission = repositories::submissions::get_submission(&state.db, submission.id)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(submission.state, SubmissionState::Cancelled);
+    }
 }
