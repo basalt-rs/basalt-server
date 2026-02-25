@@ -42,12 +42,12 @@ chrono = { version = "0.4.40", features = ["serde"] }
 rustyscript = { git = "https://github.com/rscarson/rustyscript.git", branch = "master", features = [
     "http",
 ], optional = true }
-reqwest = { version = "0.11.0", features = ["json"], optional = true }
+reqwest = { version = "0.13.2", features = ["json"], optional = true }
 futures = "0.3.31"
 ident-str = "0.1.0"
 
 [dev-dependencies]
-async-tempfile = { version = "0.6.0", features = ["uuid"] }
+async-tempfile = { workspace = true, features = ["uuid"] }
 tracing-subscriber.workspace = true
 
 [build-dependencies]

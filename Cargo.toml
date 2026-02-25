@@ -5,12 +5,12 @@ resolver = "2"
 [workspace.package]
 edition = "2021"
 version = "0.1.0"
-rust-version = "1.87"
+rust-version = "1.93"
 
 [workspace.dependencies]
 anyhow = "1.0.95"
 argon2 = { version = "0.5.3", features = ["password-hash"] }
-async-tempfile = "0.6.0"
+async-tempfile = "0.7.0"
 axum-extra = { version = "0.10.0", features = ["typed-header"] }
 axum = { version = "0.8.1", features = ["macros", "ws"] }
 bedrock = { git = "https://github.com/basalt-rs/bedrock.git", rev = "0deb96b", features = [
@@ -30,7 +30,7 @@ rand = "0.8.5"
 redact = { version = "0.1.10", features = ["serde"] }
 scopeguard = "1.2.0"
 serde_json = "1.0.138"
-serde = { version = "1.0.217", features = ["derive"] }
+serde = { version = "1.0.219", features = ["derive"] }
 sqlx = { version = "0.8.3", features = [
     "sqlite",
     "runtime-tokio-native-tls",
