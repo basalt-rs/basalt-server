@@ -33,10 +33,8 @@ pub struct TeamProgression {
 pub async fn get_leaderboard_info(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<TeamProgression>>, StatusCode> {
-    let sql = state.db.read().await;
-
     let competitors: Vec<User> =
-        repositories::users::get_users_with_role(&sql.db, Role::Competitor)
+        repositories::users::get_users_with_role(&state.db, Role::Competitor)
             .await
             .map_err(|e| {
                 error!("Error while getting competitors: {:?}", e);
@@ -51,7 +49,7 @@ pub async fn get_leaderboard_info(
             vec![QuestionState::NotAttempted; state.config.packet.problems.len()];
 
         let submissions =
-            match repositories::submissions::get_latest_submissions(&sql.db, &user.id).await {
+            match repositories::submissions::get_latest_submissions(&state.db, &user.id).await {
                 Ok(submissions) => submissions,
                 Err(err) => {
                     tracing::error!("Error while getting submissions: {}", err);
@@ -67,7 +65,7 @@ pub async fn get_leaderboard_info(
             };
         }
 
-        match repositories::submissions::count_tests(&sql.db, &user.id).await {
+        match repositories::submissions::count_tests(&state.db, &user.id).await {
             Ok(counts) => {
                 for c in counts {
                     if submission_states[c.question_index as usize] == QuestionState::NotAttempted {
@@ -85,7 +83,7 @@ pub async fn get_leaderboard_info(
             }
         }
 
-        let score = match repositories::submissions::get_user_score(&sql.db, &user.id).await {
+        let score = match repositories::submissions::get_user_score(&state.db, &user.id).await {
             Ok(score) => score,
             Err(err) => {
                 tracing::error!("Error while getting score: {}", err);

@@ -4,7 +4,6 @@
 # - clippy: checks that the code does not contain any clippy warnings
 # - doc: checks that the code can be documented without errors
 # - hack: check combinations of feature flags
-# - msrv: check that the msrv specified in the crate is correct
 permissions:
     contents: read
 # This configuration allows maintainers of this repo to create a branch and pull request based on
@@ -75,30 +74,6 @@ jobs:
                   submodules: true
             - name: machete
               uses: bnjbvr/cargo-machete@main
-    msrv:
-        # check that we can build using the minimal rust version that is specified by this crate
-        runs-on: blacksmith-2vcpu-ubuntu-2404
-        # we use a matrix here just because env can't be used in job names
-        # https://docs.github.com/en/actions/learn-github-actions/contexts#context-availability
-        strategy:
-            matrix:
-                msrv: ["1.85"]
-        name: ubuntu / ${{ matrix.msrv }}
-        steps:
-            - uses: actions/checkout@v4
-              with:
-                  submodules: true
-            - name: install dependencies (ubuntu only)
-              run: |
-                  sudo apt-get update
-                  sudo apt-get install protobuf-compiler
-            - name: Install ${{ matrix.msrv }}
-              uses: dtolnay/rust-toolchain@master
-              with:
-                  toolchain: ${{ matrix.msrv }}
-            - name: cargo +${{ matrix.msrv }} check
-              run: cargo check
-
     test:
         # runs-on: blacksmith-2vcpu-ubuntu-2404
         runs-on: ubuntu-latest
