@@ -506,129 +506,133 @@ mod test {
     use std::time::Duration;
 
     use crate::{
-        db_user, mock_state,
-        repositories::submissions::{NewTestResults, SubmissionState, TestResultState},
-        testing::setup_test_logger,
+        mock_state,
+        repositories::{
+            submissions::{NewTestResults, SubmissionState, TestResultState},
+            users::UserId,
+        },
+        testing::{db_user, setup_test_logger},
         user,
     };
     use bedrock::{
         language::{BuiltInLanguage, Version},
         packet::Packet,
+        roi::RawOrImport,
     };
+    use sqlx::SqliteExecutor;
 
     use super::*;
 
-    macro_rules! double_problem_packet {
-        () => {
-            Packet {
-                title: "".into(),
-                preamble: None,
-                problems: vec![
-                    Problem {
-                        languages: None,
-                        title: "problem1".into(),
-                        description: None,
-                        tests: vec![
-                            Test {
-                                input: "input1a".into(),
-                                output: "output1a".into(),
-                                visible: true,
-                            },
-                            Test {
-                                input: "input1b".into(),
-                                output: "output1b".into(),
-                                visible: false,
-                            },
-                        ],
-                        points: Some(10),
-                    }
-                    .into(),
-                    Problem {
-                        languages: None,
-                        title: "problem2".into(),
-                        description: None,
-                        tests: vec![
-                            Test {
-                                input: "input2a".into(),
-                                output: "output2a".into(),
-                                visible: false,
-                            },
-                            Test {
-                                input: "input2b".into(),
-                                output: "output2b".into(),
-                                visible: true,
-                            },
-                        ],
-                        points: Some(10),
-                    }
-                    .into(),
-                ],
-            }
-            .into()
-        };
+    fn double_problem_packet() -> RawOrImport<Packet> {
+        Packet {
+            title: "".into(),
+            preamble: None,
+            problems: vec![
+                Problem {
+                    languages: None,
+                    title: "problem1".into(),
+                    description: None,
+                    tests: vec![
+                        Test {
+                            input: "input1a".into(),
+                            output: "output1a".into(),
+                            visible: true,
+                        },
+                        Test {
+                            input: "input1b".into(),
+                            output: "output1b".into(),
+                            visible: false,
+                        },
+                    ],
+                    points: Some(10),
+                }
+                .into(),
+                Problem {
+                    languages: None,
+                    title: "problem2".into(),
+                    description: None,
+                    tests: vec![
+                        Test {
+                            input: "input2a".into(),
+                            output: "output2a".into(),
+                            visible: false,
+                        },
+                        Test {
+                            input: "input2b".into(),
+                            output: "output2b".into(),
+                            visible: true,
+                        },
+                    ],
+                    points: Some(10),
+                }
+                .into(),
+            ],
+        }
+        .into()
     }
 
-    macro_rules! rust_language_set {
-        () => {{
+    macro_rules! language_set {
+        [$($lang: expr),*$(,)?] => {{
             let mut set = LanguageSet::new();
-            set.insert(Language::BuiltIn {
-                language: BuiltInLanguage::Rust,
-                version: Version::Latest,
-            });
-            set.into()
-        }};
-    }
-    macro_rules! sleep_language_set {
-        () => {{
-            let mut set = LanguageSet::new();
-            set.insert(Language::Custom {
-                raw_name: "sleep".into(),
-                name: "sleep".into(),
-                build: None,
-                run: "sleep 10s".into(),
-                source_file: "foo.sleep".into(),
-                syntax: Default::default(),
-            });
+            $(set.insert($lang);)*
             set.into()
         }};
     }
 
-    macro_rules! create_submission {
-        ($db: expr, $submitter: expr, $test_only: literal) => {{
-            let history = repositories::submissions::create_submission_history(
-                $db,
-                repositories::submissions::NewSubmissionHistory {
-                    id: SubmissionId::new(),
-                    submitter: $submitter,
-                    code: "fn main() {}",
-                    question_index: 0,
-                    language: "rust",
-                    compile_result: None,
-                    test_only: $test_only,
-                },
-            )
-            .await
-            .unwrap()
-            .finish($db, 10., true, 2, 2, Duration::from_secs(1))
-            .await
-            .unwrap();
+    const RUST_LANG: Language = Language::BuiltIn {
+        language: BuiltInLanguage::Rust,
+        version: Version::Latest,
+    };
 
-            repositories::submissions::create_test_results(
-                $db,
-                &history.id,
-                0,
-                NewTestResults {
-                    result: TestResultState::Pass,
-                    stdout: "stdout".into(),
-                    stderr: "stderr".into(),
-                    exit_status: 0,
-                    time_taken: Duration::from_secs(1).into(),
-                },
-            )
-            .await
-            .unwrap();
-            history
-        }};
+    fn sleep_lang() -> Language {
+        Language::Custom {
+            raw_name: "sleep".into(),
+            name: "sleep".into(),
+            build: None,
+            run: "sleep 10s".into(),
+            source_file: "foo.sleep".into(),
+            syntax: Default::default(),
+        }
+    }
+
+    async fn insert_submission(
+        db: impl SqliteExecutor<'_> + Copy,
+        submitter: UserId,
+        test_only: bool,
+    ) -> SubmissionHistory {
+        let history = repositories::submissions::create_submission_history(
+            db,
+            repositories::submissions::NewSubmissionHistory {
+                id: SubmissionId::new(),
+                submitter,
+                code: "fn main() {}",
+                question_index: 0,
+                language: "rust",
+                compile_result: None,
+                test_only,
+            },
+        )
+        .await
+        .unwrap()
+        .finish(db, 10., true, 2, 2, Duration::from_secs(1))
+        .await
+        .unwrap();
+
+        repositories::submissions::create_test_results(
+            db,
+            &history.id,
+            0,
+            NewTestResults {
+                result: TestResultState::Pass,
+                stdout: "stdout".into(),
+                stderr: "stderr".into(),
+                exit_status: 0,
+                time_taken: Duration::from_secs(1).into(),
+            },
+        )
+        .await
+        .unwrap();
+        history
     }
 
     #[tokio::test]
@@ -638,12 +642,12 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
+                packet: double_problem_packet(),
                 ..Config::default()
             }
         );
 
-        let Json(value) = get_all(user!("foobar", Competitor), State(state)).await;
+        let Json(value) = get_all(user!("foobar", Competitor).into(), State(state)).await;
 
         assert_eq!(
             value,
@@ -681,11 +685,11 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
+                packet: double_problem_packet(),
                 ..Config::default()
             }
         );
-        let Json(value) = get_all(user!("foobar", Host), State(state)).await;
+        let Json(value) = get_all(user!("foobar", Host).into(), State(state)).await;
 
         assert_eq!(
             value,
@@ -737,15 +741,18 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
+                packet: double_problem_packet(),
                 ..Config::default()
             }
         );
 
-        let Json(value) =
-            get_specific_question(State(state), user!("foobar", Host), axum::extract::Path(1))
-                .await
-                .unwrap();
+        let Json(value) = get_specific_question(
+            State(state),
+            user!("foobar", Host).into(),
+            axum::extract::Path(1),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(
             *value,
@@ -777,14 +784,14 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
+                packet: double_problem_packet(),
                 ..Config::default()
             }
         );
 
         let Json(value) = get_specific_question(
             State(state),
-            user!("foobar", Competitor),
+            user!("foobar", Competitor).into(),
             axum::extract::Path(1),
         )
         .await
@@ -813,14 +820,14 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
+                packet: double_problem_packet(),
                 ..Config::default()
             }
         );
 
         let code = get_specific_question(
             State(state),
-            user!("foobar", Competitor),
+            user!("foobar", Competitor).into(),
             axum::extract::Path(42),
         )
         .await
@@ -836,13 +843,13 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: rust_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![RUST_LANG],
                 ..Config::default()
             }
         );
 
-        let user = db_user!(&state.db, "foobar", Competitor);
+        let user = db_user(&state.db, "foobar", Role::Competitor).await;
 
         state.clock.write().await.unpause();
 
@@ -878,8 +885,8 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: rust_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![RUST_LANG],
                 ..Config::default()
             }
         );
@@ -912,8 +919,8 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: rust_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![RUST_LANG],
                 ..Config::default()
             }
         );
@@ -946,13 +953,13 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: rust_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![RUST_LANG],
                 ..Config::default()
             }
         );
 
-        let user = db_user!(&state.db, "foobar", Competitor);
+        let user = db_user(&state.db, "foobar", Role::Competitor).await;
 
         state.clock.write().await.unpause();
 
@@ -988,8 +995,8 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: rust_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![RUST_LANG],
                 ..Config::default()
             }
         );
@@ -1022,8 +1029,8 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: rust_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![RUST_LANG],
                 ..Config::default()
             }
         );
@@ -1056,14 +1063,14 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: rust_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![RUST_LANG],
                 ..Config::default()
             }
         );
 
-        let user = db_user!(&state.db, "foobar", Competitor);
-        let history = create_submission!(&state.db, user.id, false);
+        let user = db_user(&state.db, "foobar", Role::Competitor).await;
+        let history = insert_submission(&state.db, user.id, false).await;
         state.clock.write().await.unpause();
 
         let Json(state) = get_submission(user, axum::extract::Path((0, history.id)), State(state))
@@ -1092,8 +1099,8 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: rust_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![RUST_LANG],
                 ..Config::default()
             }
         );
@@ -1119,14 +1126,14 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: rust_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![RUST_LANG],
                 ..Config::default()
             }
         );
 
-        let user = db_user!(&state.db, "foobar", Competitor);
-        let history = create_submission!(&state.db, user.id, true);
+        let user = db_user(&state.db, "foobar", Role::Competitor).await;
+        let history = insert_submission(&state.db, user.id, true).await;
 
         state.clock.write().await.unpause();
 
@@ -1144,14 +1151,14 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: rust_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![RUST_LANG],
                 ..Config::default()
             }
         );
 
-        let user = db_user!(&state.db, "foobar", Competitor);
-        let history = create_submission!(&state.db, user.id, false);
+        let user = db_user(&state.db, "foobar", Role::Competitor).await;
+        let history = insert_submission(&state.db, user.id, false).await;
 
         state.clock.write().await.unpause();
 
@@ -1173,14 +1180,14 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: rust_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![RUST_LANG],
                 ..Config::default()
             }
         );
 
-        let user = db_user!(&state.db, "foobar", Competitor);
-        let history = create_submission!(&state.db, user.id, false);
+        let user = db_user(&state.db, "foobar", Role::Competitor).await;
+        let history = insert_submission(&state.db, user.id, false).await;
 
         state.clock.write().await.unpause();
 
@@ -1214,14 +1221,14 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: rust_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![RUST_LANG],
                 ..Config::default()
             }
         );
 
-        let user = db_user!(&state.db, "foobar", Competitor);
-        let history = create_submission!(&state.db, user.id, true);
+        let user = db_user(&state.db, "foobar", Role::Competitor).await;
+        let history = insert_submission(&state.db, user.id, true).await;
 
         state.clock.write().await.unpause();
 
@@ -1251,8 +1258,8 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: rust_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![RUST_LANG],
                 ..Config::default()
             }
         );
@@ -1278,14 +1285,14 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: rust_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![RUST_LANG],
                 ..Config::default()
             }
         );
 
-        let user = db_user!(&state.db, "foobar", Competitor);
-        let history = create_submission!(&state.db, user.id, false);
+        let user = db_user(&state.db, "foobar", Role::Competitor).await;
+        let history = insert_submission(&state.db, user.id, false).await;
 
         state.clock.write().await.unpause();
 
@@ -1303,14 +1310,14 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: rust_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![RUST_LANG],
                 ..Config::default()
             }
         );
 
-        let user = db_user!(&state.db, "foobar", Competitor);
-        let history = create_submission!(&state.db, user.id, true);
+        let user = db_user(&state.db, "foobar", Role::Competitor).await;
+        let history = insert_submission(&state.db, user.id, true).await;
 
         state.clock.write().await.unpause();
 
@@ -1332,14 +1339,14 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: rust_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![RUST_LANG],
                 ..Config::default()
             }
         );
 
-        let user = db_user!(&state.db, "foobar", Competitor);
-        let history = create_submission!(&state.db, user.id, true);
+        let user = db_user(&state.db, "foobar", Role::Competitor).await;
+        let history = insert_submission(&state.db, user.id, true).await;
 
         state.clock.write().await.unpause();
 
@@ -1373,14 +1380,14 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: sleep_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![sleep_lang()],
                 ..Config::default()
             }
         );
         state.clock.write().await.unpause();
 
-        let user = db_user!(&state.db, "foobar", Competitor);
+        let user = db_user(&state.db, "foobar", Role::Competitor).await;
 
         let (_, _, Json(submission)) = create_submission(
             user.clone(),
@@ -1420,14 +1427,14 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: sleep_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![sleep_lang()],
                 ..Config::default()
             }
         );
         state.clock.write().await.unpause();
 
-        let user = db_user!(&state.db, "foobar", Competitor);
+        let user = db_user(&state.db, "foobar", Role::Competitor).await;
 
         let code = abort_submission(
             user,
@@ -1447,14 +1454,14 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: sleep_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![sleep_lang()],
                 ..Config::default()
             }
         );
         state.clock.write().await.unpause();
 
-        let user = db_user!(&state.db, "foobar", Competitor);
+        let user = db_user(&state.db, "foobar", Role::Competitor).await;
 
         let (_, _, Json(submission)) = create_test(
             user.clone(),
@@ -1486,14 +1493,14 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: sleep_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![sleep_lang()],
                 ..Config::default()
             }
         );
         state.clock.write().await.unpause();
 
-        let user = db_user!(&state.db, "foobar", Competitor);
+        let user = db_user(&state.db, "foobar", Role::Competitor).await;
 
         let (_, _, Json(submission)) = create_submission(
             user.clone(),
@@ -1525,14 +1532,14 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: sleep_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![sleep_lang()],
                 ..Config::default()
             }
         );
         state.clock.write().await.unpause();
 
-        let user = db_user!(&state.db, "foobar", Competitor);
+        let user = db_user(&state.db, "foobar", Role::Competitor).await;
 
         let (_, _, Json(submission)) = create_submission(
             user.clone(),
@@ -1572,14 +1579,14 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: sleep_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![sleep_lang()],
                 ..Config::default()
             }
         );
         state.clock.write().await.unpause();
 
-        let user = db_user!(&state.db, "foobar", Competitor);
+        let user = db_user(&state.db, "foobar", Role::Competitor).await;
 
         let (_, _, Json(submission)) = create_test(
             user.clone(),
@@ -1619,14 +1626,14 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: sleep_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![sleep_lang()],
                 ..Config::default()
             }
         );
         state.clock.write().await.unpause();
 
-        let user = db_user!(&state.db, "foobar", Competitor);
+        let user = db_user(&state.db, "foobar", Role::Competitor).await;
 
         let code = abort_test(
             user,
@@ -1646,14 +1653,14 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: sleep_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![sleep_lang()],
                 ..Config::default()
             }
         );
         state.clock.write().await.unpause();
 
-        let user = db_user!(&state.db, "foobar", Competitor);
+        let user = db_user(&state.db, "foobar", Role::Competitor).await;
 
         let (_, _, Json(submission)) = create_submission(
             user.clone(),
@@ -1685,14 +1692,14 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: sleep_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![sleep_lang()],
                 ..Config::default()
             }
         );
         state.clock.write().await.unpause();
 
-        let user = db_user!(&state.db, "foobar", Competitor);
+        let user = db_user(&state.db, "foobar", Role::Competitor).await;
 
         let (_, _, Json(submission)) = create_test(
             user,
@@ -1724,14 +1731,14 @@ mod test {
         mock_state!(
             let state;
             Config {
-                packet: double_problem_packet!(),
-                languages: sleep_language_set!(),
+                packet: double_problem_packet(),
+                languages: language_set![sleep_lang()],
                 ..Config::default()
             }
         );
         state.clock.write().await.unpause();
 
-        let user = db_user!(&state.db, "foobar", Competitor);
+        let user = db_user(&state.db, "foobar", Role::Competitor).await;
 
         let (_, _, Json(submission)) = create_test(
             user,

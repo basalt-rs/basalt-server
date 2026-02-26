@@ -1,4 +1,12 @@
-use crate::storage::SqliteLayer;
+use sqlx::SqliteExecutor;
+
+use crate::{
+    repositories::{
+        self,
+        users::{Role, User},
+    },
+    storage::SqliteLayer,
+};
 
 pub mod submissions_repositories;
 pub mod users_repositories;
@@ -56,14 +64,7 @@ macro_rules! mock_state {
 #[macro_export]
 macro_rules! user {
     ($name: literal, $role: ident) => {
-        User {
-            id: $crate::repositories::users::UserId::new(),
-            username: $name.into(),
-            display_name: None,
-            password_hash: redact::Secret::from(""),
-            role: Role::$role,
-        }
-        .into()
+        user!($name, $role, {})
     };
     ($name: literal, $role: ident, {$($key: ident: $value: expr),*$(,)?}) => {
         User {
@@ -76,21 +77,17 @@ macro_rules! user {
                 role: Role::$role,
             }
         }
-        .into()
     };
 }
 
 /// Create a user and insert it into the database
 ///
 /// ```
-/// db_user!(&state.db, "some name", Competitor);
-/// db_user!(&state.db, "some name", Host);
+/// db_user(&state.db, "some name", Role::Competitor).await;
+/// db_user(&state.db, "some name", Role::Host).await;
 /// ```
-#[macro_export]
-macro_rules! db_user {
-    ($db: expr, $name: literal, $role: ident) => {
-        repositories::users::create_user($db, $name, None, "", Role::$role)
-            .await
-            .unwrap()
-    };
+pub async fn db_user(db: impl SqliteExecutor<'_>, name: impl AsRef<str>, role: Role) -> User {
+    repositories::users::create_user(db, name, None, "", role)
+        .await
+        .unwrap()
 }
