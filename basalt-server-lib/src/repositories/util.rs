@@ -154,7 +154,7 @@ macro_rules! define_id_type {
 /// Define a new enum that works with sqlx via integer serialisation
 ///
 /// If parentheses are provided after the name, it will be used as a mapper from the type in
-/// parens, see submissions repo. (see implementatio for details)
+/// parens, see submissions repo. (see implementation for details)
 ///
 /// The following traits get implemented for the generated struct:
 /// - [`serde::Serialize`]/[`serde::Deserialize`] (using kebab-case)
