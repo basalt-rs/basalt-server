@@ -372,9 +372,12 @@ pub struct CreatedSubmission {
     pub cases: u32,
 }
 
-/// Run a test. Ensure first the the code can compile before breaking off into a separate tokio
-/// task that will then manage the execution of the tests against the compiled artifact for
-/// languages that require a compilation step.
+/// Run a test. Spawns a new tokio task wherein all testing and compilation is handled.
+/// The function will wait for setup to be completed (i.e. compilation if necessary, created
+/// metadata). Afterward, the function will return, but the test may or may not still be
+/// running.
+///
+/// A test can be cancelled via the `Tester::abort` method.
 pub async fn run_test(
     state: Arc<AppState>,
     language: String,
