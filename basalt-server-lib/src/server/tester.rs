@@ -372,6 +372,9 @@ pub struct CreatedSubmission {
     pub cases: u32,
 }
 
+/// Run a test. Ensure first the the code can compile before breaking off into a separate tokio
+/// task that will then manage the execution of the tests against the compiled artifact for
+/// languages that require a compilation step.
 pub async fn run_test(
     state: Arc<AppState>,
     language: String,
@@ -407,7 +410,7 @@ pub async fn run_test(
         let (runner, source_file) = state
             .tester
             .runner(language, question_index)
-            .expect("checked above");
+            .expect("runner should be Some according to check above, but was found to be None");
 
         let compiled = runner
             .file(BorrowedFileContent::string(code), source_file)
