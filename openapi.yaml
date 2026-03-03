@@ -192,6 +192,132 @@ paths:
                 $ref: '#/components/schemas/QuestionResponse'
         '404':
           description: Question Not Found
+  /questions/{question_index}/submissions:
+    post:
+      tags:
+      - questions
+      operationId: create_submission
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmissionBody'
+        required: true
+      responses:
+        '200':
+          description: The ID of the submission
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            text/plain:
+              schema:
+                type: string
+        '400':
+          description: Invalid data provided
+        '404':
+          description: Question or language not found
+        '409':
+          description: Competition is paused
+  /questions/{question_index}/submissions/{submission_id}:
+    get:
+      tags:
+      - questions
+      operationId: get_submission
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionState'
+        '400':
+          description: Invalid data provided
+        '403':
+          description: Requesting user is not the creator of the submission or a host
+        '404':
+          description: Submission not found
+        '409':
+          description: Competition is paused
+    delete:
+      tags:
+      - questions
+      operationId: abort_submission
+      responses:
+        '200':
+          description: ''
+        '400':
+          description: Invalid data provided
+        '403':
+          description: Requesting user is not the creator of the submission or a host
+        '404':
+          description: Submission not found
+        '409':
+          description: Competition is paused
+  /questions/{question_index}/tests:
+    post:
+      tags:
+      - questions
+      operationId: create_test
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmissionBody'
+        required: true
+      responses:
+        '200':
+          description: The ID of the submission
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            text/plain:
+              schema:
+                type: string
+        '400':
+          description: Invalid data provided
+        '404':
+          description: Question or language not found
+        '409':
+          description: Competition is paused
+  /questions/{question_index}/tests/{test_id}:
+    get:
+      tags:
+      - questions
+      operationId: get_test
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionState'
+        '400':
+          description: Invalid data provided
+        '403':
+          description: Requesting user is not the creator of the submission or a host
+        '404':
+          description: Submission not found
+        '409':
+          description: Competition is paused
+    delete:
+      tags:
+      - questions
+      operationId: abort_test
+      responses:
+        '200':
+          description: ''
+        '400':
+          description: Invalid data provided
+        '403':
+          description: Requesting user is not the creator of the submission or a host
+        '404':
+          description: Submission not found
+        '409':
+          description: Competition is paused
   /teams:
     get:
       tags:
@@ -345,6 +471,13 @@ components:
           type: integer
           format: int64
           minimum: 0
+    CompileResultState:
+      type: string
+      enum:
+      - no-compile
+      - success
+      - runtime-fail
+      - timed-out
     DisplayNamePatch:
       oneOf:
       - type: string
@@ -540,43 +673,95 @@ components:
       - competitor
       - host
     SessionId:
-      type: string
+      type: array
+      items:
+        type: integer
+        format: int32
+        minimum: 0
+    SubmissionBody:
+      type: object
+      required:
+      - language
+      - solution
+      properties:
+        language:
+          type: string
+        solution:
+          type: string
     SubmissionHistory:
       type: object
       required:
       - id
       - submitter
       - time
-      - compile_fail
       - code
-      - question_index
+      - questionIndex
+      - language
+      - compileResult
+      - compileStdout
+      - compileStderr
+      - compileExitStatus
+      - testOnly
+      - state
       - score
       - success
-      - language
+      - passed
+      - failed
+      - timeTaken
       properties:
         code:
           type: string
-        compile_fail:
-          type: boolean
+        compileExitStatus:
+          type: integer
+          format: int64
+        compileResult:
+          $ref: '#/components/schemas/CompileResultState'
+        compileStderr:
+          type: string
+        compileStdout:
+          type: string
+        failed:
+          type: integer
+          format: int64
         id:
           $ref: '#/components/schemas/SubmissionId'
         language:
           type: string
-        question_index:
+        passed:
+          type: integer
+          format: int64
+        questionIndex:
           type: integer
           format: int64
         score:
           type: number
           format: double
+        state:
+          $ref: '#/components/schemas/SubmissionState'
         submitter:
           $ref: '#/components/schemas/UserId'
         success:
           type: boolean
+        testOnly:
+          type: boolean
         time:
           type: string
           format: date
+        timeTaken:
+          $ref: '#/components/schemas/WrappedDuration'
     SubmissionId:
+      type: array
+      items:
+        type: integer
+        format: int32
+        minimum: 0
+    SubmissionState:
       type: string
+      enum:
+      - started
+      - finished
+      - cancelled
+      - failed
     TeamFull:
       allOf:
       - $ref: '#/components/schemas/TeamInfo'
@@ -659,6 +844,41 @@ components:
           type: string
         visible:
           type: boolean
+    TestResultState:
+      type: string
+      enum:
+      - pass
+      - runtime-fail
+      - timed-out
+      - incorrect-output
+    TestResults:
+      type: object
+      description: History of tests that have been run on submissions
+      required:
+      - submission
+      - test_index
+      - result
+      - stdout
+      - stderr
+      - exit_status
+      - time_taken
+      properties:
+        exit_status:
+          type: integer
+          format: int64
+        result:
+          $ref: '#/components/schemas/TestResultState'
+        stderr:
+          type: string
+        stdout:
+          type: string
+        submission:
+          $ref: '#/components/schemas/SubmissionId'
+        test_index:
+          type: integer
+          format: int64
+        time_taken:
+          $ref: '#/components/schemas/WrappedDuration'
     UpdateClockRequest:
       oneOf:
       - type: object
@@ -685,4 +905,15 @@ components:
         username:
           type: string
     UserId:
+      type: array
+      items:
+        type: integer
+        format: int32
+        minimum: 0
+    WrappedDuration:
       type: string
+      description: |-
+        Wrapped duration type that allows us to implement sqlx/serde/utoipa traits
+
+        Note: the (de)serialisation of this type uses milliseconds, so any sub-millisecond precision is
+        lost.
