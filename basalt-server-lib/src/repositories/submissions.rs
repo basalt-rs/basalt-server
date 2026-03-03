@@ -382,10 +382,10 @@ pub async fn get_user_score(db: impl SqliteExecutor<'_>, user_id: &UserId) -> an
             JOIN (
                 SELECT question_index, MAX(time) AS latest
                 FROM submission_history
-                WHERE submitter = ?
+                WHERE submitter = ? AND NOT test_only
                 GROUP BY question_index
             ) t ON h.question_index = t.question_index AND h.time = t.latest
-            WHERE h.submitter = ?;
+            WHERE h.submitter = ? AND NOT h.test_only;
         "#,
         user_id,
         user_id,
