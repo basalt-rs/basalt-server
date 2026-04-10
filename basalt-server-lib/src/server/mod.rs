@@ -61,24 +61,12 @@ impl AppState {
     }
 
     pub fn init_hooks(&mut self) -> JoinSet<()> {
-        #[allow(unused_mut)] // when no-default-features, we don't mutate this
         let mut jset = JoinSet::<()>::new();
 
-        #[cfg(feature = "scripting")]
-        {
-            let (mut hook_handler, hooks_tx) =
-                crate::server::hooks::handlers::EventHookHandler::create();
-            self.dispatchers.push(hooks_tx);
-            jset.spawn(async move { hook_handler.start().await });
-        }
-
-        #[cfg(feature = "webhooks")]
-        {
-            let (mut webhook_handler, webhooks_tx) =
-                crate::server::hooks::webhooks::EventWebhookHandler::create();
-            self.dispatchers.push(webhooks_tx);
-            jset.spawn(async move { webhook_handler.start().await });
-        }
+        let (mut webhook_handler, webhooks_tx) =
+            crate::server::hooks::webhooks::EventWebhookHandler::create();
+        self.dispatchers.push(webhooks_tx);
+        jset.spawn(async move { webhook_handler.start().await });
 
         jset
     }
