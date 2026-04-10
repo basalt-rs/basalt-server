@@ -37,3 +37,4 @@ sqlx = { workspace = true, features = ["sqlite"] }
 tokio = { workspace = true, features = ["full"] }
 utoipa-axum.workspace = true
 utoipa.workspace = true
+which.workspace = true
