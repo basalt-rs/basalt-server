@@ -129,7 +129,7 @@ jobs:
               uses: useblacksmith/build-push-action@v2
               with:
                   context: .
-                  file: ./containers/Dockerfile
+                  file: ./Dockerfile
                   platforms: linux/amd64
                   push: true
                   tags: ghcr.io/${{ github.repository_owner }}/basalt-server:dev-pr-${{ github.event.pull_request.number }}
