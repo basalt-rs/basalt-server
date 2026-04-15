@@ -1,6 +1,6 @@
 use std::{net::SocketAddr, sync::Arc};
 
-use anyhow::{bail, Context};
+use anyhow::bail;
 use axum::{
     extract::{
         ws::{Message, WebSocket},
@@ -9,15 +9,12 @@ use axum::{
     http::HeaderMap,
     response::Response,
 };
-use rand::Rng;
-use tokio::sync::mpsc;
 use tracing::{debug, error, trace, warn};
 
-use super::WebSocketRecv;
 use crate::{
     extractors::auth::AuthError,
     repositories,
-    server::{websocket::ConnectedClient, AppState},
+    server::{websocket::LeaderboardId, AppState},
     services::ws::ConnectionKind,
 };
 
@@ -29,13 +26,12 @@ pub async fn connect_websocket(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Response, AuthError> {
-    let db = state.db.read().await;
     trace!("Attempting to connect to WS");
     let protocol = headers
         .get("Sec-WebSocket-Protocol")
         .map(|s| s.to_str().unwrap().to_string());
     let user = if let Some(session_id) = &protocol {
-        let user = repositories::session::get_user_from_session(&db, session_id)
+        let user = repositories::session::get_user_from_session(&state.db, session_id)
             .await
             .map_err(|_| {
                 trace!("token expired");
@@ -47,15 +43,11 @@ pub async fn connect_websocket(
         trace!("user not authed");
         None
     };
-    drop(db);
+
     let who = match user {
-        Some(user) => ConnectionKind::User { user },
+        Some(user) => ConnectionKind::User { user: user.id },
         None => ConnectionKind::Leaderboard {
-            id: rand::thread_rng()
-                .sample_iter(rand::distributions::Alphanumeric)
-                .take(20)
-                .map(char::from)
-                .collect(),
+            id: LeaderboardId::new(),
             addr,
         },
     };
@@ -69,9 +61,9 @@ pub async fn connect_websocket(
     Ok(ws.on_upgrade(move |ws| async move {
         // Using defer here so that if the thread panics, we still remove the connection.
         scopeguard::defer! {
-            state.websocket.active_connections.remove(&who);
+            state.websocket.remove_connection(&who);
         }
-        if let Err(e) = handle_socket(ws, who.clone(), Arc::clone(&state)).await {
+        if let Err(e) = handle_socket(ws, who, Arc::clone(&state)).await {
             error!(?who, ?e, "Error handling websocket connection");
         }
     }))
@@ -83,11 +75,7 @@ async fn handle_socket(
     who: ConnectionKind,
     state: Arc<AppState>,
 ) -> anyhow::Result<()> {
-    let (tx, mut rx) = mpsc::unbounded_channel();
-    state
-        .websocket
-        .active_connections
-        .insert(who.clone(), ConnectedClient { send: tx });
+    let mut rx = state.websocket.add_connection(who);
 
     if ws.send(Message::Ping("ping".into())).await.is_ok() {
         trace!("Send ping");
@@ -118,33 +106,23 @@ async fn handle_socket(
                     return Ok(());
                 },
                 Some(Ok(msg)) => {
-                    handle_message(msg, &mut ws, &who, Arc::clone(&state)).await?;
+                    handle_message(msg, &mut ws).await?;
                 }
             }
         }
     }
 }
 
-async fn handle_message(
-    msg: Message,
-    ws: &mut WebSocket,
-    who: &ConnectionKind,
-    state: Arc<AppState>,
-) -> anyhow::Result<()> {
+async fn handle_message(msg: Message, ws: &mut WebSocket) -> anyhow::Result<()> {
     match msg {
-        Message::Text(bytes) => match serde_json::from_str::<WebSocketRecv>(bytes.as_str()) {
-            Ok(msg) => {
-                trace!(?msg, "Receiving websocket message");
-                msg.handle(who, state)
-                    .await
-                    .context("handling websocket message")?;
-            }
-            Err(error) => {
-                debug!(?error, "Ignoring invalid websocket message");
-            }
-        },
-        Message::Binary(_) => {
-            warn!("Ignoring unexpected binary message");
+        Message::Text(bytes) => {
+            debug!(
+                message = bytes.as_str(),
+                "Ignoring unexpected websocket message"
+            );
+        }
+        Message::Binary(message) => {
+            warn!(?message, "Ignoring unexpected binary message");
         }
         Message::Ping(bytes) => {
             ws.send(Message::Pong(bytes)).await?;

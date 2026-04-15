@@ -9,78 +9,16 @@ use sqlx::prelude::FromRow;
 use sqlx::SqliteExecutor;
 use utoipa::ToSchema;
 
-#[derive(
-    Debug, Clone, Copy, Hash, Eq, PartialEq, Serialize, Deserialize, utoipa::ToSchema, sqlx::Type,
-)]
-#[repr(i32)]
-#[serde(rename_all = "kebab-case")]
-pub enum Role {
-    Competitor = 0,
-    Host = 1,
-}
+use crate::{define_id_type, define_sqlx_enum};
 
-impl From<i32> for Role {
-    fn from(value: i32) -> Self {
-        match value {
-            1 => Role::Host,
-            _ => Role::Competitor,
-        }
+define_sqlx_enum! {
+    pub enum Role {
+        Competitor,
+        Host,
     }
 }
 
-impl From<i64> for Role {
-    fn from(value: i64) -> Self {
-        match value {
-            1 => Role::Host,
-            _ => Role::Competitor,
-        }
-    }
-}
-
-impl From<Role> for i32 {
-    fn from(value: Role) -> Self {
-        match value {
-            Role::Competitor => 0,
-            Role::Host => 1,
-        }
-    }
-}
-
-#[derive(
-    Debug,
-    Clone,
-    Hash,
-    Eq,
-    PartialEq,
-    Serialize,
-    Deserialize,
-    ToSchema,
-    derive_more::From,
-    derive_more::Into,
-    sqlx::Type,
-)]
-#[sqlx(transparent)]
-pub struct UserId(pub String);
-
-impl UserId {
-    // Default feels wrong here as each call to this function generates a different value.
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
-        use rand::{distributions::Alphanumeric, Rng};
-        let id = rand::thread_rng()
-            .sample_iter(Alphanumeric)
-            .take(20)
-            .map(char::from)
-            .collect::<String>();
-        Self(id)
-    }
-}
-
-impl Display for UserId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+define_id_type!(UserId);
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, FromRow, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -114,7 +52,7 @@ pub async fn get_user_by_id(
         .map_err(|e| GetUserError::QueryError(e.to_string()))?
         .ok_or(GetUserError::UserNotFound {
             property: "id",
-            value: id.0.clone(),
+            value: id.to_string(),
         })
 }
 
@@ -283,7 +221,7 @@ mod tests {
     #[tokio::test]
     async fn get_nonexistent_user() {
         let (f, sql) = mock_db().await;
-        let response = get_user_by_id(&sql.db, &UserId::new()).await;
+        let response = get_user_by_id(&sql, &UserId::new()).await;
         assert!(response.is_err());
         drop(f)
     }
@@ -292,7 +230,7 @@ mod tests {
     async fn get_existing_user_by_id() {
         let (f, sql) = mock_db().await;
         let dummy_user = create_user(
-            &sql.db,
+            &sql,
             "awesome_user".to_string(),
             Some("Awesome User"),
             "awesome-password".to_string(),
@@ -300,7 +238,7 @@ mod tests {
         )
         .await
         .unwrap();
-        let user = get_user_by_id(&sql.db, &dummy_user.id)
+        let user = get_user_by_id(&sql, &dummy_user.id)
             .await
             .expect("Failed to find user");
         assert_eq!(user.username, dummy_user.username);
@@ -311,20 +249,20 @@ mod tests {
     async fn get_correct_user() {
         let (f, sql) = mock_db().await;
         let dummy_user = crate::testing::users_repositories::dummy_user(
-            &sql.db,
+            &sql,
             "awesome_user".to_string(),
             "awesome-password".to_string(),
             Role::Competitor,
         )
         .await;
         crate::testing::users_repositories::dummy_user(
-            &sql.db,
+            &sql,
             "awesome_user2".to_string(),
             "awesome-password".to_string(),
             Role::Competitor,
         )
         .await;
-        let user = get_user_by_id(&sql.db, &dummy_user.id)
+        let user = get_user_by_id(&sql, &dummy_user.id)
             .await
             .expect("Failed to find user");
         assert_eq!(user.username, dummy_user.username);

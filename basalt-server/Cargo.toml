@@ -14,6 +14,10 @@ default = ["full", "doc-gen"]
 [lints.clippy]
 uninlined_format_args = "allow"
 
+[rust-analyzer.cargo]
+features = ["full"]
+noDefaultFeatures = true
+
 [dependencies]
 basalt-server-lib = { path = "../basalt-server-lib", default-features = false }
 anyhow.workspace = true

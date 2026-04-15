@@ -54,9 +54,8 @@ async fn extract(
     let session_id = bearer.token();
 
     // confirm user is in db and the session is active
-    let db = state.db.read().await;
     trace!("getting user from session");
-    let user = repositories::session::get_user_from_session(&db, session_id)
+    let user = repositories::session::get_user_from_session(&state.db, session_id)
         .await
         .map_err(|_| {
             trace!("token expired");
@@ -66,7 +65,10 @@ async fn extract(
 
     state.team_manager.check_in(&user.id);
 
-    Ok(Some(UserWithSession(user, session_id.to_string().into())))
+    Ok(Some(UserWithSession(
+        user,
+        session_id.parse().map_err(|_| AuthError::InvalidToken)?,
+    )))
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug, Deserialize, Serialize)]
@@ -117,6 +119,12 @@ impl FromRequestParts<Arc<AppState>> for OptionalUser {
         extract(parts, state)
             .await
             .map(|x| x.map(Into::into).into())
+    }
+}
+
+impl From<User> for OptionalUser {
+    fn from(value: User) -> Self {
+        OptionalUser(Some(value))
     }
 }
 

@@ -1,19 +1,8 @@
-use std::{path::Path, sync::Arc};
-
-use anyhow::Context;
-use tokio::fs;
-use utoipa::OpenApi;
-
-use basalt_server_lib::{server::AppState, storage::SqliteLayer};
-
 const SPEC_PATH: &str = "../openapi.yaml";
 
-#[derive(OpenApi)]
-#[openapi()]
-struct ApiDoc;
-
 #[cfg(feature = "doc-gen")]
-async fn gen_docs(path: &Path) -> anyhow::Result<()> {
+async fn gen_docs(path: &std::path::Path) -> anyhow::Result<()> {
+    use anyhow::Context;
     use std::{io::BufRead, process::Stdio};
     use tokio::process::Command;
 
@@ -51,44 +40,55 @@ async fn gen_docs(path: &Path) -> anyhow::Result<()> {
 #[tokio::main]
 pub async fn main() -> anyhow::Result<()> {
     println!("cargo::rerun-if-changed={}", SPEC_PATH);
+    println!("cargo::rerun-if-changed=../basalt-server-lib/src/services");
 
-    let tempfile = async_tempfile::TempFile::new()
-        .await
-        .context("Failed to create tempfile")?;
+    #[cfg(feature = "doc-gen")]
+    {
+        use anyhow::Context;
+        use basalt_server_lib::{server::AppState, storage::SqliteLayer};
+        use std::{path::Path, sync::Arc};
+        use utoipa::OpenApi;
 
-    let sqlite_layer = SqliteLayer::from_path(tempfile.file_path())
-        .await
-        .context("Failed to create sqlite layer")?;
-
-    let dummy_state = Arc::new(AppState::new(
-        sqlite_layer,
-        bedrock::Config::default(),
-        Vec::new(),
-        None,
-    ));
-    let router = basalt_server_lib::server::doc_router(dummy_state);
-    let content = ApiDoc::openapi()
-        .merge_from(router.into_openapi())
-        .to_yaml()
-        .context("Failed to serialize to YAML")?;
-
-    let path = Path::new(SPEC_PATH);
-    let write = if path.exists() {
-        let existing = fs::read_to_string(path)
+        let tempfile = async_tempfile::TempFile::new()
             .await
-            .with_context(|| format!("reading existing {} file", SPEC_PATH))?;
-        existing != content
-    } else {
-        true
-    };
+            .context("Failed to create tempfile")?;
 
-    if write {
-        fs::write(path, content)
+        let sqlite_layer = SqliteLayer::from_path(tempfile.file_path())
             .await
-            .with_context(|| format!("Writing to {}", SPEC_PATH))?;
+            .context("Failed to create sqlite layer")?;
 
-        #[cfg(feature = "doc-gen")]
-        gen_docs(path).await?;
+        let dummy_state = Arc::new(AppState::new(
+            sqlite_layer,
+            bedrock::Config::default(),
+            None,
+        ));
+        let router = basalt_server_lib::server::doc_router(dummy_state);
+
+        #[derive(OpenApi)]
+        #[openapi()]
+        struct ApiDoc;
+        let content = ApiDoc::openapi()
+            .merge_from(router.into_openapi())
+            .to_yaml()
+            .context("Failed to serialize to YAML")?;
+
+        let path = Path::new(SPEC_PATH);
+        let write = if path.exists() {
+            let existing = tokio::fs::read_to_string(path)
+                .await
+                .with_context(|| format!("reading existing {} file", SPEC_PATH))?;
+            existing != content
+        } else {
+            true
+        };
+
+        if write {
+            tokio::fs::write(path, content)
+                .await
+                .with_context(|| format!("Writing to {}", SPEC_PATH))?;
+
+            gen_docs(path).await?;
+        }
     }
     Ok(())
 }

@@ -8,7 +8,7 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 use crate::{
     extractors::auth::{HostUser, OptionalUser},
     server::{hooks::events::ServerEvent, AppState},
-    services::ws::{Broadcast, WebSocketSend},
+    services::ws::Broadcast,
 };
 
 #[derive(serde::Deserialize, utoipa::ToSchema)]
@@ -54,7 +54,7 @@ async fn patch_clock(
                 let affected = clock.pause();
                 if affected {
                     if let Err(err) = (ServerEvent::OnPause {
-                        paused_by: auth.id.clone(),
+                        paused_by: auth.id,
                         time: chrono::offset::Local::now().to_utc(),
                     }
                     .dispatch(state.clone()))
@@ -78,7 +78,7 @@ async fn patch_clock(
                 let affected = clock.unpause();
                 if affected {
                     if let Err(err) = (ServerEvent::OnUnpause {
-                        unpaused_by: auth.id.clone(),
+                        unpaused_by: auth.id,
                         time: chrono::offset::Local::now().to_utc(),
                     }
                     .dispatch(state.clone()))
@@ -105,9 +105,7 @@ async fn patch_clock(
     };
 
     if let Some(broadcast) = broadcast {
-        state
-            .websocket
-            .broadcast(WebSocketSend::Broadcast { broadcast });
+        state.websocket.broadcast(broadcast);
     }
 
     Ok(Json(response))
