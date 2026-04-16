@@ -372,6 +372,12 @@ pub struct CreatedSubmission {
     pub cases: u32,
 }
 
+/// Run a test. Spawns a new tokio task wherein all testing and compilation is handled.
+/// The function will wait for setup to be completed (i.e. compilation if necessary, created
+/// metadata). Afterward, the function will return, but the test may or may not still be
+/// running.
+///
+/// A test can be cancelled via the `Tester::abort` method.
 pub async fn run_test(
     state: Arc<AppState>,
     language: String,
@@ -407,7 +413,7 @@ pub async fn run_test(
         let (runner, source_file) = state
             .tester
             .runner(language, question_index)
-            .expect("checked above");
+            .expect("runner should be Some according to check above, but was found to be None");
 
         let compiled = runner
             .file(BorrowedFileContent::string(code), source_file)
