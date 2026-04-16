@@ -204,7 +204,7 @@ paths:
               $ref: '#/components/schemas/SubmissionBody'
         required: true
       responses:
-        '200':
+        '201':
           description: The ID of the submission
           headers:
             Location:
@@ -267,7 +267,7 @@ paths:
               $ref: '#/components/schemas/SubmissionBody'
         required: true
       responses:
-        '200':
+        '201':
           description: The ID of the submission
           headers:
             Location:
