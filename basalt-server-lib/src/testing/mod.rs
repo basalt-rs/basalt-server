@@ -13,16 +13,10 @@ pub mod users_repositories;
 
 pub const SAMPLE_1: &str = include_str!("../../../samples/single.toml");
 
-pub async fn mock_db() -> (async_tempfile::TempFile, SqliteLayer) {
-    let db_tempfile = async_tempfile::TempFile::new()
+pub async fn mock_db() -> SqliteLayer {
+    SqliteLayer::in_memory()
         .await
-        .expect("Failed to create temporary file for datafile");
-
-    let sqlite_layer = SqliteLayer::from_path(db_tempfile.file_path())
-        .await
-        .expect("Failed to create SqliteDB");
-
-    (db_tempfile, sqlite_layer)
+        .expect("Failed to create SqliteDB")
 }
 
 pub fn setup_test_logger() {
@@ -47,7 +41,7 @@ macro_rules! mock_state {
         mock_state!($state, Config::default());
     };
     (let $state: ident; $config: expr) => {
-        let (_db_file, db) = $crate::testing::mock_db().await;
+        let db = $crate::testing::mock_db().await;
         let mut state = AppState::new(db, $config, None);
         state.init().await.unwrap();
         let $state = Arc::new(state);

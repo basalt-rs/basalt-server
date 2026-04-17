@@ -59,7 +59,29 @@ impl SqliteLayer {
             .context("Failed to connect to SQLiteDB")?;
         Ok((init, Self { db }))
     }
-    /// Converts a `Pathbuf` to a `SqliteLayer`
+
+    /// Create a new [`SqliteLayer`] using an in-memory database
+    #[cfg(test)] // This is only really useful for testing
+    pub async fn in_memory() -> anyhow::Result<Self> {
+        let opts = SqliteConnectOptions::from_str("sqlite::memory:")
+            .expect("from_str is given a valid URI")
+            .journal_mode(SqliteJournalMode::Wal)
+            .read_only(false);
+
+        let db = sqlx::sqlite::SqlitePool::connect_with(opts)
+            .await
+            .context("Failed to connect to SQLite DB")?;
+
+        sqlx::raw_sql(include_str!("../.././migration.sql"))
+            .execute(&db)
+            .await?;
+
+        Ok(Self { db })
+    }
+
+    /// Create anew [`SqliteLayer`] using a path to the database
+    ///
+    /// The database file will be initalised if it does not exist.
     pub async fn from_path(value: impl AsRef<Path>) -> anyhow::Result<Self> {
         let mut file = tokio::fs::File::create(value.as_ref())
             .await
@@ -182,9 +204,9 @@ mod tests {
             Some("single.toml"),
         )
         .unwrap();
-        let (f, db) = mock_db().await;
-        db.ingest(&cfg).await.expect("Failed to ingest config");
 
-        drop(f)
+        let db = mock_db().await;
+
+        db.ingest(&cfg).await.expect("Failed to ingest config");
     }
 }
