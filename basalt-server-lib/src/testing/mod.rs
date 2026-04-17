@@ -32,8 +32,12 @@ pub fn setup_test_logger() {
 /// Assigns `Arc<AppState>` to the variable name passed in
 ///
 /// ```
-/// mock_state!(let state);
-/// mock_state!(let state; Config { .. });
+/// let state = mock_state! {};
+///
+/// // If config fields need to be specified:
+/// let state = mock_state! {
+///     packet: Default::default(),
+/// };
 /// ```
 #[macro_export]
 macro_rules! mock_state {
