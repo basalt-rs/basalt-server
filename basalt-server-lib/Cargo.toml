@@ -17,7 +17,6 @@ uninlined_format_args = "allow"
 [dependencies]
 anyhow.workspace = true
 argon2.workspace = true
-async-tempfile.workspace = true
 axum-extra.workspace = true
 axum.workspace = true
 bedrock.workspace = true
@@ -47,7 +46,6 @@ futures = "0.3.31"
 ident-str = "0.1.0"
 
 [dev-dependencies]
-async-tempfile = { workspace = true, features = ["uuid"] }
 tracing-subscriber.workspace = true
 
 [build-dependencies]
