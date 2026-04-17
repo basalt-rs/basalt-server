@@ -639,13 +639,9 @@ mod test {
     async fn get_all_questions_competitor() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+        };
 
         let Json(value) = get_all(user!("foobar", Competitor).into(), State(state)).await;
 
@@ -682,13 +678,9 @@ mod test {
     async fn get_all_questions_host() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+        };
         let Json(value) = get_all(user!("foobar", Host).into(), State(state)).await;
 
         assert_eq!(
@@ -738,13 +730,9 @@ mod test {
     async fn get_specific_question_host() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+        };
 
         let Json(value) = get_specific_question(
             State(state),
@@ -781,13 +769,9 @@ mod test {
     async fn get_specific_question_competitor() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+        };
 
         let Json(value) = get_specific_question(
             State(state),
@@ -817,13 +801,9 @@ mod test {
     async fn get_specific_question_404() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+        };
 
         let code = get_specific_question(
             State(state),
@@ -840,14 +820,10 @@ mod test {
     async fn create_submission_valid() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![RUST_LANG],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![RUST_LANG],
+        };
 
         let user = db_user(&state.db, "foobar", Role::Competitor).await;
 
@@ -882,14 +858,10 @@ mod test {
     async fn create_submission_404() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![RUST_LANG],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![RUST_LANG],
+        };
 
         state.clock.write().await.unpause();
 
@@ -916,14 +888,10 @@ mod test {
     async fn create_submission_paused() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![RUST_LANG],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![RUST_LANG],
+        };
 
         state.clock.write().await.pause();
 
@@ -950,14 +918,10 @@ mod test {
     async fn create_test_valid() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![RUST_LANG],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![RUST_LANG],
+        };
 
         let user = db_user(&state.db, "foobar", Role::Competitor).await;
 
@@ -992,14 +956,10 @@ mod test {
     async fn create_test_404() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![RUST_LANG],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![RUST_LANG],
+        };
 
         state.clock.write().await.unpause();
 
@@ -1026,14 +986,10 @@ mod test {
     async fn create_test_paused() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![RUST_LANG],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![RUST_LANG],
+        };
 
         state.clock.write().await.pause();
 
@@ -1060,14 +1016,10 @@ mod test {
     async fn get_submission_valid() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![RUST_LANG],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![RUST_LANG],
+        };
 
         let user = db_user(&state.db, "foobar", Role::Competitor).await;
         let history = insert_submission(&state.db, user.id, false).await;
@@ -1096,14 +1048,10 @@ mod test {
     async fn get_submission_404() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![RUST_LANG],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![RUST_LANG],
+        };
 
         let submission_id = SubmissionId::new();
         state.clock.write().await.unpause();
@@ -1123,14 +1071,10 @@ mod test {
     async fn get_submission_test() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![RUST_LANG],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![RUST_LANG],
+        };
 
         let user = db_user(&state.db, "foobar", Role::Competitor).await;
         let history = insert_submission(&state.db, user.id, true).await;
@@ -1148,14 +1092,10 @@ mod test {
     async fn get_submission_other_user() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![RUST_LANG],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![RUST_LANG],
+        };
 
         let user = db_user(&state.db, "foobar", Role::Competitor).await;
         let history = insert_submission(&state.db, user.id, false).await;
@@ -1177,14 +1117,10 @@ mod test {
     async fn get_submission_other_user_host() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![RUST_LANG],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![RUST_LANG],
+        };
 
         let user = db_user(&state.db, "foobar", Role::Competitor).await;
         let history = insert_submission(&state.db, user.id, false).await;
@@ -1218,14 +1154,10 @@ mod test {
     async fn get_test_valid() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![RUST_LANG],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![RUST_LANG],
+        };
 
         let user = db_user(&state.db, "foobar", Role::Competitor).await;
         let history = insert_submission(&state.db, user.id, true).await;
@@ -1255,14 +1187,10 @@ mod test {
     async fn get_test_404() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![RUST_LANG],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![RUST_LANG],
+        };
 
         let submission_id = SubmissionId::new();
         state.clock.write().await.unpause();
@@ -1282,14 +1210,10 @@ mod test {
     async fn get_test_submission() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![RUST_LANG],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![RUST_LANG],
+        };
 
         let user = db_user(&state.db, "foobar", Role::Competitor).await;
         let history = insert_submission(&state.db, user.id, false).await;
@@ -1307,14 +1231,10 @@ mod test {
     async fn get_test_other_user() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![RUST_LANG],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![RUST_LANG],
+        };
 
         let user = db_user(&state.db, "foobar", Role::Competitor).await;
         let history = insert_submission(&state.db, user.id, true).await;
@@ -1336,14 +1256,10 @@ mod test {
     async fn get_test_other_user_host() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![RUST_LANG],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![RUST_LANG],
+        };
 
         let user = db_user(&state.db, "foobar", Role::Competitor).await;
         let history = insert_submission(&state.db, user.id, true).await;
@@ -1377,14 +1293,10 @@ mod test {
     async fn abort_submission_valid() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![sleep_lang()],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![sleep_lang()],
+        };
         state.clock.write().await.unpause();
 
         let user = db_user(&state.db, "foobar", Role::Competitor).await;
@@ -1424,14 +1336,10 @@ mod test {
     async fn abort_submission_404() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![sleep_lang()],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![sleep_lang()],
+        };
         state.clock.write().await.unpause();
 
         let user = db_user(&state.db, "foobar", Role::Competitor).await;
@@ -1451,14 +1359,10 @@ mod test {
     async fn abort_submission_test() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![sleep_lang()],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![sleep_lang()],
+        };
         state.clock.write().await.unpause();
 
         let user = db_user(&state.db, "foobar", Role::Competitor).await;
@@ -1490,14 +1394,10 @@ mod test {
     async fn abort_submission_other_user() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![sleep_lang()],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![sleep_lang()],
+        };
         state.clock.write().await.unpause();
 
         let user = db_user(&state.db, "foobar", Role::Competitor).await;
@@ -1529,14 +1429,10 @@ mod test {
     async fn abort_submission_other_user_host() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![sleep_lang()],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![sleep_lang()],
+        };
         state.clock.write().await.unpause();
 
         let user = db_user(&state.db, "foobar", Role::Competitor).await;
@@ -1576,14 +1472,10 @@ mod test {
     async fn abort_test_valid() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![sleep_lang()],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![sleep_lang()],
+        };
         state.clock.write().await.unpause();
 
         let user = db_user(&state.db, "foobar", Role::Competitor).await;
@@ -1623,14 +1515,10 @@ mod test {
     async fn abort_test_404() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![sleep_lang()],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![sleep_lang()],
+        };
         state.clock.write().await.unpause();
 
         let user = db_user(&state.db, "foobar", Role::Competitor).await;
@@ -1650,14 +1538,10 @@ mod test {
     async fn abort_test_submission() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![sleep_lang()],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![sleep_lang()],
+        };
         state.clock.write().await.unpause();
 
         let user = db_user(&state.db, "foobar", Role::Competitor).await;
@@ -1689,14 +1573,10 @@ mod test {
     async fn abort_test_other_user() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![sleep_lang()],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![sleep_lang()],
+        };
         state.clock.write().await.unpause();
 
         let user = db_user(&state.db, "foobar", Role::Competitor).await;
@@ -1728,14 +1608,10 @@ mod test {
     async fn abort_test_other_user_host() {
         setup_test_logger();
 
-        mock_state!(
-            let state;
-            Config {
-                packet: double_problem_packet(),
-                languages: language_set![sleep_lang()],
-                ..Config::default()
-            }
-        );
+        let state = mock_state! {
+            packet: double_problem_packet(),
+            languages: language_set![sleep_lang()],
+        };
         state.clock.write().await.unpause();
 
         let user = db_user(&state.db, "foobar", Role::Competitor).await;

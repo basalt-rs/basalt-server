@@ -2,7 +2,6 @@ use anyhow::Context;
 use bedrock::Config;
 use derive_more::Deref;
 use futures::{future::BoxFuture, stream::BoxStream};
-use std::path::Path;
 use std::str::FromStr;
 use tokio::io::AsyncWriteExt;
 use tracing::debug;
@@ -60,8 +59,7 @@ impl SqliteLayer {
         Ok((init, Self { db }))
     }
 
-    /// Create a new [`SqliteLayer`] using an in-memory database
-    #[cfg(test)] // This is only really useful for testing
+    /// Create a new [`SqliteLayer`] using an in-memory database, primarily for testing
     pub async fn in_memory() -> anyhow::Result<Self> {
         let opts = SqliteConnectOptions::from_str("sqlite::memory:")
             .expect("from_str is given a valid URI")
@@ -76,28 +74,6 @@ impl SqliteLayer {
             .execute(&db)
             .await?;
 
-        Ok(Self { db })
-    }
-
-    /// Create anew [`SqliteLayer`] using a path to the database
-    ///
-    /// The database file will be initalised if it does not exist.
-    pub async fn from_path(value: impl AsRef<Path>) -> anyhow::Result<Self> {
-        let mut file = tokio::fs::File::create(value.as_ref())
-            .await
-            .context("Failed to create datafile")?;
-        file.write_all(INITIAL_DB_CONTENT)
-            .await
-            .context("Failed to write default database to datafile")?;
-        drop(file);
-        let uri = format!("sqlite://{}", value.as_ref().to_str().unwrap());
-        let opts = SqliteConnectOptions::from_str(&uri)
-            .context("Invalid options")?
-            .journal_mode(SqliteJournalMode::Wal)
-            .read_only(false);
-        let db = sqlx::sqlite::SqlitePool::connect_with(opts)
-            .await
-            .context("Failed to connect to SQLite DB")?;
         Ok(Self { db })
     }
 

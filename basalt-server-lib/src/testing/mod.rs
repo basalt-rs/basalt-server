@@ -37,15 +37,19 @@ pub fn setup_test_logger() {
 /// ```
 #[macro_export]
 macro_rules! mock_state {
-    (let $state: ident) => {
-        mock_state!($state, Config::default());
-    };
-    (let $state: ident; $config: expr) => {
+    ($($cfg_key: ident: $cfg_value: expr),*$(,)?) => {{
         let db = $crate::testing::mock_db().await;
-        let mut state = AppState::new(db, $config, None);
-        state.init().await.unwrap();
-        let $state = Arc::new(state);
-    };
+        let mut state = $crate::server::AppState::new(
+            db,
+            bedrock::Config {
+                $($cfg_key: $cfg_value,)*
+                ..Default::default()
+            },
+            None
+        );
+        state.init().await.unwrap() ;
+        std::sync::Arc::new(state)
+    }};
 }
 
 /// Create a mock user
