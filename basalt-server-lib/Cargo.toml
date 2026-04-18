@@ -6,10 +6,7 @@ rust-version.workspace = true
 
 [features]
 doc-gen = []
-webhooks = ["dep:reqwest"]
-scripting = ["dep:rustyscript"]
-full = ["webhooks", "scripting"]
-default = ["full", "doc-gen"]
+default = ["doc-gen"]
 
 [lints.clippy]
 uninlined_format_args = "allow"
@@ -39,10 +36,7 @@ tracing.workspace = true
 utoipa-axum.workspace = true
 utoipa.workspace = true
 chrono = { version = "0.4.40", features = ["serde"] }
-rustyscript = { git = "https://github.com/rscarson/rustyscript.git", branch = "master", features = [
-    "http",
-], optional = true }
-reqwest = { version = "0.13.2", features = ["json"], optional = true }
+reqwest = { version = "0.13.2", features = ["json"] }
 futures = "0.3.31"
 ident-str = "0.1.0"
 

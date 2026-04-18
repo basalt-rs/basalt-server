@@ -6,10 +6,7 @@ rust-version.workspace = true
 
 [features]
 doc-gen = []
-webhooks = ["basalt-server-lib/webhooks"]
-scripting = ["basalt-server-lib/scripting"]
-full = ["webhooks", "scripting"]
-default = ["full", "doc-gen"]
+default = ["doc-gen"]
 
 [lints.clippy]
 uninlined_format_args = "allow"
@@ -40,3 +37,4 @@ sqlx = { workspace = true, features = ["sqlite"] }
 tokio = { workspace = true, features = ["full"] }
 utoipa-axum.workspace = true
 utoipa.workspace = true
+which.workspace = true

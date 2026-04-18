@@ -5,7 +5,7 @@ WORKDIR /basalt-server
 COPY . .
 
 
-RUN cargo build --release --no-default-features --features webhooks
+RUN cargo build --release --no-default-features -p basalt-server
 
 FROM scratch AS base-basalt
 
