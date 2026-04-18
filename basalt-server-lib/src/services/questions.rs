@@ -178,7 +178,7 @@ pub struct SubmissionBody {
     path = "/{question_index}/submissions", tag = "questions",
     request_body = SubmissionBody,
     responses(
-        (status=OK, body=String, content_type="text/plain", description="The ID of the submission", headers(("Location"))),
+        (status=201, body=String, content_type="text/plain", description="The ID of the submission", headers(("Location"))),
         (status=400, description="Invalid data provided"),
         (status=404, description="Question or language not found"),
         (status=409, description="Competition is paused"),
@@ -225,7 +225,7 @@ pub async fn create_submission(
     path = "/{question_index}/tests", tag = "questions",
     request_body = SubmissionBody,
     responses(
-        (status=OK, body=String, content_type="text/plain", description="The ID of the submission", headers(("Location"))),
+        (status=201, body=String, content_type="text/plain", description="The ID of the submission", headers(("Location"))),
         (status=400, description="Invalid data provided"),
         (status=404, description="Question or language not found"),
         (status=409, description="Competition is paused"),
