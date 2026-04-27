@@ -32,6 +32,7 @@ tracing.workspace = true
 [build-dependencies]
 basalt-server-lib = { path = "../basalt-server-lib", features = [
     "doc-gen",
+    "testing",
 ], default-features = false }
 anyhow.workspace = true
 async-tempfile.workspace = true

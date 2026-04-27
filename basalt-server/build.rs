@@ -45,23 +45,11 @@ pub async fn main() -> anyhow::Result<()> {
     #[cfg(feature = "doc-gen")]
     {
         use anyhow::Context;
-        use basalt_server_lib::{server::AppState, storage::SqliteLayer};
-        use std::{path::Path, sync::Arc};
+        use basalt_server_lib::mock_state;
+        use std::path::Path;
         use utoipa::OpenApi;
 
-        let tempfile = async_tempfile::TempFile::new()
-            .await
-            .context("Failed to create tempfile")?;
-
-        let sqlite_layer = SqliteLayer::from_path(tempfile.file_path())
-            .await
-            .context("Failed to create sqlite layer")?;
-
-        let dummy_state = Arc::new(AppState::new(
-            sqlite_layer,
-            bedrock::Config::default(),
-            None,
-        ));
+        let dummy_state = mock_state! {};
         let router = basalt_server_lib::server::doc_router(dummy_state);
 
         #[derive(OpenApi)]

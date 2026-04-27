@@ -5,5 +5,5 @@ mod services;
 pub mod storage;
 mod utils;
 
-#[cfg(test)]
-mod testing;
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;

@@ -220,15 +220,14 @@ mod tests {
     use super::*;
     #[tokio::test]
     async fn get_nonexistent_user() {
-        let (f, sql) = mock_db().await;
+        let sql = mock_db().await;
         let response = get_user_by_id(&sql, &UserId::new()).await;
         assert!(response.is_err());
-        drop(f)
     }
 
     #[tokio::test]
     async fn get_existing_user_by_id() {
-        let (f, sql) = mock_db().await;
+        let sql = mock_db().await;
         let dummy_user = create_user(
             &sql,
             "awesome_user".to_string(),
@@ -242,12 +241,11 @@ mod tests {
             .await
             .expect("Failed to find user");
         assert_eq!(user.username, dummy_user.username);
-        drop(f)
     }
 
     #[tokio::test]
     async fn get_correct_user() {
-        let (f, sql) = mock_db().await;
+        let sql = mock_db().await;
         let dummy_user = crate::testing::users_repositories::dummy_user(
             &sql,
             "awesome_user".to_string(),
@@ -266,6 +264,5 @@ mod tests {
             .await
             .expect("Failed to find user");
         assert_eq!(user.username, dummy_user.username);
-        drop(f)
     }
 }
