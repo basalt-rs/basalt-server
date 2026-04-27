@@ -2,8 +2,8 @@ use anyhow::Context;
 use bedrock::Config;
 use derive_more::Deref;
 use futures::{future::BoxFuture, stream::BoxStream};
-use std::str::FromStr;
-use tokio::io::AsyncWriteExt;
+use std::{path::Path, str::FromStr};
+use tokio::fs::File;
 use tracing::debug;
 
 use sqlx::{
@@ -12,8 +12,6 @@ use sqlx::{
 };
 
 use crate::repositories::users::{create_user, Role};
-
-const INITIAL_DB_CONTENT: &[u8] = include_bytes!(env!("INITIAL_DATA_PATH"));
 
 #[derive(Debug, Deref)]
 pub struct SqliteLayer {
@@ -33,30 +31,42 @@ impl SqliteLayer {
     /// # };
     /// ```
     pub async fn new(title: impl AsRef<str>) -> anyhow::Result<(bool, Self)> {
-        let mut path = directories::ProjectDirs::from("rs", "basalt", "basalt-server")
+        let path = directories::ProjectDirs::from("rs", "basalt", "basalt-server")
             .context("Failed to resolve project directory")?
             .data_local_dir()
-            .join(title.as_ref());
-        tokio::fs::create_dir_all(&path)
-            .await
-            .expect("failed to create database files");
-        path = path.join("data").with_extension("db");
-        let init = !path.exists();
+            .join(title.as_ref())
+            .join("data.db");
 
+        Self::from_path(&path).await
+    }
+
+    /// Create a new instance of the database at a specific path
+    async fn from_path(path: impl AsRef<Path>) -> anyhow::Result<(bool, Self)> {
+        let path = path.as_ref();
+
+        if let Some(parent) = path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .context("creating database file")?;
+        }
+
+        let init = !path.exists();
         if init {
-            let mut file = tokio::fs::File::create(&path)
+            File::create_new(path)
                 .await
-                .context("Failed to create datafile")?;
-            file.write_all(INITIAL_DB_CONTENT)
-                .await
-                .context("Failed to write datafile")?;
+                .context("creating database file")?;
         }
 
         debug!(?path, "Connecting to sqlite database");
-        let db = sqlx::sqlite::SqlitePool::connect(path.as_path().to_str().unwrap())
+        let db = sqlx::sqlite::SqlitePool::connect(path.to_str().unwrap())
             .await
             .context("Failed to connect to SQLiteDB")?;
-        Ok((init, Self { db }))
+
+        // aways intialise, in case new tables need to be created
+        let this = Self { db };
+        this.init_db().await?;
+
+        Ok((init, this))
     }
 
     /// Create a new [`SqliteLayer`] using an in-memory database, primarily for testing
@@ -70,11 +80,20 @@ impl SqliteLayer {
             .await
             .context("Failed to connect to SQLite DB")?;
 
-        sqlx::raw_sql(include_str!("../.././migration.sql"))
-            .execute(&db)
-            .await?;
+        let this = Self { db };
 
-        Ok(Self { db })
+        this.init_db().await?;
+
+        Ok(this)
+    }
+
+    /// Run the migration.sql to initialise the database tables
+    async fn init_db(&self) -> anyhow::Result<()> {
+        sqlx::raw_sql(include_str!("../../migration.sql"))
+            .execute(&self.db)
+            .await
+            .context("Intialising Database")?;
+        Ok(())
     }
 
     pub async fn ingest(&self, cfg: &Config) -> anyhow::Result<()> {
@@ -170,7 +189,11 @@ impl<'a> Executor<'a> for &SqliteLayer {
 
 #[cfg(test)]
 mod tests {
-    use crate::testing::mock_db;
+    use crate::{
+        repositories::users::{create_user, Role},
+        storage::SqliteLayer,
+        testing::{mock_db, users_repositories::get_user_by_username},
+    };
     use bedrock::Config;
 
     #[tokio::test]
@@ -184,5 +207,34 @@ mod tests {
         let db = mock_db().await;
 
         db.ingest(&cfg).await.expect("Failed to ingest config");
+    }
+
+    #[tokio::test]
+    async fn persistent_database() {
+        // NOTE: using a tempdir so the file itself isn't created
+        let tempdir = async_tempfile::TempDir::new().await.unwrap();
+
+        let file = tempdir.join("database.db");
+        assert!(!tokio::fs::try_exists(&file).await.unwrap());
+
+        let (init, layer) = SqliteLayer::from_path(&file).await.unwrap();
+        assert!(init);
+        create_user(&layer, "foo", None, "password", Role::Host)
+            .await
+            .unwrap();
+
+        layer.close().await;
+        drop(layer);
+
+        let (init, layer) = SqliteLayer::from_path(&file).await.unwrap();
+        assert!(!init);
+
+        let user = get_user_by_username(&layer, "foo").await.unwrap();
+        assert_eq!(user.username, "foo");
+        assert_eq!(user.display_name, None);
+        assert_eq!(user.role, Role::Host);
+
+        layer.close().await;
+        drop(layer);
     }
 }

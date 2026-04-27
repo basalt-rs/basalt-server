@@ -49,6 +49,7 @@ tracing-subscriber = { workspace = true, optional = true }
 
 [dev-dependencies]
 tracing-subscriber.workspace = true
+async-tempfile.workspace = true
 
 [build-dependencies]
 tokio = { version = "1.43.0", features = ["full"] }
