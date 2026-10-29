@@ -6,12 +6,23 @@ async fn gen_docs(path: &std::path::Path) -> anyhow::Result<()> {
     use std::{io::BufRead, process::Stdio};
     use tokio::process::Command;
 
+    /// Returns a `tokio::process::Command` configured to run `redocly`.
+    /// Uses the `redocly` binary directly if found on PATH, otherwise
+    /// falls back to `npx redocly`.
+    pub fn redocly_command() -> Command {
+        if which::which("redocly").is_ok() {
+            Command::new("redocly")
+        } else {
+            let mut cmd = Command::new("npx");
+            cmd.arg("redocly").arg("-y");
+            cmd
+        }
+    }
+
     let out_dir = path.with_file_name("doc").join("index.html");
 
     // npx -y @redocly/cli build-docs <SPEC_PATH> -o <out_dir>
-    let result = Command::new("npx")
-        .arg("-y")
-        .arg("@redocly/cli")
+    let result = redocly_command()
         .arg("build-docs")
         .arg(SPEC_PATH)
         .arg("-o")

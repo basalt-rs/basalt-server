@@ -107,33 +107,15 @@ jobs:
                   ./actionlint -color
               shell: bash
 
-    push-containers:
+    push-container:
         runs-on: blacksmith-4vcpu-ubuntu-2404
         if: github.event_name == 'pull_request'
         needs: [test, clippy]
         permissions:
             contents: read
             packages: write
-        strategy:
-            matrix:
-                include:
-                    - dockerfile: Dockerfile
-                      tags:
-                          - ghcr.io/${{ github.repository_owner }}/basalt-server:dev-pr-${{ github.event.pull_request.number }}
-                          - ghcr.io/${{ github.repository_owner }}/basalt-server:dev-pr-${{ github.event.pull_request.number }}-full
-                    - dockerfile: scripting.Dockerfile
-                      tags:
-                          - ghcr.io/${{ github.repository_owner }}/basalt-server:dev-pr-${{ github.event.pull_request.number }}-scripting
-                    - dockerfile: webhooks.Dockerfile
-                      tags:
-                          - ghcr.io/${{ github.repository_owner }}/basalt-server:dev-pr-${{ github.event.pull_request.number }}-webhooks
-                    - dockerfile: minimal.Dockerfile
-                      tags:
-                          - ghcr.io/${{ github.repository_owner }}/basalt-server:dev-pr-${{ github.event.pull_request.number }}-minimal
         steps:
             - uses: actions/checkout@v4
-            # - name: Set up QEMU (for ARM builds)
-            #   uses: docker/setup-qemu-action@v3
             - name: Setup Docker Builder
               uses: useblacksmith/setup-docker-builder@v1
             - name: Log in to GHCR
@@ -143,16 +125,11 @@ jobs:
                   username: ${{ github.actor }}
                   password: ${{ secrets.GITHUB_TOKEN }}
 
-            # Use QEMU to build images for both amd64 and arm64
             - name: Build and push Docker image
-              # uses: docker/build-push-action@v6
               uses: useblacksmith/build-push-action@v2
               with:
                   context: .
-                  file: ./containers/${{ matrix.dockerfile }}
-                  # platforms: linux/amd64,linux/arm64
+                  file: ./Dockerfile
                   platforms: linux/amd64
                   push: true
-                  # tags: ghcr.io/${{ github.repository_owner }}/basalt-server-${{ matrix.tagSuffix }}:pr-${{ github.event.pull_request.number }}
-                  tags: |
-                      ${{ join(matrix.tags, ',') }}
+                  tags: ghcr.io/${{ github.repository_owner }}/basalt-server:dev-pr-${{ github.event.pull_request.number }}
