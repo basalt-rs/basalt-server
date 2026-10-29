@@ -100,7 +100,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_announcement() {
-        let (f, sql) = mock_db().await;
+        let sql = mock_db().await;
         let user = dummy_user(&sql, "dummy_user", "foobar", Role::Competitor).await;
         let announcement = super::create_announcement(&sql, &user.id, "hello world")
             .await
@@ -108,12 +108,11 @@ mod tests {
 
         assert_eq!(announcement.sender, user.id);
         assert_eq!(&announcement.message, "hello world");
-        drop(f)
     }
 
     #[tokio::test]
     async fn get_announcements() {
-        let (f, sql) = mock_db().await;
+        let sql = mock_db().await;
         let user = dummy_user(&sql, "dummy_user", "foobar", Role::Competitor).await;
         super::create_announcement(&sql, &user.id, "foo")
             .await
@@ -126,12 +125,11 @@ mod tests {
 
         assert!(ann.iter().any(|a| a.message == "foo"));
         assert!(ann.iter().any(|a| a.message == "bar"));
-        drop(f)
     }
 
     #[tokio::test]
     async fn delete_announcement() {
-        let (f, sql) = mock_db().await;
+        let sql = mock_db().await;
         let user = dummy_user(&sql, "dummy_user", "foobar", Role::Competitor).await;
         let Announcement { id, .. } = super::create_announcement(&sql, &user.id, "foo")
             .await
@@ -145,6 +143,5 @@ mod tests {
 
         let ann = super::get_announcements(&sql).await.unwrap();
         assert!(ann.is_empty());
-        drop(f)
     }
 }

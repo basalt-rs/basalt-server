@@ -267,7 +267,7 @@ mod tests {
     use super::*;
     #[tokio::test]
     async fn get_teams_works() {
-        let (f, db) = mock_db().await;
+        let db = mock_db().await;
 
         let expected_score = 3.0;
 
@@ -303,6 +303,5 @@ mod tests {
                 .score,
             expected_score
         );
-        drop(f);
     }
 }

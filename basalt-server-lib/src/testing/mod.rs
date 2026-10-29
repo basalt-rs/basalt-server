@@ -13,16 +13,10 @@ pub mod users_repositories;
 
 pub const SAMPLE_1: &str = include_str!("../../../samples/single.toml");
 
-pub async fn mock_db() -> (async_tempfile::TempFile, SqliteLayer) {
-    let db_tempfile = async_tempfile::TempFile::new()
+pub async fn mock_db() -> SqliteLayer {
+    SqliteLayer::in_memory()
         .await
-        .expect("Failed to create temporary file for datafile");
-
-    let sqlite_layer = SqliteLayer::from_path(db_tempfile.file_path())
-        .await
-        .expect("Failed to create SqliteDB");
-
-    (db_tempfile, sqlite_layer)
+        .expect("Failed to create SqliteDB")
 }
 
 pub fn setup_test_logger() {
@@ -38,20 +32,28 @@ pub fn setup_test_logger() {
 /// Assigns `Arc<AppState>` to the variable name passed in
 ///
 /// ```
-/// mock_state!(let state);
-/// mock_state!(let state; Config { .. });
+/// let state = mock_state! {};
+///
+/// // If config fields need to be specified:
+/// let state = mock_state! {
+///     packet: Default::default(),
+/// };
 /// ```
 #[macro_export]
 macro_rules! mock_state {
-    (let $state: ident) => {
-        mock_state!($state, Config::default());
-    };
-    (let $state: ident; $config: expr) => {
-        let (_db_file, db) = $crate::testing::mock_db().await;
-        let mut state = AppState::new(db, $config, None);
-        state.init().await.unwrap();
-        let $state = Arc::new(state);
-    };
+    ($($cfg_key: ident: $cfg_value: expr),*$(,)?) => {{
+        let db = $crate::testing::mock_db().await;
+        let mut state = $crate::server::AppState::new(
+            db,
+            bedrock::Config {
+                $($cfg_key: $cfg_value,)*
+                ..Default::default()
+            },
+            None
+        );
+        state.init().await.unwrap() ;
+        std::sync::Arc::new(state)
+    }};
 }
 
 /// Create a mock user

@@ -525,7 +525,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_submission() {
-        let (f, sql) = mock_db().await;
+        let sql = mock_db().await;
         let user = dummy_user(&sql, "dummy_user", "foobar", Role::Competitor).await;
         let history = create_submission_history(
             &sql,
@@ -553,12 +553,11 @@ mod tests {
         assert_eq!(history.question_index, 42);
         assert_eq!(history.score, 42.);
         assert!(!history.success);
-        drop(f)
     }
 
     #[tokio::test]
     async fn create_submission_test() {
-        let (f, sql) = mock_db().await;
+        let sql = mock_db().await;
         let user = dummy_user(&sql, "dummy_user", "foobar", Role::Competitor).await;
         let history = create_submission_history(
             &sql,
@@ -595,12 +594,11 @@ mod tests {
         assert_eq!(test.stdout, "stdout");
         assert_eq!(test.stderr, "stderr");
         assert_eq!(test.exit_status, 1);
-        drop(f)
     }
 
     #[tokio::test]
     async fn other_submissions() {
-        let (f, sql) = mock_db().await;
+        let sql = mock_db().await;
 
         for i in 0..5 {
             let user = dummy_user(
@@ -652,13 +650,11 @@ mod tests {
 
         let n = count_other_submissions(&sql, 1).await.unwrap();
         assert_eq!(n, 5);
-
-        drop(f)
     }
 
     #[tokio::test]
     async fn previous_submissions() {
-        let (f, sql) = mock_db().await;
+        let sql = mock_db().await;
 
         let user = dummy_user(&sql, "dummy_user", "foobar", Role::Competitor).await;
         for _ in 0..5 {
@@ -685,13 +681,11 @@ mod tests {
 
         let n = count_previous_submissions(&sql, &user.id, 1).await.unwrap();
         assert_eq!(n, 5);
-
-        drop(f)
     }
 
     #[tokio::test]
     async fn user_score() {
-        let (f, sql) = mock_db().await;
+        let sql = mock_db().await;
 
         let user = dummy_user(&sql, "dummy_user", "foobar", Role::Competitor).await;
         for i in 0..5 {
@@ -716,13 +710,11 @@ mod tests {
 
         let n = get_user_score(&sql, &user.id).await.unwrap();
         assert_eq!(n, 42. * 5.);
-
-        drop(f)
     }
 
     #[tokio::test]
     async fn latest_submissions() {
-        let (f, sql) = mock_db().await;
+        let sql = mock_db().await;
 
         let user = dummy_user(&sql, "dummy_user", "foobar", Role::Competitor).await;
         for i in 0..5 {
@@ -772,7 +764,5 @@ mod tests {
         for s in submissions {
             assert_eq!(s.code, "latest");
         }
-
-        drop(f)
     }
 }

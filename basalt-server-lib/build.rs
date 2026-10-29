@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 
 use anyhow::Context;
 
@@ -8,14 +8,7 @@ pub async fn main() -> anyhow::Result<()> {
     let cargo_target_dir =
         std::env::var("OUT_DIR").context("Failed to get cargo target directory")?;
 
-    let path = PathBuf::from(cargo_target_dir)
-        .join("initial_data")
-        .with_extension("db");
-
-    println!(
-        "cargo::rustc-env=INITIAL_DATA_PATH={}",
-        path.to_str().unwrap()
-    );
+    let path = Path::new(&cargo_target_dir).join("initial_data.db");
 
     let sqlite_uri = format!("sqlite:{}", path.to_str().unwrap());
 
